@@ -78,7 +78,7 @@ export default function TravelCabDashboardPage() {
         return {
           id: docSnap.id,
           status: data.status || 'completed',
-          price: Number(data.price || data.estimatedPrice || 0),
+          price: Number(data.finalPrice ?? data.price ?? data.estimatedPrice ?? 0),
           branchId: data.branchId || '1',
           createdAt: data.createdAt
         };

@@ -205,20 +205,72 @@ export default function TravelCabHistoryPage() {
     EXPORT_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: f.default }), {})
   );
 
+// Funciones auxiliares de normalización de datos
+function parseTimestamp(val: any): number {
+  if (!val) return Date.now();
+  if (typeof val === 'number') return val;
+  if (typeof val.toMillis === 'function') return val.toMillis();
+  if (typeof val.toDate === 'function') return val.toDate().getTime();
+  if (val.seconds !== undefined) return val.seconds * 1000;
+  const parsed = new Date(val).getTime();
+  return isNaN(parsed) ? Date.now() : parsed;
+}
+
+function normalizeStatus(status: any): ExtendedTrip['status'] {
+  if (!status) return 'Completado';
+  const s = String(status).toLowerCase().trim();
+  if (s === 'completed' || s === 'completado' || s === 'finished') return 'Completado';
+  if (s === 'in_progress' || s === 'en viaje' || s === 'arrived' || s === 'on_way' || s === 'en camino' || s === 'accepted') return 'En Viaje';
+  if (s === 'searching' || s === 'buscando chofer' || s === 'pending') return 'Buscando Chofer';
+  if (s === 'cancelled' || s === 'cancelado') return 'Cancelado';
+  return 'Completado';
+}
+
   // Sync real-time Firestore trips
   useEffect(() => {
     setLoading(true);
-    const q = query(collection(db, 'trips'), orderBy('createdAt', 'desc'));
-    const unsub = onSnapshot(q, (snap) => {
-      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as ExtendedTrip));
-      if (docs.length > 0) {
-        setTrips(docs);
-      } else {
+    const qTrips = collection(db, 'trips');
+    const unsub = onSnapshot(qTrips, (snap) => {
+      if (snap.empty) {
         setTrips(SEED_TRIPS);
+        setLoading(false);
+        return;
       }
+
+      const docs = snap.docs.map(d => {
+        const data = d.data();
+        const rawCreatedAt = data.createdAt || data.completedAt || data.timestamp;
+        const createdAtMs = parseTimestamp(rawCreatedAt);
+        const driverDisplay = data.driverName 
+          ? `${data.driverName}${data.vehiclePlate ? ` (${data.vehiclePlate})` : (data.driverVehicle ? ` (${data.driverVehicle})` : '')}`
+          : (data.vehiclePlate ? `Vehículo ${data.vehiclePlate}` : undefined);
+
+        return {
+          id: d.id,
+          passengerName: data.passengerName || data.userName || data.clientName || 'Pasajero a Bordo',
+          passengerPhone: data.passengerPhone || data.userPhone || '',
+          origin: data.origin || data.originAddress || 'Origen',
+          destination: data.destination || data.destAddress || 'Destino',
+          status: normalizeStatus(data.status),
+          driverName: driverDisplay,
+          price: Number(data.finalPrice ?? data.price ?? data.estimatedPrice ?? 0),
+          scheduledTime: data.scheduledTime,
+          originCoords: data.originCoords,
+          destinationCoords: data.destinationCoords,
+          distanceKm: Number(data.distanceKm ?? data.estimatedDistanceKm ?? data.distance ?? 0),
+          durationMinutes: Number(data.durationMinutes ?? data.estimatedDurationMins ?? data.duration ?? 0),
+          serviceType: data.serviceType || data.serviceCategory || 'MU Urbana',
+          paymentMethod: data.paymentMethod || 'Efectivo',
+          createdAt: createdAtMs,
+        } as ExtendedTrip;
+      });
+
+      // Ordenar más recientes primero
+      docs.sort((a, b) => b.createdAt - a.createdAt);
+      setTrips(docs);
       setLoading(false);
     }, (err) => {
-      console.warn('Error syncing trips, using seed:', err);
+      console.warn('Error syncing trips from Firestore, using seed fallback:', err);
       setTrips(SEED_TRIPS);
       setLoading(false);
     });
@@ -233,23 +285,23 @@ export default function TravelCabHistoryPage() {
 
     return trips.filter(t => {
       // Date filter
-      const tripDate = t.createdAt || Date.now();
+      const tripDate = typeof t.createdAt === 'number' ? t.createdAt : parseTimestamp(t.createdAt);
       if (tripDate < startMs || tripDate > endMs) return false;
 
       // Status filter
       if (statusFilter !== 'Todos' && t.status !== statusFilter) return false;
 
       // Service filter
-      if (serviceFilter !== 'Todos' && t.serviceType !== serviceFilter) return false;
+      if (serviceFilter !== 'Todos' && !t.serviceType?.toLowerCase().includes(serviceFilter.toLowerCase())) return false;
 
       // Search term
       if (searchTerm.trim() !== '') {
         const term = searchTerm.toLowerCase();
         const matchId = t.id.toLowerCase().includes(term);
-        const matchPass = t.passengerName.toLowerCase().includes(term);
+        const matchPass = (t.passengerName || '').toLowerCase().includes(term);
         const matchDriver = (t.driverName || '').toLowerCase().includes(term);
-        const matchOrig = t.origin.toLowerCase().includes(term);
-        const matchDest = t.destination.toLowerCase().includes(term);
+        const matchOrig = (t.origin || '').toLowerCase().includes(term);
+        const matchDest = (t.destination || '').toLowerCase().includes(term);
         return matchId || matchPass || matchDriver || matchOrig || matchDest;
       }
 

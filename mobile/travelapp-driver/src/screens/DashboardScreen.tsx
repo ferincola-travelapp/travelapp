@@ -1222,7 +1222,51 @@ export default function DashboardScreen() {
 
                     <TouchableOpacity 
                       style={styles.btnCollectAndFinish}
-                      onPress={() => {
+                      onPress={async () => {
+                        try {
+                          const activeVeh = vehicles.find(v => v.active) || vehicles[0];
+                          const vehDesc = activeVeh ? `${activeVeh.brand} (${activeVeh.plate})` : '';
+
+                          const tripRecord = {
+                            serviceType: 'MU Urbana',
+                            serviceCategory: 'MU',
+                            tripType: 'taximeter_free',
+                            status: 'completed',
+                            origin: 'Subida en Vía Pública (Taxímetro)',
+                            destination: 'Destino Final',
+                            price: taxiFare,
+                            finalPrice: taxiFare,
+                            estimatedPrice: taxiFare,
+                            distanceKm: Number(taxiDistance.toFixed(2)),
+                            estimatedDistanceKm: Number(taxiDistance.toFixed(2)),
+                            durationMinutes: Math.max(1, Math.round(taxiSeconds / 60)),
+                            estimatedDurationMins: Math.max(1, Math.round(taxiSeconds / 60)),
+                            driverId: user?.uid || '',
+                            driverName: user?.displayName || 'Conductor TravelCab',
+                            driverPhone: user?.phoneNumber || '',
+                            vehiclePlate: activeVeh?.plate || '',
+                            vehicleModel: activeVeh?.brand || '',
+                            driverVehicle: vehDesc,
+                            passengerName: freeTripPassengerName.trim() || 'Pasajero a Bordo',
+                            userName: freeTripPassengerName.trim() || 'Pasajero a Bordo',
+                            passengerPhone: freeTripPassengerPhone.trim() || '',
+                            passengerEmail: freeTripPassengerEmail.trim() || '',
+                            paymentMethod: 'Efectivo',
+                            paymentStatus: 'paid',
+                            createdAt: Timestamp.now(),
+                            completedAt: Timestamp.now(),
+                            breakdown: { 
+                              baseFare: freeTripTariff.baseFare, 
+                              distanceCost: Math.round(taxiDistance * freeTripTariff.pricePerKm), 
+                              timeCost: Math.round((taxiSeconds / 60) * freeTripTariff.travelMinutePrice) 
+                            }
+                          };
+
+                          await addDoc(collection(db, 'trips'), tripRecord);
+                        } catch (err) {
+                          console.warn('Error guardando viaje de taxímetro en Firestore:', err);
+                        }
+
                         setTodayEarnings(prev => prev + taxiFare);
                         setTodayTrips(prev => prev + 1);
                         setTaximeterVisible(false);
