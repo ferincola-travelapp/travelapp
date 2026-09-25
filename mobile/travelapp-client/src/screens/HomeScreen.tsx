@@ -1521,6 +1521,28 @@ export default function HomeScreen() {
     ]);
   };
 
+  // Abrir escáner QR de pasajero solicitando permisos de cámara de manera nativa
+  const openPassengerQrScanner = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permiso de Cámara',
+          'Para escanear el cartel QR de la ventanilla, TravelApp necesita acceso a la cámara. También podés ingresar la patente o código manualmente.',
+          [
+            { text: 'Ingreso Manual', onPress: () => { setQrScannerMode('manual'); setQrModalVisible(true); } },
+            { text: 'Cancelar', style: 'cancel' }
+          ]
+        );
+        return;
+      }
+    } catch (err) {
+      console.log('Error requesting camera permissions:', err);
+    }
+    setQrScannerMode('camera');
+    setQrModalVisible(true);
+  };
+
   // Vincular pasajero con chofer vía QR o código de ventanilla
   const handleLinkDriver = async (directCode?: string) => {
     const raw = (typeof directCode === 'string' && directCode ? directCode : driverCodeInput).trim().toUpperCase();
@@ -2154,10 +2176,7 @@ export default function HomeScreen() {
               {/* Botón Vincular con QR directo */}
               <TouchableOpacity
                 style={styles.canvaDirectQrBtn}
-                onPress={() => {
-                  setQrScannerMode('camera');
-                  setQrModalVisible(true);
-                }}
+                onPress={openPassengerQrScanner}
                 activeOpacity={0.85}
               >
                 <Ionicons name="qr-code-outline" size={18} color="#0284C7" style={{ marginRight: 6 }} />
@@ -2275,10 +2294,7 @@ export default function HomeScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <TouchableOpacity
                 style={styles.topQrScanBtn}
-                onPress={() => {
-                  setQrScannerMode('camera');
-                  setQrModalVisible(true);
-                }}
+                onPress={openPassengerQrScanner}
                 activeOpacity={0.8}
               >
                 <Ionicons name="qr-code" size={16} color="#0B192C" />
@@ -2345,10 +2361,7 @@ export default function HomeScreen() {
                 {/* TARJETA DESTACADA PREPONDERANTE: ESCANEAR QR CHOFER CON CÁMARA */}
                 <TouchableOpacity
                   style={styles.heroQrScanCard}
-                  onPress={() => {
-                    setQrScannerMode('camera');
-                    setQrModalVisible(true);
-                  }}
+                  onPress={openPassengerQrScanner}
                   activeOpacity={0.88}
                 >
                   <View style={styles.heroQrIconContainer}>
@@ -3892,6 +3905,19 @@ export default function HomeScreen() {
                     mediaPlaybackRequiresUserAction={false}
                     javaScriptEnabled={true}
                     domStorageEnabled={true}
+                    androidCameraPermissionOptions={{
+                      title: 'Permiso de Cámara',
+                      message: 'TravelApp necesita usar la cámara para escanear el QR del conductor',
+                      buttonPositive: 'Permitir',
+                      buttonNegative: 'Cancelar',
+                    }}
+                    onPermissionRequest={(request: any) => {
+                      try {
+                        request.grant(request.resources);
+                      } catch (e) {
+                        console.log('onPermissionRequest error:', e);
+                      }
+                    }}
                     source={{
                       html: `<!DOCTYPE html>
 <html>
@@ -3900,10 +3926,10 @@ export default function HomeScreen() {
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body, html { width: 100%; height: 100%; background: #0B192C; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body, html { width: 100%; height: 100%; background: #000; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     #video-container { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #000; }
-    video { width: 100%; height: 100%; object-fit: cover; }
-    .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 16px 12px; pointer-events: none; }
+    video { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 16px 12px; pointer-events: none; z-index: 10; }
     .target-box {
       position: relative;
       width: 210px;
@@ -3946,7 +3972,7 @@ export default function HomeScreen() {
       color: #FCA5A5;
       font-size: 11px;
       text-align: center;
-      background: rgba(185, 28, 28, 0.8);
+      background: rgba(185, 28, 28, 0.85);
       padding: 6px 10px;
       border-radius: 10px;
       display: none;
@@ -3967,7 +3993,7 @@ export default function HomeScreen() {
         <div class="corner br"></div>
         <div class="scan-bar"></div>
       </div>
-      <div id="error-msg">Permiso de cámara no concedido. Tocá "Ingreso Manual"</div>
+      <div id="error-msg">Cámara no disponible. Tocá "Ingreso Manual".</div>
     </div>
   </div>
   <script>
@@ -3975,31 +4001,92 @@ export default function HomeScreen() {
     var canvas = document.getElementById('scan-canvas');
     var ctx = canvas.getContext('2d', { willReadFrequently: true });
     var isScanning = true;
+    var barcodeDetector = null;
 
-    navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } }
-    }).then(function(stream) {
-      video.srcObject = stream;
-      video.setAttribute('playsinline', true);
-      video.play();
-      requestAnimationFrame(tick);
-    }).catch(function(err) {
-      document.getElementById('error-msg').style.display = 'block';
-      if (window.ReactNativeWebView) {
-        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'CAMERA_ERROR', error: err.message }));
+    if ('BarcodeDetector' in window) {
+      try {
+        barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
+      } catch (e) {
+        barcodeDetector = null;
       }
-    });
+    }
+
+    function initCamera() {
+      var constraints = [
+        { audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+        { audio: false, video: { facingMode: 'environment' } },
+        { audio: false, video: true }
+      ];
+
+      function tryConstraint(idx) {
+        if (idx >= constraints.length) {
+          document.getElementById('error-msg').style.display = 'block';
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'CAMERA_ERROR', error: 'No camera stream' }));
+          }
+          return;
+        }
+
+        navigator.mediaDevices.getUserMedia(constraints[idx])
+          .then(function(stream) {
+            video.srcObject = stream;
+            video.setAttribute('playsinline', 'true');
+            video.setAttribute('autoplay', 'true');
+            video.setAttribute('muted', 'true');
+            video.onloadedmetadata = function() {
+              video.play().then(function() {
+                requestAnimationFrame(tick);
+              }).catch(function() {
+                requestAnimationFrame(tick);
+              });
+            };
+          })
+          .catch(function() {
+            tryConstraint(idx + 1);
+          });
+      }
+
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        tryConstraint(0);
+      } else {
+        document.getElementById('error-msg').style.display = 'block';
+      }
+    }
 
     function tick() {
       if (!isScanning) return;
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        canvas.height = video.videoHeight;
-        canvas.width = video.videoWidth;
+      if (video.readyState >= 2 && video.videoWidth > 0) {
+        if (barcodeDetector) {
+          barcodeDetector.detect(video).then(function(codes) {
+            if (codes && codes.length > 0 && codes[0].rawValue) {
+              isScanning = false;
+              if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'QR_SCANNED', data: codes[0].rawValue }));
+              }
+              return;
+            }
+            if (isScanning) requestAnimationFrame(tick);
+          }).catch(function() {
+            scanJsQrFallback();
+          });
+          return;
+        } else {
+          scanJsQrFallback();
+          return;
+        }
+      }
+      requestAnimationFrame(tick);
+    }
+
+    function scanJsQrFallback() {
+      try {
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         if (window.jsQR) {
           var code = jsQR(imageData.data, imageData.width, imageData.height, {
-            inversionAttempts: "dontInvert",
+            inversionAttempts: "dontInvert"
           });
           if (code && code.data) {
             isScanning = false;
@@ -4009,8 +4096,13 @@ export default function HomeScreen() {
             return;
           }
         }
-      }
-      requestAnimationFrame(tick);
+      } catch (e) {}
+      if (isScanning) requestAnimationFrame(tick);
+    }
+
+    window.addEventListener('DOMContentLoaded', initCamera);
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      initCamera();
     }
   </script>
 </body>
