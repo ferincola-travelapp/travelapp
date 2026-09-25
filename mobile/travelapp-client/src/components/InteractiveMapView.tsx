@@ -4,10 +4,10 @@ import { WebView } from 'react-native-webview';
 import { CAR_MARKER_SVG } from '../assets/carMarkerSvgBase64';
 
 interface InteractiveMapViewProps {
-  originCoords?: { latitude: number; longitude: number } | null;
-  destinationCoords?: { latitude: number; longitude: number } | null;
-  routeCoordinates?: Array<{ latitude: number; longitude: number }> | null;
-  onlineDrivers?: Array<{ id?: string; name?: string; location?: { latitude: number; longitude: number }; heading?: number }>;
+  originCoords?: { latitude?: number; longitude?: number; lat?: number; lng?: number } | null;
+  destinationCoords?: { latitude?: number; longitude?: number; lat?: number; lng?: number } | null;
+  routeCoordinates?: Array<any> | null;
+  onlineDrivers?: Array<{ id?: string; name?: string; location?: any; heading?: number }>;
   style?: any;
 }
 
@@ -19,10 +19,10 @@ export const InteractiveMapView: React.FC<InteractiveMapViewProps> = ({
   style,
 }) => {
   const htmlContent = useMemo(() => {
-    const originLat = originCoords?.latitude ?? -26.8326;
-    const originLng = originCoords?.longitude ?? -65.2038;
-    const destLat = destinationCoords?.latitude ?? null;
-    const destLng = destinationCoords?.longitude ?? null;
+    const originLat = originCoords?.latitude ?? (originCoords as any)?.lat ?? -26.8326;
+    const originLng = originCoords?.longitude ?? (originCoords as any)?.lng ?? -65.2038;
+    const destLat = destinationCoords?.latitude ?? (destinationCoords as any)?.lat ?? null;
+    const destLng = destinationCoords?.longitude ?? (destinationCoords as any)?.lng ?? null;
 
     const driversData = onlineDrivers.map((d, index) => {
       const loc = d.location || {
@@ -31,15 +31,15 @@ export const InteractiveMapView: React.FC<InteractiveMapViewProps> = ({
       };
       const heading = d.heading !== undefined ? d.heading : (index * 70 + 35) % 360;
       return {
-        lat: loc.latitude,
-        lng: loc.longitude,
+        lat: (loc as any).latitude ?? (loc as any).lat,
+        lng: (loc as any).longitude ?? (loc as any).lng,
         heading: heading,
         name: d.name || 'Chofer TravelCab',
       };
     });
 
     const routeData = routeCoordinates && routeCoordinates.length > 0
-      ? routeCoordinates.map(c => [c.latitude, c.longitude])
+      ? routeCoordinates.map((c: any) => [c.latitude ?? c.lat, c.longitude ?? c.lng])
       : (destLat && destLng ? [[originLat, originLng], [destLat, destLng]] : []);
 
     return `

@@ -6,7 +6,8 @@ import {
   Users, Plus, Search, Eye, CheckCircle,
   AlertCircle, XCircle, Clock, Car, ChevronRight,
   Filter, RefreshCw, Mail, Phone, Edit2, Trash2, CheckCircle2,
-  Building2, Tag, ShieldCheck, CheckSquare, Square, Sparkles, Crown, DollarSign
+  Building2, Tag, ShieldCheck, CheckSquare, Square, Sparkles, Crown, DollarSign,
+  QrCode, Printer
 } from 'lucide-react';
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -26,6 +27,7 @@ export default function TravelCabDriversPage() {
   // Modal de Habilitación / Asignación de Tarifas
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [selectedDriver, setSelectedDriver] = useState<DriverPartner | null>(null);
+  const [qrDriverForPrint, setQrDriverForPrint] = useState<DriverPartner | null>(null);
 
   // Form State para la Habilitación / Asignación
   const [assignForm, setAssignForm] = useState({
@@ -427,6 +429,14 @@ export default function TravelCabDriversPage() {
                         <Eye className="h-3.5 w-3.5" />
                       </Link>
 
+                      <button
+                        onClick={() => setQrDriverForPrint(partner)}
+                        className="inline-flex items-center p-1.5 rounded-lg border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 transition-all"
+                        title="Imprimir Cartel QR de Ventanilla"
+                      >
+                        <QrCode className="h-3.5 w-3.5" />
+                      </button>
+
                       {partner.status === 'Activo' ? (
                         <button
                           onClick={() => handleUpdateStatus(partner.id, 'Suspendido')}
@@ -776,6 +786,112 @@ export default function TravelCabDriversPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal / Cartel Imprimible de Código QR para Ventanilla */}
+      {qrDriverForPrint && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 print:p-0 print:bg-white print:static animate-fadeIn">
+          <div className="w-full max-w-xl rounded-3xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[95vh] print:max-h-none print:shadow-none print:w-full print:max-w-none print:rounded-none">
+            
+            {/* Modal Controls (No se imprimen) */}
+            <div className="bg-slate-900 text-white p-4 border-b border-slate-800 flex justify-between items-center print:hidden">
+              <div className="flex items-center gap-2">
+                <QrCode className="h-5 w-5 text-sky-400" />
+                <span className="text-sm font-black text-white">Cartel Oficial de Ventanilla para Imprimir</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-vial-orange text-gray-950 text-xs font-black hover:bg-[#ff7b1a] shadow-sm transition-all cursor-pointer"
+                >
+                  <Printer className="h-4 w-4" />
+                  Imprimir Cartel
+                </button>
+                <button
+                  onClick={() => setQrDriverForPrint(null)}
+                  className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 text-sm font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Poster Imprimible (Diseño Premium para Ventanilla de Taxi/Auto) */}
+            <div className="p-8 overflow-y-auto print:p-0 print:overflow-visible bg-slate-100/60 print:bg-white flex justify-center">
+              <div className="w-full max-w-md bg-white border-2 border-slate-300 rounded-3xl p-6 shadow-xl print:shadow-none print:border-4 print:border-slate-800 print:rounded-3xl flex flex-col items-center text-center relative overflow-hidden">
+                
+                {/* Franja Superior de Marca */}
+                <div className="w-full bg-[#0B192C] text-white py-3 px-4 rounded-2xl mb-4 flex items-center justify-between shadow-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl font-black tracking-wider text-white">TRAVEL<span className="text-[#38BDF8]">CAB</span></span>
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-widest bg-[#38BDF8]/20 text-[#38BDF8] border border-[#38BDF8]/40 px-2 py-0.5 rounded-full">
+                    OFICIAL
+                  </span>
+                </div>
+
+                <h2 className="text-base font-black text-[#0B192C] uppercase tracking-wide">
+                  Escaneá con tu celular
+                </h2>
+                <p className="text-xs text-slate-500 font-medium mt-0.5 mb-4">
+                  Iniciá viaje directo con taxímetro o vinculá tu destino al instante
+                </p>
+
+                {/* Código QR Generado */}
+                <div className="p-3 bg-white border-2 border-slate-200 rounded-2xl shadow-sm mb-4">
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=4&data=${encodeURIComponent(
+                      `travelapp:driver:${qrDriverForPrint.id}:${(qrDriverForPrint.vehicle?.licensePlate || 'TAXI').replace(/\s+/g, '')}`
+                    )}`}
+                    alt="QR Conductor"
+                    className="w-56 h-56 object-contain"
+                  />
+                </div>
+
+                {/* Badge con Patente y Código de Conductor */}
+                <div className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 mb-4">
+                  <p className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Patente / Código de Conductor</p>
+                  <p className="text-2xl font-black text-[#0284C7] tracking-widest font-mono mt-0.5">
+                    {qrDriverForPrint.vehicle?.licensePlate || qrDriverForPrint.id}
+                  </p>
+                </div>
+
+                {/* Ficha del Conductor y Vehículo */}
+                <div className="w-full border-t border-dashed border-slate-200 pt-3 text-left grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-slate-50/70 p-2.5 rounded-xl border border-slate-100">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Conductor</span>
+                    <span className="font-extrabold text-slate-800">{qrDriverForPrint.firstName} {qrDriverForPrint.lastName}</span>
+                  </div>
+                  <div className="bg-slate-50/70 p-2.5 rounded-xl border border-slate-100">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Vehículo</span>
+                    <span className="font-extrabold text-slate-800">
+                      {qrDriverForPrint.vehicle?.make || 'Auto'} {qrDriverForPrint.vehicle?.model || ''}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Pasos de Uso */}
+                <div className="w-full mt-4 bg-sky-50/60 border border-sky-100 rounded-2xl p-3 text-left">
+                  <p className="text-[11px] font-black text-sky-950 uppercase tracking-wider mb-1">
+                    ¿Cómo funciona?
+                  </p>
+                  <ol className="text-[11px] text-sky-800 space-y-0.5 list-decimal list-inside font-medium leading-relaxed">
+                    <li>Abrí la app <b>TravelApp</b> en tu celular.</li>
+                    <li>Presioná el botón <b>"Escanear QR Chofer"</b>.</li>
+                    <li>Apuntá tu cámara a este código para vincularte.</li>
+                  </ol>
+                </div>
+
+                {/* Pie de cartel */}
+                <p className="mt-3 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                  TravelApp Ecosystem • Movilidad Confiable
+                </p>
+
+              </div>
+            </div>
+
           </div>
         </div>
       )}

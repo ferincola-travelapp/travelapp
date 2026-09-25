@@ -4,12 +4,13 @@ import {
   Animated, Alert, ActivityIndicator, Vibration, Dimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { doc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, Timestamp, onSnapshot } from 'firebase/firestore';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { db, auth } from '../lib/firebase';
 import { Colors, API_BASE_URL } from '../lib/constants';
 import { InteractiveMapView } from '../components/InteractiveMapView';
 import { playTripRequestAlertSound, stopTripRequestAlertSound } from '../lib/audioService';
+import { decodePolyline } from '../lib/geoUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -39,11 +40,33 @@ export default function TripRequestScreen() {
       console.warn("Vibration warning:", err);
     }
 
+    // Escuchar si el viaje fue tomado por otro chofer o cancelado por el cliente
+    let unsubTrip: (() => void) | undefined;
+    if (trip?.id) {
+      unsubTrip = onSnapshot(doc(db, 'trips', trip.id), (snap) => {
+        if (!snap.exists()) {
+          stopTripRequestAlertSound();
+          Vibration.cancel();
+          navigation.goBack();
+          return;
+        }
+        const data = snap.data();
+        const currentUid = auth.currentUser?.uid;
+        if (data.status !== 'searching' && data.driverId !== currentUid) {
+          stopTripRequestAlertSound();
+          Vibration.cancel();
+          Alert.alert('Viaje ya asignado', 'Este viaje ya fue tomado por otro conductor.');
+          navigation.goBack();
+        }
+      });
+    }
+
     return () => {
       stopTripRequestAlertSound();
       Vibration.cancel();
+      if (unsubTrip) unsubTrip();
     };
-  }, []);
+  }, [trip?.id]);
 
   const stopAlerts = async () => {
     await stopTripRequestAlertSound();
@@ -56,6 +79,15 @@ export default function TripRequestScreen() {
     try {
       const user = auth.currentUser;
       if (!user) return;
+
+      // Verificar atómicamente que el viaje sigue en búsqueda antes de asignar
+      const tripDocRef = doc(db, 'trips', trip.id);
+      const latestTripSnap = await getDoc(tripDocRef);
+      if (!latestTripSnap.exists() || latestTripSnap.data()?.status !== 'searching') {
+        Alert.alert('Viaje no disponible', 'Lo sentimos, este viaje ya fue tomado por otro conductor o fue cancelado.');
+        navigation.goBack();
+        return;
+      }
 
       const driverRef = doc(db, 'drivers', user.uid);
       const driverSnap = await getDoc(driverRef);
@@ -138,9 +170,7 @@ export default function TripRequestScreen() {
       if (user && trip?.id) {
         const { arrayUnion } = await import('firebase/firestore');
         await updateDoc(doc(db, 'trips', trip.id), {
-          status: 'cancelled',
           rejectedBy: arrayUnion(user.uid),
-          cancelledReason: 'Rechazado por el conductor',
           updatedAt: Timestamp.now()
         });
       }
@@ -185,12 +215,13 @@ export default function TripRequestScreen() {
           </Text>
         </View>
 
-        {/* Mapa Interactivo con Origen y Destino */}
+        {/* Mapa Interactivo con Origen, Destino y Traza Real */}
         <View style={styles.mapContainer}>
           <InteractiveMapView
             style={styles.map}
             originCoords={originCoords}
             destinationCoords={destinationCoords}
+            routeCoordinates={trip?.routePolyline ? decodePolyline(trip.routePolyline) : null}
           />
         </View>
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Switch,
+  View, Text, StyleSheet, TouchableOpacity, Switch, Image,
   Animated, Alert, Modal, Linking, Dimensions, ActivityIndicator, ScrollView, TextInput,
   AppState, AppStateStatus, Share,
 } from 'react-native';
@@ -36,6 +36,7 @@ export default function DashboardScreen() {
   const [isOnline, setIsOnline] = useState(false);
   const [todayTrips, setTodayTrips] = useState(0);
   const [todayEarnings, setTodayEarnings] = useState(0);
+  const [activeTrip, setActiveTrip] = useState<any>(null);
 
   // Inactividad y Validación Biométrica
   const [lastActiveTime, setLastActiveTime] = useState(Date.now());
@@ -46,6 +47,7 @@ export default function DashboardScreen() {
 
   // Taxímetro de viaje libre (Modo Taxi)
   const [taximeterVisible, setTaximeterVisible] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
   const [taximeterStep, setTaximeterStep] = useState<'idle' | 'running' | 'summary'>('idle');
   const [taxiSeconds, setTaxiSeconds] = useState(0);
   const [taxiDistance, setTaxiDistance] = useState(0.0);
@@ -207,12 +209,20 @@ export default function DashboardScreen() {
     };
   }, [taximeterStep]);
 
-  // Recalcular tarifa acumulada del taxímetro en vivo según tiempo, distancia real por GPS y tarifario
+  // Recalcular tarifa acumulada del taxímetro en vivo: por saltos cada 100 metros y cada 10 minutos
   useEffect(() => {
     if (taximeterStep === 'running') {
       const base = freeTripTariff.baseFare;
-      const distCost = taxiDistance * freeTripTariff.pricePerKm;
-      const timeCost = (taxiSeconds / 60.0) * freeTripTariff.travelMinutePrice;
+      // Saltos de ficha de distancia: cada 100 metros recorridos
+      const distanceBlocks = Math.floor((taxiDistance * 1000) / 100);
+      const pricePer100m = (freeTripTariff.pricePerKm || 180) / 10.0;
+      const distCost = distanceBlocks * pricePer100m;
+
+      // Saltos de ficha de tiempo: cada 10 minutos de viaje o espera (600 segundos)
+      const timeBlocks = Math.floor(taxiSeconds / 600);
+      const waitBlockPrice = (freeTripTariff.waitMinutePrice || freeTripTariff.travelMinutePrice || 50) * 10.0;
+      const timeCost = timeBlocks * waitBlockPrice;
+
       setTaxiFare(Math.max(base, Math.round(base + distCost + timeCost)));
     }
   }, [taxiSeconds, taxiDistance, freeTripTariff, taximeterStep]);
@@ -463,11 +473,26 @@ export default function DashboardScreen() {
       setTodayEarnings(earnings);
     }, (err) => console.log("Completed trips listener:", err));
 
+    // Escuchar si hay un viaje activo asignado a este chofer
+    const qActive = query(
+      collection(db, 'trips'),
+      where('driverId', '==', user.uid),
+      where('status', 'in', ['accepted', 'on_way', 'arrived', 'in_progress'])
+    );
+    const unsubActive = onSnapshot(qActive, (snap) => {
+      if (!snap.empty) {
+        const d = snap.docs[0];
+        setActiveTrip({ id: d.id, ...d.data() });
+      } else {
+        setActiveTrip(null);
+      }
+    }, (err) => console.log('Active trip listener err:', err));
+
     // Escuchar si hay viajes pendientes (en búsqueda real) no rechazados por este chofer
     const qPending = query(collection(db, 'trips'), where('status', '==', 'searching'));
     const unsubPending = onSnapshot(qPending, (snap) => {
       try {
-        if (isOnline && !snap.empty && user?.uid) {
+        if (isOnline && !snap.empty && user?.uid && !activeTrip) {
           const validDoc = snap.docs.find(docSnap => {
             const data = docSnap.data();
             const rejectedList = data.rejectedBy || [];
@@ -533,6 +558,7 @@ export default function DashboardScreen() {
 
     return () => {
       unsub();
+      unsubActive();
       unsubPending();
       unsubVehicles();
       unsubNotifications();
@@ -785,6 +811,14 @@ export default function DashboardScreen() {
           <Ionicons name="calendar" size={22} color="#D97706" />
         </TouchableOpacity>
 
+        {/* Botón Mi Código QR de Ventanilla */}
+        <TouchableOpacity 
+          style={[styles.menuButton, { backgroundColor: '#E0F2FE', borderColor: '#BAE6FD', borderWidth: 1 }]}
+          onPress={() => setShowQrModal(true)}
+        >
+          <Ionicons name="qr-code" size={20} color="#0284C7" />
+        </TouchableOpacity>
+
         <TouchableOpacity 
           style={styles.revenueCard}
           onPress={() => navigation.navigate('Wallet')}
@@ -793,6 +827,31 @@ export default function DashboardScreen() {
           <Text style={styles.revenueValue}>${todayEarnings.toLocaleString('es-AR')} ARS</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Banner de Viaje en Curso si el chofer tiene un viaje activo */}
+      {activeTrip && (
+        <TouchableOpacity
+          style={[styles.activeTripFloatingCard, { top: insets.top > 0 ? insets.top + 76 : 105 }]}
+          onPress={() => navigation.navigate('ActiveTrip', { tripId: activeTrip.id })}
+          activeOpacity={0.9}
+        >
+          <View style={styles.activeTripIconBox}>
+            <Ionicons name="navigate" size={24} color="#FFFFFF" />
+          </View>
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={styles.activePulseDot} />
+              <Text style={styles.activeTripTitle}>
+                Viaje en curso ({activeTrip.status === 'on_way' ? 'En camino' : activeTrip.status === 'arrived' ? 'En punto' : activeTrip.status === 'in_progress' ? 'Hacia destino' : 'Asignado'})
+              </Text>
+            </View>
+            <Text style={styles.activeTripSub} numberOfLines={1}>
+              {activeTrip.destination || 'Toca para continuar viaje'}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={22} color={Colors.primary} />
+        </TouchableOpacity>
+      )}
 
       {/* Panel Inferior Flotante */}
       <View style={styles.bottomCard}>
@@ -855,6 +914,61 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* MODAL MI CÓDIGO QR DE VENTANILLA */}
+      <Modal
+        visible={showQrModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowQrModal(false)}
+      >
+        <View style={styles.qrModalOverlay}>
+          <View style={styles.qrModalCard}>
+            <View style={styles.qrModalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={styles.qrModalIconBox}>
+                  <Ionicons name="qr-code" size={24} color="#0284C7" />
+                </View>
+                <View>
+                  <Text style={styles.qrModalTitle}>Tu QR de Ventanilla</Text>
+                  <Text style={styles.qrModalSubtitle}>Para subidas directas de pasajeros</Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setShowQrModal(false)} style={styles.qrModalCloseBtn}>
+                <Ionicons name="close" size={22} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.qrImageContainer}>
+              <Image
+                source={{
+                  uri: `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=10&data=${encodeURIComponent(
+                    `travelapp:driver:${user?.uid || 'demo'}:${(activeVehicle?.plate || 'TAXI').replace(/\s+/g, '')}`
+                  )}`
+                }}
+                style={styles.qrCodeImage}
+                resizeMode="contain"
+              />
+            </View>
+
+            <View style={styles.qrCodeInfoBadge}>
+              <Text style={styles.qrCodeBadgeLabel}>CÓDIGO DE CHOFER / PATENTE</Text>
+              <Text style={styles.qrCodeBadgeVal}>{activeVehicle?.plate || user?.uid?.substring(0, 7).toUpperCase() || 'AUTO-01'}</Text>
+            </View>
+
+            <Text style={styles.qrInstructionText}>
+              El pasajero puede escanear este código con su app TravelApp o ingresar tu código para iniciar el taxímetro digital o un viaje directo al instante.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.qrDoneButton}
+              onPress={() => setShowQrModal(false)}
+            >
+              <Text style={styles.qrDoneButtonText}>Entendido</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* MODAL DE TAXÍMETRO (VIAJE LIBRE / SUTRAPPA) */}
       <Modal
@@ -1969,5 +2083,163 @@ const styles = StyleSheet.create({
     borderRightColor: 'transparent',
     alignSelf: 'center',
     marginTop: -2,
+  },
+  activeTripFloatingCard: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    zIndex: 99,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 8,
+    borderWidth: 1.5,
+    borderColor: '#38BDF8',
+  },
+  activeTripIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#0284C7',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  activePulseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10B981',
+  },
+  activeTripTitle: {
+    fontSize: 14,
+    fontFamily: 'Quicksand-Bold',
+    color: '#0F172A',
+  },
+  activeTripSub: {
+    fontSize: 12,
+    fontFamily: 'Quicksand-Medium',
+    color: '#64748B',
+    marginTop: 2,
+  },
+
+  // Estilos del Modal QR de Ventanilla
+  qrModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  qrModalCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  qrModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 20,
+  },
+  qrModalIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#E0F2FE',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qrModalTitle: {
+    fontSize: 17,
+    fontFamily: 'Quicksand-Bold',
+    color: '#0F172A',
+  },
+  qrModalSubtitle: {
+    fontSize: 12,
+    fontFamily: 'Quicksand-Medium',
+    color: '#64748B',
+  },
+  qrModalCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F1F5F9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qrImageContainer: {
+    width: 220,
+    height: 220,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 8,
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  qrCodeImage: {
+    width: 200,
+    height: 200,
+  },
+  qrCodeInfoBadge: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  qrCodeBadgeLabel: {
+    fontSize: 10,
+    fontFamily: 'Quicksand-Bold',
+    color: '#64748B',
+    letterSpacing: 1,
+  },
+  qrCodeBadgeVal: {
+    fontSize: 20,
+    fontFamily: 'Quicksand-Bold',
+    color: '#0284C7',
+    letterSpacing: 2,
+    marginTop: 2,
+  },
+  qrInstructionText: {
+    fontSize: 12,
+    fontFamily: 'Quicksand-Medium',
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 20,
+  },
+  qrDoneButton: {
+    width: '100%',
+    backgroundColor: '#0284C7',
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  qrDoneButtonText: {
+    fontSize: 15,
+    fontFamily: 'Quicksand-Bold',
+    color: '#FFFFFF',
   },
 });

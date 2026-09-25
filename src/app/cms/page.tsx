@@ -438,6 +438,16 @@ const DEFAULT_ECOSISTEMA_CMS_DATA = {
     baseDatosSello: ""
   },
   showStats: false,
+  promoPushPop: {
+    enabled: true,
+    badge: "🔥 TRAVEL SALE 2026",
+    title: "¡Hasta 40% OFF en Experiencias y Puntos Dobles!",
+    subtitle: "Aprovechá las mejores escapadas de fin de semana largo y sumá doble puntaje TravelApp Rewards en todas tus reservas.",
+    discountCode: "TRAVELSALE",
+    imageUrl: "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=85",
+    ctaText: "Ver Ofertas Especiales",
+    ctaUrl: "/landing/experience/marketplace"
+  },
 };
 
 const DEFAULT_REWARDS_CMS_DATA_FOR_CMS = {
@@ -613,7 +623,7 @@ const DEFAULT_AFILIADOS_CMS_DATA_FOR_CMS = {
   }
 };
 
-type ActiveTab = 'hero' | 'servicios' | 'conductores' | 'rewards' | 'faq' | 'legales' | 'slider' | 'ofertas' | 'social' | 'eco_hero' | 'eco_unidades' | 'eco_quienes' | 'eco_stats' | 'eco_apps' | 'eco_trabaja' | 'eco_legales' | 'rew_slider' | 'rew_beneficios' | 'rew_social' | 'rew_negocio' | 'rew_legales' | 'app_cards' | 'app_rewards' | 'afi_hero' | 'afi_cobro' | 'afi_faq' | 'afi_footer' | 'exp_marketplace' | 'exp_buscador' | 'exp_metrics' | 'exp_testimonials';
+type ActiveTab = 'hero' | 'servicios' | 'conductores' | 'rewards' | 'faq' | 'legales' | 'slider' | 'ofertas' | 'social' | 'eco_hero' | 'eco_promo' | 'eco_unidades' | 'eco_quienes' | 'eco_stats' | 'eco_apps' | 'eco_trabaja' | 'eco_legales' | 'rew_slider' | 'rew_beneficios' | 'rew_social' | 'rew_negocio' | 'rew_legales' | 'app_cards' | 'app_rewards' | 'afi_hero' | 'afi_cobro' | 'afi_faq' | 'afi_footer' | 'exp_marketplace' | 'exp_buscador' | 'exp_metrics' | 'exp_testimonials';
 
 export default function CMSPage() {
   const [selectedLanding, setSelectedLanding] = useState<'travelcab' | 'experience' | 'ecosistema' | 'rewards' | 'app-inicio' | 'afiliados'>('travelcab');
@@ -1416,7 +1426,7 @@ export default function CMSPage() {
           ? ['app_cards', 'app_rewards']
           : selectedLanding === 'afiliados'
           ? ['afi_hero', 'afi_cobro', 'afi_faq', 'afi_footer']
-          : ['eco_hero', 'eco_unidades', 'eco_quienes', 'eco_stats', 'eco_apps', 'eco_trabaja', 'eco_legales']
+          : ['eco_hero', 'eco_promo', 'eco_unidades', 'eco_quienes', 'eco_stats', 'eco_apps', 'eco_trabaja', 'eco_legales']
         ).map((tab) => (
           <button
             key={tab}
@@ -1441,6 +1451,7 @@ export default function CMSPage() {
             {tab === 'legales' && '6. Legales & Redes'}
             {tab === 'social' && (selectedLanding === 'experience' ? '7. Redes, Contacto & ARCA QR' : '5. Redes & Footer')}
             {tab === 'eco_hero' && '1. Hero (Imagen/Video)'}
+            {tab === 'eco_promo' && '🔔 Push Pop Promocional (TravelSale / Puntos)'}
             {tab === 'eco_unidades' && '2. Unidades de Negocio'}
             {tab === 'eco_quienes' && '3. Quiénes Somos'}
             {tab === 'eco_stats' && '4. Métricas'}
@@ -3108,6 +3119,88 @@ export default function CMSPage() {
               <p className="text-xs font-black text-slate-600 uppercase tracking-wider">📱 URLs App Stores (dejar vacío para ocultar)</p>
               <CMSInput label="Google Play Store URL" value={data.hero?.playStoreUrl || ''} onChange={(val) => updateField('hero', 'playStoreUrl', val)} placeholder="https://play.google.com/store/apps/details?id=..." />
               <CMSInput label="Apple App Store URL" value={data.hero?.appStoreUrl || ''} onChange={(val) => updateField('hero', 'appStoreUrl', val)} placeholder="https://apps.apple.com/ar/app/..." />
+            </div>
+          </div>
+        )}
+
+        {/* ECO: PROMO PUSH POP */}
+        {selectedLanding === 'ecosistema' && activeTab === 'eco_promo' && data && (
+          <div className="space-y-6">
+            <div className="border-b border-slate-100 pb-4">
+              <h3 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
+                <span>🔔 Push Pop Promocional (TravelSale / Puntos Dobles)</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Ventana emergente configurable que se muestra a los viajeros cuando ingresan a la plataforma.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-bold text-slate-900">Activar Push Pop Promocional</h4>
+                <p className="text-[11px] text-slate-500">Si está desactivado, no se mostrará ninguna ventana emergente a los visitantes.</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={data.promoPushPop?.enabled || false}
+                  onChange={(e) => updateField('promoPushPop', 'enabled', e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#ff5a19]" />
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <CMSInput
+                label="Badge / Etiqueta Promocional"
+                value={data.promoPushPop?.badge || ''}
+                onChange={(val) => updateField('promoPushPop', 'badge', val)}
+                placeholder="Ej. 🔥 TRAVEL SALE 2026"
+              />
+              <CMSInput
+                label="Cupón de Descuento (opcional)"
+                value={data.promoPushPop?.discountCode || ''}
+                onChange={(val) => updateField('promoPushPop', 'discountCode', val)}
+                placeholder="Ej. TRAVELSALE"
+              />
+            </div>
+
+            <CMSInput
+              label="Título de la Promoción"
+              value={data.promoPushPop?.title || ''}
+              onChange={(val) => updateField('promoPushPop', 'title', val)}
+              placeholder="Ej. ¡Hasta 40% OFF en Experiencias y Puntos Dobles!"
+            />
+
+            <CMSTextarea
+              label="Texto / Descripción de la Promoción"
+              value={data.promoPushPop?.subtitle || ''}
+              onChange={(val) => updateField('promoPushPop', 'subtitle', val)}
+              rows={2}
+              placeholder="Detalles del beneficio, cuotas o vigencia..."
+            />
+
+            <ImageUploaderInput
+              label="Banner o Imagen de la Promoción (opcional)"
+              section="promoPushPop"
+              field="imageUrl"
+              value={data.promoPushPop?.imageUrl || ''}
+            />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <CMSInput
+                label="Texto del Botón CTA"
+                value={data.promoPushPop?.ctaText || ''}
+                onChange={(val) => updateField('promoPushPop', 'ctaText', val)}
+                placeholder="Ej. Ver Ofertas Especiales"
+              />
+              <CMSInput
+                label="Enlace del Botón CTA"
+                value={data.promoPushPop?.ctaUrl || ''}
+                onChange={(val) => updateField('promoPushPop', 'ctaUrl', val)}
+                placeholder="Ej. /landing/experience/marketplace"
+              />
             </div>
           </div>
         )}

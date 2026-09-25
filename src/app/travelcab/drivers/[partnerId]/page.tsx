@@ -6,7 +6,7 @@ import {
   ArrowLeft, User, Car, FileText, Wallet,
   CheckCircle, XCircle, Clock, AlertCircle,
   Phone, Mail, MapPin, CreditCard, Shield, Star,
-  Building2, Tag, ShieldCheck, DollarSign
+  Building2, Tag, ShieldCheck, DollarSign, QrCode, Printer, Download
 } from 'lucide-react';
 import { DriverPartner, PartnerStatus } from '@/types/partners';
 import { Branch, VehicleCategory } from '@/types/logistics';
@@ -119,6 +119,7 @@ export default function TravelCabPartnerProfilePage({ params }: { params: Promis
 
   // Edit Modal State
   const [showAssignModal, setShowAssignModal] = useState(false);
+  const [showQrPrintModal, setShowQrPrintModal] = useState(false);
   const [assignForm, setAssignForm] = useState({
     branchIds: ['all'] as string[],
     allowedCategories: ['estandar'] as string[],
@@ -310,8 +311,16 @@ export default function TravelCabPartnerProfilePage({ params }: { params: Promis
               )}
             </div>
 
-            {/* Quick Actions (Habilitar / Deshabilitar) */}
-            <div className="mt-4 flex gap-2 pt-2 border-t border-slate-100">
+            {/* Quick Actions (Habilitar / Deshabilitar / Imprimir QR) */}
+            <div className="mt-4 flex flex-wrap gap-2 pt-2 border-t border-slate-100">
+              <button
+                onClick={() => setShowQrPrintModal(true)}
+                className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-sky-50 border border-sky-200 text-sky-800 text-xs font-black hover:bg-sky-100 shadow-xs transition-all gap-1.5"
+              >
+                <QrCode className="h-4 w-4 text-sky-600" />
+                Imprimir QR de Ventanilla
+              </button>
+
               <button
                 onClick={() => setShowAssignModal(true)}
                 className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-vial-orange text-gray-950 text-xs font-black hover:bg-[#ff7b1a] shadow-xs transition-all gap-1.5"
@@ -678,6 +687,112 @@ export default function TravelCabPartnerProfilePage({ params }: { params: Promis
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal / Cartel Imprimible de Código QR para Ventanilla */}
+      {showQrPrintModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 print:p-0 print:bg-white print:static animate-fadeIn">
+          <div className="w-full max-w-xl rounded-3xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[95vh] print:max-h-none print:shadow-none print:w-full print:max-w-none print:rounded-none">
+            
+            {/* Modal Controls (No se imprimen) */}
+            <div className="bg-slate-900 text-white p-4 border-b border-slate-800 flex justify-between items-center print:hidden">
+              <div className="flex items-center gap-2">
+                <QrCode className="h-5 w-5 text-sky-400" />
+                <span className="text-sm font-black text-white">Cartel Oficial de Ventanilla para Imprimir</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-vial-orange text-gray-950 text-xs font-black hover:bg-[#ff7b1a] shadow-sm transition-all cursor-pointer"
+                >
+                  <Printer className="h-4 w-4" />
+                  Imprimir Cartel
+                </button>
+                <button
+                  onClick={() => setShowQrPrintModal(false)}
+                  className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 text-sm font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Poster Imprimible (Diseño Premium para Ventanilla de Taxi/Auto) */}
+            <div className="p-8 overflow-y-auto print:p-0 print:overflow-visible bg-slate-100/60 print:bg-white flex justify-center">
+              <div className="w-full max-w-md bg-white border-2 border-slate-300 rounded-3xl p-6 shadow-xl print:shadow-none print:border-4 print:border-slate-800 print:rounded-3xl flex flex-col items-center text-center relative overflow-hidden">
+                
+                {/* Franja Superior de Marca */}
+                <div className="w-full bg-[#0B192C] text-white py-3 px-4 rounded-2xl mb-4 flex items-center justify-between shadow-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl font-black tracking-wider text-white">TRAVEL<span className="text-[#38BDF8]">CAB</span></span>
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-widest bg-[#38BDF8]/20 text-[#38BDF8] border border-[#38BDF8]/40 px-2 py-0.5 rounded-full">
+                    OFICIAL
+                  </span>
+                </div>
+
+                <h2 className="text-base font-black text-[#0B192C] uppercase tracking-wide">
+                  Escaneá con tu celular
+                </h2>
+                <p className="text-xs text-slate-500 font-medium mt-0.5 mb-4">
+                  Iniciá viaje directo con taxímetro o vinculá tu destino al instante
+                </p>
+
+                {/* Código QR Generado */}
+                <div className="p-3 bg-white border-2 border-slate-200 rounded-2xl shadow-sm mb-4">
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=4&data=${encodeURIComponent(
+                      `travelapp:driver:${partner.id}:${(partner.vehicle?.licensePlate || 'TAXI').replace(/\s+/g, '')}`
+                    )}`}
+                    alt="QR Conductor"
+                    className="w-56 h-56 object-contain"
+                  />
+                </div>
+
+                {/* Badge con Patente y Código de Conductor */}
+                <div className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 mb-4">
+                  <p className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Patente / Código de Conductor</p>
+                  <p className="text-2xl font-black text-[#0284C7] tracking-widest font-mono mt-0.5">
+                    {partner.vehicle?.licensePlate || partner.id}
+                  </p>
+                </div>
+
+                {/* Ficha del Conductor y Vehículo */}
+                <div className="w-full border-t border-dashed border-slate-200 pt-3 text-left grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-slate-50/70 p-2.5 rounded-xl border border-slate-100">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Conductor</span>
+                    <span className="font-extrabold text-slate-800">{partner.firstName} {partner.lastName}</span>
+                  </div>
+                  <div className="bg-slate-50/70 p-2.5 rounded-xl border border-slate-100">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Vehículo</span>
+                    <span className="font-extrabold text-slate-800">
+                      {partner.vehicle?.make || 'Auto'} {partner.vehicle?.model || ''}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Pasos de Uso */}
+                <div className="w-full mt-4 bg-sky-50/60 border border-sky-100 rounded-2xl p-3 text-left">
+                  <p className="text-[11px] font-black text-sky-950 uppercase tracking-wider mb-1">
+                    ¿Cómo funciona?
+                  </p>
+                  <ol className="text-[11px] text-sky-800 space-y-0.5 list-decimal list-inside font-medium leading-relaxed">
+                    <li>Abrí la app <b>TravelApp</b> en tu celular.</li>
+                    <li>Presioná el botón <b>"Escanear QR Chofer"</b>.</li>
+                    <li>Apuntá tu cámara a este código para vincularte.</li>
+                  </ol>
+                </div>
+
+                {/* Pie de cartel */}
+                <p className="mt-3 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                  TravelApp Ecosystem • Movilidad Confiable
+                </p>
+
+              </div>
+            </div>
+
           </div>
         </div>
       )}

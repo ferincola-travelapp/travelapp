@@ -40,7 +40,9 @@ function AppShell({
     pathname === "/afiliados" ||
     pathname.startsWith("/afiliados/") ||
     pathname.startsWith("/checkout/") ||
-    pathname.startsWith("/landing/");
+    pathname.startsWith("/landing/") ||
+    pathname === "/politica-de-cookies" ||
+    pathname.startsWith("/politica-de-cookies");
 
   if (hideShell) {
     // Login (and other standalone pages) render without any chrome

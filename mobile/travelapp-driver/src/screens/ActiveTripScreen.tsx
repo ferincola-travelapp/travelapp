@@ -9,6 +9,7 @@ import { db, auth } from '../lib/firebase';
 import { Colors } from '../lib/constants';
 import { InteractiveMapView } from '../components/InteractiveMapView';
 import { playSeatbeltSafetyPrompt } from '../lib/audioService';
+import { decodePolyline } from '../lib/geoUtils';
 
 const STEPS = [
   { status: 'on_way', label: 'En camino al pasajero', action: 'Llegué al punto de encuentro', next: 'arrived' },
@@ -167,8 +168,9 @@ export default function ActiveTripScreen() {
     <View style={styles.container}>
       <InteractiveMapView
         style={styles.map}
-        originCoords={driverLocation || { latitude: -26.8326, longitude: -65.2038 }}
+        originCoords={driverLocation || trip?.originCoords || { latitude: -26.8326, longitude: -65.2038 }}
         destinationCoords={trip?.destinationCoords || null}
+        routeCoordinates={trip?.routePolyline ? decodePolyline(trip.routePolyline) : null}
       />
 
       {/* Header */}

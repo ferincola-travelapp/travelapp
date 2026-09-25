@@ -16,6 +16,7 @@ import { Colors, Fonts, TRAVIS_WEBHOOK_URL, GOOGLE_MAPS_KEY, API_BASE_URL } from
 import { TravelCabLogo, TravelAppLogo, TravelExperienceLogo } from '../components/BrandLogos';
 import { InteractiveMapView } from '../components/InteractiveMapView';
 import { playSeatbeltSafetyPrompt, playCustomVoiceNotification } from '../lib/audioService';
+import { WebView } from 'react-native-webview';
 
 import { OverlappingNativeCarousel } from '../components/OverlappingNativeCarousel';
 
@@ -189,6 +190,12 @@ export default function HomeScreen() {
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
   const [isScheduled, setIsScheduled] = useState(false);
+
+  // Vinculación QR / Código de Conductor
+  const [qrModalVisible, setQrModalVisible] = useState(false);
+  const [qrScannerMode, setQrScannerMode] = useState<'camera' | 'manual'>('camera');
+  const [driverCodeInput, setDriverCodeInput] = useState('');
+  const [isLinkingDriver, setIsLinkingDriver] = useState(false);
 
   // Flujo de Viaje Activo
   const [requestFlowStep, setRequestFlowStep] = useState<'idle' | 'pricing' | 'searching' | 'active'>('idle');
@@ -1106,6 +1113,25 @@ export default function HomeScreen() {
     }
     setActiveSearchField(null);
 
+    // 1. Prioridad: Google Place Details usando place_id (funciona 100% con la API key de Google)
+    if (place_id && !place_id.startsWith('mock-')) {
+      try {
+        const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place_id}&fields=geometry&key=${GOOGLE_MAPS_KEY}`;
+        const detailsRes = await fetch(detailsUrl);
+        const detailsData = await detailsRes.json();
+        if (detailsData.result?.geometry?.location) {
+          const loc = detailsData.result.geometry.location;
+          const coords = { latitude: loc.lat, longitude: loc.lng };
+          if (field === 'origin') setOriginCoords(coords);
+          else setDestinationCoords(coords);
+          return;
+        }
+      } catch (dErr) {
+        console.warn("Place Details lookup failed for suggestion:", dErr);
+      }
+    }
+
+    // 2. Google Geocoding API
     try {
       const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(description)}&key=${GOOGLE_MAPS_KEY}`;
       const geoRes = await fetch(geoUrl);
@@ -1121,12 +1147,21 @@ export default function HomeScreen() {
       console.warn("Geocoding lookup failed for suggestion:", gErr);
     }
 
-    // Fallback de coordenadas aproximadas si falla geocoding
-    const mockCoords = field === 'origin' 
-      ? { latitude: -26.8241, longitude: -65.2226 }
-      : { latitude: -26.8167, longitude: -65.2833 };
-    if (field === 'origin') setOriginCoords(mockCoords);
-    else setDestinationCoords(mockCoords);
+    // 3. Fallback inteligente: OpenStreetMap Nominatim
+    try {
+      const cleanQuery = description.replace(/, Argentina$/i, '') + ', Tucumán, Argentina';
+      const osmUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cleanQuery)}&format=json&limit=1`;
+      const osmRes = await fetch(osmUrl, { headers: { 'User-Agent': 'TravelAppClient/1.0' } });
+      const osmData = await osmRes.json();
+      if (Array.isArray(osmData) && osmData.length > 0) {
+        const coords = { latitude: parseFloat(osmData[0].lat), longitude: parseFloat(osmData[0].lon) };
+        if (field === 'origin') setOriginCoords(coords);
+        else setDestinationCoords(coords);
+        return;
+      }
+    } catch (osmErr) {
+      console.warn("Nominatim lookup failed for suggestion:", osmErr);
+    }
   };
 
   const ensureCoordsAndRoute = async (): Promise<boolean> => {
@@ -1142,42 +1177,75 @@ export default function HomeScreen() {
       }
     }
 
-    // Si oCoords es nulo y hay texto de origen, resolver con Geocoding
+    const resolveAddressCoordinates = async (addressText: string) => {
+      // 1. Google Places Autocomplete -> Details
+      try {
+        const autoUrl = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(addressText)}&key=${GOOGLE_MAPS_KEY}&language=es&components=country:ar`;
+        const autoRes = await fetch(autoUrl);
+        const autoData = await autoRes.json();
+        if (autoData.predictions && autoData.predictions.length > 0 && autoData.predictions[0].place_id) {
+          const pid = autoData.predictions[0].place_id;
+          const detUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${pid}&fields=geometry&key=${GOOGLE_MAPS_KEY}`;
+          const detRes = await fetch(detUrl);
+          const detData = await detRes.json();
+          if (detData.result?.geometry?.location) {
+            return { latitude: detData.result.geometry.location.lat, longitude: detData.result.geometry.location.lng };
+          }
+        }
+      } catch (e) {
+        console.warn("Place details lookup failed in resolveAddressCoordinates:", e);
+      }
+
+      // 2. Google Geocoding API
+      try {
+        const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addressText + ', Tucumán, Argentina')}&key=${GOOGLE_MAPS_KEY}`;
+        const res = await fetch(geoUrl);
+        const data = await res.json();
+        if (data.results && data.results.length > 0) {
+          const loc = data.results[0].geometry.location;
+          return { latitude: loc.lat, longitude: loc.lng };
+        }
+      } catch (e) {
+        console.warn("Geocoding failed in resolveAddressCoordinates:", e);
+      }
+
+      // 3. OpenStreetMap Nominatim
+      try {
+        const osmUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addressText + ', Tucumán, Argentina')}&format=json&limit=1`;
+        const res = await fetch(osmUrl, { headers: { 'User-Agent': 'TravelAppClient/1.0' } });
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          return { latitude: parseFloat(data[0].lat), longitude: parseFloat(data[0].lon) };
+        }
+      } catch (e) {
+        console.warn("Nominatim failed in resolveAddressCoordinates:", e);
+      }
+
+      return null;
+    };
+
     if (!oCoords && origin) {
-      try {
-        const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(origin + ', Tucumán, Argentina')}&key=${GOOGLE_MAPS_KEY}`;
-        const res = await fetch(geoUrl);
-        const data = await res.json();
-        if (data.results && data.results.length > 0) {
-          const loc = data.results[0].geometry.location;
-          oCoords = { latitude: loc.lat, longitude: loc.lng };
-          setOriginCoords(oCoords);
-        }
-      } catch (e) {
-        console.warn("Geocoding origin failed:", e);
-      }
+      oCoords = await resolveAddressCoordinates(origin);
+      if (oCoords) setOriginCoords(oCoords);
     }
 
-    // Si dCoords es nulo y hay texto de destino, resolver con Geocoding
     if (!dCoords && destination) {
-      try {
-        const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(destination + ', Tucumán, Argentina')}&key=${GOOGLE_MAPS_KEY}`;
-        const res = await fetch(geoUrl);
-        const data = await res.json();
-        if (data.results && data.results.length > 0) {
-          const loc = data.results[0].geometry.location;
-          dCoords = { latitude: loc.lat, longitude: loc.lng };
-          setDestinationCoords(dCoords);
-        }
-      } catch (e) {
-        console.warn("Geocoding destination failed:", e);
-      }
+      dCoords = await resolveAddressCoordinates(destination);
+      if (dCoords) setDestinationCoords(dCoords);
     }
 
-    // Si se obtienen las coordenadas, calcular la distancia y duración real de la ruta
     if (oCoords && dCoords) {
       await fetchRouteDetailsWithCoords(oCoords, dCoords);
       return true;
+    }
+
+    if (!oCoords) {
+      Alert.alert('Origen requerido', 'Por favor seleccioná una dirección de origen válida.');
+      return false;
+    }
+    if (!dCoords) {
+      Alert.alert('Destino requerido', 'Por favor seleccioná una dirección de destino válida.');
+      return false;
     }
     return false;
   };
@@ -1189,31 +1257,52 @@ export default function HomeScreen() {
   }, [originCoords, destinationCoords]);
 
   const fetchRouteDetailsWithCoords = async (oCoords: any, dCoords: any) => {
+    const lat1 = oCoords.latitude ?? oCoords.lat;
+    const lon1 = oCoords.longitude ?? oCoords.lng;
+    const lat2 = dCoords.latitude ?? dCoords.lat;
+    const lon2 = dCoords.longitude ?? dCoords.lng;
+
+    // 1. Google Directions API
     try {
-      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${oCoords.latitude},${oCoords.longitude}&destination=${dCoords.latitude},${dCoords.longitude}&key=${GOOGLE_MAPS_KEY}`;
+      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${lat1},${lon1}&destination=${lat2},${lon2}&key=${GOOGLE_MAPS_KEY}`;
       const res = await fetch(url);
       const data = await res.json();
       if (data.routes && data.routes.length > 0) {
         const route = data.routes[0];
         const leg = route.legs[0];
-        setRouteDistance(leg.distance.value / 1000);
-        setRouteDuration(leg.duration.value / 60);
+        setRouteDistance(Math.round((leg.distance.value / 1000) * 10) / 10);
+        setRouteDuration(Math.round(leg.duration.value / 60));
         setRoutePolyline(route.overview_polyline.points);
-      } else {
-        throw new Error("No route found from Directions API");
+        return;
       }
     } catch (e) {
-      // Fallback suave de distancia y trazado de polyline sin emitir advertencia
-      const lat1 = oCoords.latitude;
-      const lon1 = oCoords.longitude;
-      const lat2 = dCoords.latitude;
-      const lon2 = dCoords.longitude;
-      const dist = Math.sqrt(Math.pow(lat2 - lat1, 2) + Math.pow(lon2 - lon1, 2)) * 111.32;
-      const finalDist = dist > 0.5 ? Math.round(dist * 10) / 10 : 5.4;
-      setRouteDistance(finalDist);
-      setRouteDuration(Math.round(finalDist * 2));
-      setRoutePolyline([oCoords, dCoords]);
+      console.warn("Google Directions API failed:", e);
     }
+
+    // 2. Fallback: OSRM (Open Source Routing Machine) - Rutas de calles reales garantizadas
+    try {
+      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=full&geometries=polyline`;
+      const osrmRes = await fetch(osrmUrl, { headers: { 'User-Agent': 'TravelAppClient/1.0' } });
+      const osrmData = await osrmRes.json();
+      if (osrmData.routes && osrmData.routes.length > 0) {
+        const route = osrmData.routes[0];
+        const distKm = Math.round((route.distance / 1000) * 10) / 10;
+        const durMins = Math.max(1, Math.round(route.duration / 60));
+        setRouteDistance(distKm);
+        setRouteDuration(durMins);
+        setRoutePolyline(route.geometry);
+        return;
+      }
+    } catch (osrmErr) {
+      console.warn("OSRM fallback routing failed:", osrmErr);
+    }
+
+    // 3. Fallback en línea recta geodésica si no hay conexión a APIs de ruta
+    const dist = Math.sqrt(Math.pow(lat2 - lat1, 2) + Math.pow(lon2 - lon1, 2)) * 111.32;
+    const finalDist = dist > 0.5 ? Math.round(dist * 10) / 10 : 3.0;
+    setRouteDistance(finalDist);
+    setRouteDuration(Math.round(finalDist * 2.5));
+    setRoutePolyline([{ latitude: lat1, longitude: lon1 }, { latitude: lat2, longitude: lon2 }]);
   };
 
   const fetchRouteDetails = async () => {
@@ -1239,8 +1328,18 @@ export default function HomeScreen() {
         passengerPhone: userPhone || '',
         origin,
         destination,
-        originCoords: originCoords ? { lat: originCoords.latitude, lng: originCoords.longitude } : null,
-        destinationCoords: destinationCoords ? { lat: destinationCoords.latitude, lng: destinationCoords.longitude } : null,
+        originCoords: originCoords ? { 
+          lat: originCoords.latitude ?? originCoords.lat, 
+          lng: originCoords.longitude ?? originCoords.lng,
+          latitude: originCoords.latitude ?? originCoords.lat,
+          longitude: originCoords.longitude ?? originCoords.lng,
+        } : null,
+        destinationCoords: destinationCoords ? { 
+          lat: destinationCoords.latitude ?? destinationCoords.lat, 
+          lng: destinationCoords.longitude ?? destinationCoords.lng,
+          latitude: destinationCoords.latitude ?? destinationCoords.lat,
+          longitude: destinationCoords.longitude ?? destinationCoords.lng,
+        } : null,
         routePolyline: routePolyline || '',
         estimatedDistanceKm: routeDistance || 0,
         estimatedDurationMins: routeDuration || 0,
@@ -1420,6 +1519,139 @@ export default function HomeScreen() {
       { text: 'No', style: 'cancel' },
       { text: 'Sí, Cancelar', style: 'destructive', onPress: () => setRequestFlowStep('idle') }
     ]);
+  };
+
+  // Vincular pasajero con chofer vía QR o código de ventanilla
+  const handleLinkDriver = async (directCode?: string) => {
+    const raw = (typeof directCode === 'string' && directCode ? directCode : driverCodeInput).trim().toUpperCase();
+    if (!raw) {
+      Alert.alert('Código requerido', 'Por favor ingresá la patente o el código del chofer que figura en la ventanilla.');
+      return;
+    }
+
+    // Normalizar si viene con prefijo travelapp:driver:UID:PLATE
+    let targetPlate = raw;
+    let targetUid = raw;
+    if (raw.includes(':')) {
+      const parts = raw.split(':');
+      if (parts.length >= 3) {
+        targetUid = parts[2];
+        targetPlate = parts[3] || parts[2];
+      }
+    }
+
+    try {
+      setIsLinkingDriver(true);
+      const driversRef = collection(db, 'drivers');
+      const qPlate = query(driversRef, where('activeVehicle.plate', '==', targetPlate));
+      const snapPlate = await getDocs(qPlate);
+
+      let matchedDriver: any = null;
+      if (!snapPlate.empty) {
+        matchedDriver = { id: snapPlate.docs[0].id, ...snapPlate.docs[0].data() };
+      } else {
+        const docSnap = await getDoc(doc(db, 'drivers', targetUid));
+        if (docSnap.exists()) {
+          matchedDriver = { id: docSnap.id, ...docSnap.data() };
+        } else {
+          const qOnline = query(driversRef, where('isOnline', '==', true));
+          const snapOnline = await getDocs(qOnline);
+          const found = snapOnline.docs.find(d => {
+            const data = d.data();
+            const plate = (data.activeVehicle?.plate || '').replace(/\s+/g, '').toUpperCase();
+            const cleanTarget = targetPlate.replace(/\s+/g, '').toUpperCase();
+            return d.id.toUpperCase().startsWith(cleanTarget) || (plate && plate === cleanTarget);
+          });
+          if (found) {
+            matchedDriver = { id: found.id, ...found.data() };
+          }
+        }
+      }
+
+      if (!matchedDriver) {
+        Alert.alert(
+          'Conductor no encontrado',
+          `No se encontró ningún conductor con el código "${raw}". Verificá la patente o código de ventanilla.`
+        );
+        setIsLinkingDriver(false);
+        return;
+      }
+
+      const driverName = matchedDriver.name || 'Conductor';
+      const vehicleInfo = matchedDriver.activeVehicle 
+        ? `${matchedDriver.activeVehicle.brand || ''} (${matchedDriver.activeVehicle.plate || ''})`
+        : 'Vehículo Oficial';
+
+      // Si el pasajero ya cotizó destino (viaje con tarifa fija pactada)
+      if (requestFlowStep === 'pricing' && originCoords && destinationCoords) {
+        const estimatedPrice = calculateFare(selectedCategory);
+        const tripData: any = {
+          passengerId: user?.uid || 'anonymous',
+          passengerName: user?.displayName || 'Pasajero',
+          passengerPhone: user?.phoneNumber || '',
+          origin,
+          destination,
+          originCoords: { lat: originCoords.lat || originCoords.latitude, lng: originCoords.lng || originCoords.longitude, latitude: originCoords.latitude || originCoords.lat, longitude: originCoords.longitude || originCoords.lng },
+          destinationCoords: { lat: destinationCoords.lat || destinationCoords.latitude, lng: destinationCoords.lng || destinationCoords.longitude, latitude: destinationCoords.latitude || destinationCoords.lat, longitude: destinationCoords.longitude || destinationCoords.lng },
+          status: 'accepted',
+          driverId: matchedDriver.id,
+          driverName: driverName,
+          driverPlate: matchedDriver.activeVehicle?.plate || '',
+          driverPhone: matchedDriver.phone || '',
+          directAssigned: true,
+          estimatedPrice,
+          routeDistance,
+          routeDuration,
+          routePolyline,
+          createdAt: Timestamp.now(),
+          paymentMethod: selectedPayment,
+        };
+
+        const docRef = await addDoc(collection(db, 'trips'), tripData);
+        setActiveTrip({ id: docRef.id, ...tripData });
+        setRequestFlowStep('active');
+        setQrModalVisible(false);
+        setDriverCodeInput('');
+        Alert.alert(
+          '¡Conductor Vinculado!',
+          `Tu viaje hacia "${destination}" fue asignado directamente a ${driverName} en su ${vehicleInfo}.`
+        );
+        return;
+      }
+
+      // Si el pasajero subió al auto en la calle (Modo Taxímetro / Taxi Libre)
+      const freeTripData: any = {
+        passengerId: user?.uid || 'anonymous',
+        passengerName: user?.displayName || 'Pasajero a Bordo',
+        passengerPhone: user?.phoneNumber || '',
+        origin: 'Subida Directa en Calle (QR)',
+        destination: 'En trayecto (Taxímetro)',
+        pricingMode: 'taximeter',
+        serviceType: 'TAXI_METER',
+        status: 'in_progress',
+        driverId: matchedDriver.id,
+        driverName: driverName,
+        driverPlate: matchedDriver.activeVehicle?.plate || '',
+        directAssigned: true,
+        createdAt: Timestamp.now(),
+        paymentMethod: 'Efectivo',
+      };
+
+      const docRef = await addDoc(collection(db, 'trips'), freeTripData);
+      setActiveTrip({ id: docRef.id, ...freeTripData });
+      setRequestFlowStep('active');
+      setQrModalVisible(false);
+      setDriverCodeInput('');
+      Alert.alert(
+        '¡Viaje Iniciado!',
+        `Te vinculaste con ${driverName} (${vehicleInfo}). El taxímetro digital está corriendo en tu pantalla.`
+      );
+    } catch (err: any) {
+      console.error('Error linking driver via QR:', err);
+      Alert.alert('Error', 'No se pudo vincular al conductor. Intentá nuevamente.');
+    } finally {
+      setIsLinkingDriver(false);
+    }
   };
 
   // Cálculo de tarifa real usando tarifario o fallback sincronizado 1:1 con el Dashboard Web
@@ -1918,6 +2150,19 @@ export default function HomeScreen() {
                   <Text style={styles.canvaConfirmBtnText}>Solicitar viaje</Text>
                 </TouchableOpacity>
               </View>
+
+              {/* Botón Vincular con QR directo */}
+              <TouchableOpacity
+                style={styles.canvaDirectQrBtn}
+                onPress={() => {
+                  setQrScannerMode('camera');
+                  setQrModalVisible(true);
+                }}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="qr-code-outline" size={18} color="#0284C7" style={{ marginRight: 6 }} />
+                <Text style={styles.canvaDirectQrBtnText}>¿Ya en el auto? Vincular con QR de ventanilla</Text>
+              </TouchableOpacity>
             </ScrollView>
           </View>
         </View>
@@ -2029,6 +2274,17 @@ export default function HomeScreen() {
             <TravelCabLogo size={140} textColor={Colors.white} isAccentColor={true} />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <TouchableOpacity
+                style={styles.topQrScanBtn}
+                onPress={() => {
+                  setQrScannerMode('camera');
+                  setQrModalVisible(true);
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="qr-code" size={16} color="#0B192C" />
+                <Text style={styles.topQrScanText}>QR Chofer</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
                 style={styles.topSafetyIconBtn}
                 onPress={() => setSafetyModalVisible(true)}
                 activeOpacity={0.8}
@@ -2081,11 +2337,43 @@ export default function HomeScreen() {
         
         {/* TABS 1: INICIO (HOME) */}
         {activeTab === 'home' && (
-          <View style={[styles.tabContentContainer, { paddingTop: 20 }]}>
+          <View style={[styles.tabContentContainer, { paddingTop: 16 }]}>
             
-            {/* Flujo: Formulario inicial de búsqueda */}
+            {/* Flujo: Formulario inicial de búsqueda y QR destacado */}
             {requestFlowStep === 'idle' && (
-              <Animated.View style={styles.bookingCard}>
+              <>
+                {/* TARJETA DESTACADA PREPONDERANTE: ESCANEAR QR CHOFER CON CÁMARA */}
+                <TouchableOpacity
+                  style={styles.heroQrScanCard}
+                  onPress={() => {
+                    setQrScannerMode('camera');
+                    setQrModalVisible(true);
+                  }}
+                  activeOpacity={0.88}
+                >
+                  <View style={styles.heroQrIconContainer}>
+                    <Ionicons name="qr-code" size={28} color="#0284C7" />
+                    <View style={styles.heroQrCameraBadge}>
+                      <Ionicons name="camera" size={11} color="#FFFFFF" />
+                    </View>
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                      <Text style={styles.heroQrScanTitle}>¿Ya estás en el taxi o auto?</Text>
+                      <View style={styles.heroQrScanBadge}>
+                        <Text style={styles.heroQrScanBadgeText}>ESCANEAR</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.heroQrScanSubtitle}>
+                      Abrí la cámara y escaneá el QR de la ventanilla para activar el taxímetro o vincular viaje
+                    </Text>
+                  </View>
+                  <View style={styles.heroQrArrowBtn}>
+                    <Ionicons name="chevron-forward" size={18} color="#0284C7" />
+                  </View>
+                </TouchableOpacity>
+
+                <Animated.View style={styles.bookingCard}>
                 {/* Tabs de Selección de Servicio */}
                 <View style={styles.canvaTabsRow}>
                   <TouchableOpacity 
@@ -2424,7 +2712,8 @@ export default function HomeScreen() {
                   </Text>
                 </TouchableOpacity>
               </Animated.View>
-            )}
+            </>
+          )}
 
 
             {/* Carruseles CMS de Novedades del Ecosistema y Beneficios Rewards (Estilo Mercado Pago / 3D Stacking) */}
@@ -3520,6 +3809,286 @@ export default function HomeScreen() {
                 <Text style={styles.emergencySupportText}>Línea de Emergencias 911</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL VINCULACIÓN CON CONDUCTOR (CÁMARA QR / CÓDIGO) */}
+      <Modal
+        visible={qrModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setQrModalVisible(false)}
+      >
+        <View style={styles.qrPassengerModalOverlay}>
+          <View style={styles.qrPassengerModalCard}>
+            {/* Encabezado */}
+            <View style={styles.qrPassengerModalHeader}>
+              <View style={styles.qrPassengerIconBox}>
+                <Ionicons name={qrScannerMode === 'camera' ? 'camera' : 'qr-code'} size={24} color="#0284C7" />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.qrPassengerModalTitle}>Escanear QR del Conductor</Text>
+                <Text style={styles.qrPassengerModalSubtitle}>
+                  {requestFlowStep === 'pricing'
+                    ? 'Asigna tu viaje cotizado directamente a este chofer'
+                    : 'Modo Taxímetro Digital (Subida directa)'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setQrModalVisible(false)}
+                style={styles.qrPassengerCloseBtn}
+              >
+                <Ionicons name="close" size={22} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Pestañas de Selección: Cámara vs Manual */}
+            <View style={styles.qrModeSelectorRow}>
+              <TouchableOpacity
+                style={[styles.qrModeTabBtn, qrScannerMode === 'camera' && styles.qrModeTabBtnActive]}
+                onPress={() => setQrScannerMode('camera')}
+              >
+                <Ionicons
+                  name="camera"
+                  size={16}
+                  color={qrScannerMode === 'camera' ? '#FFFFFF' : '#64748B'}
+                  style={{ marginRight: 6 }}
+                />
+                <Text style={[styles.qrModeTabBtnText, qrScannerMode === 'camera' && styles.qrModeTabBtnTextActive]}>
+                  Cámara QR
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.qrModeTabBtn, qrScannerMode === 'manual' && styles.qrModeTabBtnActive]}
+                onPress={() => setQrScannerMode('manual')}
+              >
+                <Ionicons
+                  name="keypad-outline"
+                  size={16}
+                  color={qrScannerMode === 'manual' ? '#FFFFFF' : '#64748B'}
+                  style={{ marginRight: 6 }}
+                />
+                <Text style={[styles.qrModeTabBtnText, qrScannerMode === 'manual' && styles.qrModeTabBtnTextActive]}>
+                  Ingreso Manual
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {qrScannerMode === 'camera' ? (
+              /* VISTA DE CÁMARA QR */
+              <View style={styles.qrCameraContainer}>
+                {isLinkingDriver ? (
+                  <View style={styles.qrCameraLoadingOverlay}>
+                    <ActivityIndicator size="large" color="#0284C7" />
+                    <Text style={styles.qrCameraLoadingText}>Vinculando con chofer...</Text>
+                  </View>
+                ) : (
+                  <WebView
+                    style={styles.qrCameraWebView}
+                    originWhitelist={['*']}
+                    allowsInlineMediaPlayback={true}
+                    mediaPlaybackRequiresUserAction={false}
+                    javaScriptEnabled={true}
+                    domStorageEnabled={true}
+                    source={{
+                      html: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body, html { width: 100%; height: 100%; background: #0B192C; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    #video-container { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #000; }
+    video { width: 100%; height: 100%; object-fit: cover; }
+    .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 16px 12px; pointer-events: none; }
+    .target-box {
+      position: relative;
+      width: 210px;
+      height: 210px;
+      border-radius: 20px;
+      box-shadow: 0 0 0 4000px rgba(11, 25, 44, 0.65);
+      overflow: hidden;
+    }
+    .corner { position: absolute; width: 22px; height: 22px; border-color: #38BDF8; border-style: solid; border-width: 0; }
+    .tl { top: 0; left: 0; border-top-width: 4px; border-left-width: 4px; border-top-left-radius: 16px; }
+    .tr { top: 0; right: 0; border-top-width: 4px; border-right-width: 4px; border-top-right-radius: 16px; }
+    .bl { bottom: 0; left: 0; border-bottom-width: 4px; border-left-width: 4px; border-bottom-left-radius: 16px; }
+    .br { bottom: 0; right: 0; border-bottom-width: 4px; border-right-width: 4px; border-bottom-right-radius: 16px; }
+    .scan-bar {
+      position: absolute;
+      width: 100%;
+      height: 3px;
+      background: linear-gradient(90deg, rgba(56,189,248,0) 0%, #38BDF8 50%, rgba(56,189,248,0) 100%);
+      box-shadow: 0 0 10px #38BDF8;
+      top: 0;
+      animation: scanAnim 2s ease-in-out infinite alternate;
+    }
+    @keyframes scanAnim {
+      0% { top: 8%; opacity: 0.3; }
+      50% { opacity: 1; }
+      100% { top: 92%; opacity: 0.3; }
+    }
+    .instructions {
+      color: #FFF;
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+      background: rgba(15, 23, 42, 0.85);
+      padding: 6px 14px;
+      border-radius: 16px;
+      letter-spacing: 0.3px;
+      border: 1px solid rgba(56,189,248,0.3);
+    }
+    #error-msg {
+      color: #FCA5A5;
+      font-size: 11px;
+      text-align: center;
+      background: rgba(185, 28, 28, 0.8);
+      padding: 6px 10px;
+      border-radius: 10px;
+      display: none;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+</head>
+<body>
+  <div id="video-container">
+    <video id="webcam" playsinline autoplay muted></video>
+    <canvas id="scan-canvas" style="display:none;"></canvas>
+    <div class="overlay">
+      <div class="instructions">📷 Enfocá el QR en la ventanilla</div>
+      <div class="target-box">
+        <div class="corner tl"></div>
+        <div class="corner tr"></div>
+        <div class="corner bl"></div>
+        <div class="corner br"></div>
+        <div class="scan-bar"></div>
+      </div>
+      <div id="error-msg">Permiso de cámara no concedido. Tocá "Ingreso Manual"</div>
+    </div>
+  </div>
+  <script>
+    var video = document.getElementById('webcam');
+    var canvas = document.getElementById('scan-canvas');
+    var ctx = canvas.getContext('2d', { willReadFrequently: true });
+    var isScanning = true;
+
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } }
+    }).then(function(stream) {
+      video.srcObject = stream;
+      video.setAttribute('playsinline', true);
+      video.play();
+      requestAnimationFrame(tick);
+    }).catch(function(err) {
+      document.getElementById('error-msg').style.display = 'block';
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'CAMERA_ERROR', error: err.message }));
+      }
+    });
+
+    function tick() {
+      if (!isScanning) return;
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.height = video.videoHeight;
+        canvas.width = video.videoWidth;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        if (window.jsQR) {
+          var code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: "dontInvert",
+          });
+          if (code && code.data) {
+            isScanning = false;
+            if (window.ReactNativeWebView) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'QR_SCANNED', data: code.data }));
+            }
+            return;
+          }
+        }
+      }
+      requestAnimationFrame(tick);
+    }
+  </script>
+</body>
+</html>`
+                    }}
+                    onMessage={(event) => {
+                      try {
+                        const parsed = JSON.parse(event.nativeEvent.data);
+                        if (parsed.type === 'QR_SCANNED' && parsed.data) {
+                          try { Vibration.vibrate(150); } catch (_) {}
+                          handleLinkDriver(parsed.data);
+                        } else if (parsed.type === 'CAMERA_ERROR') {
+                          setQrScannerMode('manual');
+                        }
+                      } catch (e) {
+                        console.log('WebView QR Parse error:', e);
+                      }
+                    }}
+                  />
+                )}
+                <View style={styles.qrCameraFooterHint}>
+                  <Text style={styles.qrCameraFooterHintText}>
+                    El escaneo se procesa en tiempo real al detectar el cartel
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              /* VISTA DE INGRESO MANUAL */
+              <View style={{ width: '100%' }}>
+                {/* Cuadro de Instrucción */}
+                <View style={styles.qrInstructionCard}>
+                  <Ionicons name="information-circle-outline" size={20} color="#0284C7" style={{ marginRight: 8 }} />
+                  <Text style={styles.qrInstructionCardText}>
+                    Ingresá la patente o el código que figura en el cartel de la ventanilla del vehículo.
+                  </Text>
+                </View>
+
+                {/* Input de Código / Patente */}
+                <View style={{ width: '100%', marginBottom: 16 }}>
+                  <Text style={styles.qrInputLabel}>Patente o Código del Conductor</Text>
+                  <TextInput
+                    style={styles.qrCodeTextInput}
+                    placeholder="Ej: AF 123 JK o TAXI-102"
+                    placeholderTextColor="#94A3B8"
+                    value={driverCodeInput}
+                    onChangeText={setDriverCodeInput}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                  />
+                </View>
+
+                {/* Botón de Acción */}
+                <TouchableOpacity
+                  style={[styles.qrSubmitBtn, isLinkingDriver && { opacity: 0.7 }]}
+                  onPress={() => handleLinkDriver()}
+                  disabled={isLinkingDriver}
+                  activeOpacity={0.85}
+                >
+                  {isLinkingDriver ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons name="link" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+                      <Text style={styles.qrSubmitBtnText}>
+                        {requestFlowStep === 'pricing' ? 'Confirmar y Asignar Viaje' : 'Iniciar Taxímetro Digital'}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={styles.qrCancelBtn}
+              onPress={() => setQrModalVisible(false)}
+            >
+              <Text style={styles.qrCancelBtnText}>Cerrar</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -5037,5 +5606,306 @@ const styles = StyleSheet.create({
   safetyInfoRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   safetyInfoTitle: { fontSize: 13, fontFamily: 'Quicksand-Bold', color: Colors.textPrimary },
   safetyInfoDesc: { fontSize: 11, color: Colors.textSecondary, marginTop: 2, lineHeight: 16, fontFamily: 'Quicksand-Regular' },
+
+  // Estilos de Escaneo y Vinculación QR Pasajero
+  topQrScanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#FDE047',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#EAB308',
+  },
+  topQrScanText: {
+    fontSize: 12,
+    fontFamily: 'Quicksand-Bold',
+    color: '#0B192C',
+  },
+  canvaDirectQrBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F0F9FF',
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#BAE6FD',
+    marginTop: 10,
+  },
+  canvaDirectQrBtnText: {
+    fontSize: 13,
+    fontFamily: 'Quicksand-Bold',
+    color: '#0284C7',
+  },
+  qrPassengerModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  qrPassengerModalCard: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  qrPassengerModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  qrPassengerIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#E0F2FE',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qrPassengerModalTitle: {
+    fontSize: 17,
+    fontFamily: 'Quicksand-Bold',
+    color: '#0F172A',
+  },
+  qrPassengerModalSubtitle: {
+    fontSize: 12,
+    fontFamily: 'Quicksand-Medium',
+    color: '#64748B',
+    marginTop: 2,
+  },
+  qrPassengerCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F1F5F9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qrInstructionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 16,
+  },
+  qrInstructionCardText: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: 'Quicksand-Medium',
+    color: '#0369A1',
+    lineHeight: 18,
+  },
+  qrInputLabel: {
+    fontSize: 12,
+    fontFamily: 'Quicksand-Bold',
+    color: '#475569',
+    marginBottom: 6,
+  },
+  qrCodeTextInput: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    fontFamily: 'Quicksand-Bold',
+    color: '#0F172A',
+    letterSpacing: 1.5,
+  },
+  qrSubmitBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0284C7',
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  qrSubmitBtnText: {
+    fontSize: 15,
+    fontFamily: 'Quicksand-Bold',
+    color: '#FFFFFF',
+  },
+  qrCancelBtn: {
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  qrCancelBtnText: {
+    fontSize: 13,
+    fontFamily: 'Quicksand-Bold',
+    color: '#64748B',
+  },
+
+  /* Tarjeta Hero QR Destacada en Home */
+  heroQrScanCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0B192C',
+    borderRadius: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(56, 189, 248, 0.45)',
+    shadowColor: '#0284C7',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  heroQrIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(2, 132, 199, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  heroQrCameraBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    backgroundColor: '#0284C7',
+    borderRadius: 10,
+    width: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#0B192C',
+  },
+  heroQrScanTitle: {
+    fontSize: 13,
+    fontFamily: 'Quicksand-Bold',
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
+  },
+  heroQrScanBadge: {
+    backgroundColor: 'rgba(56, 189, 248, 0.2)',
+    borderColor: 'rgba(56, 189, 248, 0.5)',
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  heroQrScanBadgeText: {
+    fontSize: 9,
+    fontFamily: 'Quicksand-Bold',
+    color: '#38BDF8',
+    letterSpacing: 0.5,
+  },
+  heroQrScanSubtitle: {
+    fontSize: 11,
+    fontFamily: 'Quicksand-Medium',
+    color: '#94A3B8',
+    lineHeight: 15,
+  },
+  heroQrArrowBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+
+  /* Selector de Modo QR (Cámara vs Manual) */
+  qrModeSelectorRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    padding: 3,
+    marginBottom: 14,
+    width: '100%',
+  },
+  qrModeTabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  qrModeTabBtnActive: {
+    backgroundColor: '#0284C7',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  qrModeTabBtnText: {
+    fontSize: 12,
+    fontFamily: 'Quicksand-Bold',
+    color: '#64748B',
+  },
+  qrModeTabBtnTextActive: {
+    color: '#FFFFFF',
+  },
+
+  /* Visor de Cámara QR */
+  qrCameraContainer: {
+    width: '100%',
+    height: 280,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: '#0B192C',
+    position: 'relative',
+    marginBottom: 10,
+  },
+  qrCameraWebView: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#0B192C',
+  },
+  qrCameraLoadingOverlay: {
+    position: 'absolute',
+    inset: 0,
+    backgroundColor: '#0B192C',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  qrCameraLoadingText: {
+    marginTop: 12,
+    fontSize: 13,
+    fontFamily: 'Quicksand-Bold',
+    color: '#38BDF8',
+  },
+  qrCameraFooterHint: {
+    position: 'absolute',
+    bottom: 6,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  qrCameraFooterHintText: {
+    fontSize: 10,
+    fontFamily: 'Quicksand-Medium',
+    color: 'rgba(255, 255, 255, 0.7)',
+    backgroundColor: 'rgba(11, 25, 44, 0.75)',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
 });
 
