@@ -1,10 +1,27 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking } from 'react-native';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Linking,
+  Image,
+  TextInput,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { DriverItem } from '../lib/supervisorService';
+import { DriverItem, updateDriverComplianceAndDocs } from '../lib/supervisorService';
 
 export default function DriverDetailScreen({ route, navigation }: any) {
-  const driver: DriverItem | null = route.params?.driver || null;
+  const initialDriver: DriverItem | null = route.params?.driver || null;
+  const [driver, setDriver] = useState<DriverItem | null>(initialDriver);
+  const [insuranceExpiry, setInsuranceExpiry] = useState(initialDriver?.insuranceExpiry || '');
+  const [licenseExpiry, setLicenseExpiry] = useState(initialDriver?.licenseExpiry || '');
+  const [rtoExpiry, setRtoExpiry] = useState(initialDriver?.rtoExpiry || '');
+  const [savingDocs, setSavingDocs] = useState(false);
+  const [togglingStatus, setTogglingStatus] = useState(false);
 
   if (!driver) {
     return (
@@ -35,6 +52,87 @@ export default function DriverDetailScreen({ route, navigation }: any) {
     Linking.openURL(`tel:${driver.phone}`);
   };
 
+  const handleSaveDocs = async () => {
+    const cleanIns = insuranceExpiry.trim();
+    const cleanLic = licenseExpiry.trim();
+    const cleanRto = rtoExpiry.trim();
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+    const isValidDateString = (val: string) => {
+      if (!val) return true;
+      if (!dateRegex.test(val)) return false;
+      const d = new Date(`${val}T00:00:00`);
+      return !isNaN(d.getTime());
+    };
+
+    if (!isValidDateString(cleanIns) || !isValidDateString(cleanLic) || !isValidDateString(cleanRto)) {
+      return Alert.alert(
+        'Formato de Fecha Inválido',
+        'Ingresá las fechas de vencimiento en formato AAAA-MM-DD válido (ejemplo: 2026-12-31).'
+      );
+    }
+
+    setSavingDocs(true);
+    try {
+      await updateDriverComplianceAndDocs(driver.id, {
+        insuranceExpiry: cleanIns,
+        licenseExpiry: cleanLic,
+        rtoExpiry: cleanRto,
+      });
+      setDriver({
+        ...driver,
+        insuranceExpiry: cleanIns,
+        licenseExpiry: cleanLic,
+        rtoExpiry: cleanRto,
+      });
+      Alert.alert(
+        'Vencimientos Actualizados',
+        'Las fechas de Seguro, Licencia y RTO quedaron guardadas y sincronizadas con el Semáforo de Flota.'
+      );
+    } catch (e) {
+      Alert.alert('Error', 'No se pudieron actualizar los vencimientos.');
+    } finally {
+      setSavingDocs(false);
+    }
+  };
+
+  const handleToggleSuspend = async () => {
+    const nextSuspended = !driver.isSuspended;
+    Alert.alert(
+      nextSuspended ? 'Suspender Móvil Preventivamente' : 'Reactivar Móvil en Flota',
+      nextSuspended
+        ? `¿Deseás suspender temporalmente a ${driver.name}? El chofer pasará a estado desconectado hasta regularizar su situación.`
+        : `¿Deseás rehabilitar a ${driver.name} para operar normalmente?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: nextSuspended ? 'Suspender' : 'Rehabilitar',
+          style: nextSuspended ? 'destructive' : 'default',
+          onPress: async () => {
+            setTogglingStatus(true);
+            try {
+              await updateDriverComplianceAndDocs(driver.id, {
+                isSuspended: nextSuspended,
+                isApproved: !nextSuspended,
+              });
+              setDriver({
+                ...driver,
+                isSuspended: nextSuspended,
+                isApproved: !nextSuspended,
+                isOnline: nextSuspended ? false : driver.isOnline,
+                status: nextSuspended ? 'Inactivo' : driver.status,
+              });
+            } catch (e) {
+              Alert.alert('Error', 'No se pudo cambiar el estado operativo del conductor.');
+            } finally {
+              setTogglingStatus(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
@@ -43,41 +141,73 @@ export default function DriverDetailScreen({ route, navigation }: any) {
       </TouchableOpacity>
 
       <View style={styles.profileHeader}>
-        <View style={styles.avatar}>
-          <Ionicons name="person" size={32} color="#F59E0B" />
-        </View>
+        {driver.profilePhotoUrl ? (
+          <Image
+            source={{ uri: driver.profilePhotoUrl }}
+            style={{ width: 68, height: 68, borderRadius: 34, marginBottom: 10, borderWidth: 2, borderColor: '#F59E0B' }}
+          />
+        ) : (
+          <View style={styles.avatar}>
+            <Ionicons name="person" size={32} color="#F59E0B" />
+          </View>
+        )}
         <Text style={styles.name}>{driver.name}</Text>
         <Text style={styles.sub}>
-          {driver.id.slice(0, 8)} · {driver.vehicle}
+          {driver.id.slice(0, 8)} · {driver.vehicle} · ⭐ {(driver.rating || 5.0).toFixed(1)}
         </Text>
-        <View
-          style={[
-            styles.statusPill,
-            {
-              backgroundColor:
-                driver.status === 'Inactivo'
-                  ? 'rgba(239, 68, 68, 0.15)'
-                  : driver.status === 'En Ruta'
-                  ? 'rgba(245, 158, 11, 0.15)'
-                  : 'rgba(16, 185, 129, 0.15)',
-            },
-          ]}
-        >
-          <Text
+        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 4 }}>
+          <View
             style={[
-              styles.statusPillText,
+              styles.statusPill,
               {
-                color:
+                backgroundColor:
                   driver.status === 'Inactivo'
-                    ? '#EF4444'
+                    ? 'rgba(239, 68, 68, 0.15)'
                     : driver.status === 'En Ruta'
-                    ? '#F59E0B'
-                    : '#10B981',
+                    ? 'rgba(245, 158, 11, 0.15)'
+                    : 'rgba(16, 185, 129, 0.15)',
               },
             ]}
           >
-            ● {driver.status}
-          </Text>
+            <Text
+              style={[
+                styles.statusPillText,
+                {
+                  color:
+                    driver.status === 'Inactivo'
+                      ? '#EF4444'
+                      : driver.status === 'En Ruta'
+                      ? '#F59E0B'
+                      : '#10B981',
+                },
+              ]}
+            >
+              ● {driver.status}
+            </Text>
+          </View>
+
+          <View
+            style={[
+              styles.statusPill,
+              {
+                backgroundColor:
+                  driver.registrationType === 'direct'
+                    ? 'rgba(56, 189, 248, 0.15)'
+                    : 'rgba(168, 85, 247, 0.15)',
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.statusPillText,
+                { color: driver.registrationType === 'direct' ? '#38BDF8' : '#A855F7' },
+              ]}
+            >
+              {driver.registrationType === 'direct'
+                ? 'Alta Directa'
+                : `Vinculado (${driver.supervisorCode || 'Supervisor'})`}
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -110,6 +240,18 @@ export default function DriverDetailScreen({ route, navigation }: any) {
         </TouchableOpacity>
       </View>
 
+      {/* Foto Real del Vehículo */}
+      {driver.vehiclePhotoUrl ? (
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Fotografía Real de la Unidad ({driver.plate})</Text>
+          <Image
+            source={{ uri: driver.vehiclePhotoUrl }}
+            style={{ width: '100%', height: 170, borderRadius: 12, backgroundColor: '#0F172A' }}
+            resizeMode="cover"
+          />
+        </View>
+      ) : null}
+
       {/* Financial Overview (Real) */}
       <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>Estado Financiero del Chofer</Text>
@@ -131,8 +273,16 @@ export default function DriverDetailScreen({ route, navigation }: any) {
           <Text style={styles.rowValue}>{driver.vehicle}</Text>
         </View>
         <View style={styles.row}>
-          <Text style={styles.rowLabel}>Patente:</Text>
+          <Text style={styles.rowLabel}>Dominio / Patente:</Text>
           <Text style={styles.rowValue}>{driver.plate || 'No especificada'}</Text>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.rowLabel}>Modalidad de Alta:</Text>
+          <Text style={styles.rowValue}>
+            {driver.registrationType === 'direct'
+              ? 'Alta Directa'
+              : `Supervisor (${driver.supervisorCode || 'Asignado'})`}
+          </Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.rowLabel}>Teléfono:</Text>
@@ -145,13 +295,87 @@ export default function DriverDetailScreen({ route, navigation }: any) {
           </Text>
         </View>
       </View>
+
+      {/* Semáforo Documental: Gestión de Vencimientos */}
+      <View style={styles.sectionCard}>
+        <Text style={styles.sectionTitle}>Vencimientos Documentales (Formato AAAA-MM-DD)</Text>
+
+        <Text style={styles.inputLabel}>Seguro Comercial Automotor</Text>
+        <TextInput
+          style={styles.docInput}
+          placeholder="Ej: 2026-12-31"
+          placeholderTextColor="#64748B"
+          value={insuranceExpiry}
+          onChangeText={setInsuranceExpiry}
+        />
+
+        <Text style={styles.inputLabel}>Licencia Profesional de Conducir</Text>
+        <TextInput
+          style={styles.docInput}
+          placeholder="Ej: 2027-05-15"
+          placeholderTextColor="#64748B"
+          value={licenseExpiry}
+          onChangeText={setLicenseExpiry}
+        />
+
+        <Text style={styles.inputLabel}>Revisión Técnica Obligatoria (RTO / VTV)</Text>
+        <TextInput
+          style={styles.docInput}
+          placeholder="Ej: 2026-11-20"
+          placeholderTextColor="#64748B"
+          value={rtoExpiry}
+          onChangeText={setRtoExpiry}
+        />
+
+        <TouchableOpacity
+          style={styles.saveDocsBtn}
+          onPress={handleSaveDocs}
+          disabled={savingDocs}
+          activeOpacity={0.85}
+        >
+          {savingDocs ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <>
+              <Ionicons name="save-outline" size={16} color="#FFFFFF" />
+              <Text style={styles.saveDocsBtnText}>Guardar Vencimientos en Semáforo</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
+
+      {/* Control Operativo de Guardia */}
+      <TouchableOpacity
+        style={[
+          styles.suspendBtn,
+          { backgroundColor: driver.isSuspended ? '#10B981' : 'rgba(239, 68, 68, 0.15)', borderColor: driver.isSuspended ? '#10B981' : '#EF4444' },
+        ]}
+        onPress={handleToggleSuspend}
+        disabled={togglingStatus}
+        activeOpacity={0.85}
+      >
+        {togglingStatus ? (
+          <ActivityIndicator size="small" color="#FFFFFF" />
+        ) : (
+          <>
+            <Ionicons
+              name={driver.isSuspended ? 'checkmark-circle-outline' : 'ban-outline'}
+              size={18}
+              color={driver.isSuspended ? '#FFFFFF' : '#EF4444'}
+            />
+            <Text style={[styles.suspendBtnText, { color: driver.isSuspended ? '#FFFFFF' : '#EF4444' }]}>
+              {driver.isSuspended ? 'Rehabilitar Unidad en Flota' : 'Suspender Preventivamente Unidad'}
+            </Text>
+          </>
+        )}
+      </TouchableOpacity>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0F172A' },
-  content: { padding: 20 },
+  content: { padding: 20, paddingBottom: 40 },
   profileHeader: { alignItems: 'center', marginBottom: 20 },
   avatar: {
     width: 64,
@@ -227,4 +451,37 @@ const styles = StyleSheet.create({
   },
   rowLabel: { color: '#94A3B8', fontSize: 12 },
   rowValue: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  inputLabel: { color: '#94A3B8', fontSize: 11, fontWeight: '700', marginBottom: 4, marginTop: 8 },
+  docInput: {
+    backgroundColor: '#0F172A',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    color: '#FFFFFF',
+    fontSize: 13,
+  },
+  saveDocsBtn: {
+    marginTop: 14,
+    backgroundColor: '#3B82F6',
+    borderRadius: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  saveDocsBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+  suspendBtn: {
+    borderRadius: 14,
+    paddingVertical: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 20,
+  },
+  suspendBtnText: { fontSize: 13, fontWeight: '800' },
 });

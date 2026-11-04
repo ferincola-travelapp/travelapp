@@ -2,6 +2,7 @@ import * as Speech from 'expo-speech';
 import { Vibration } from 'react-native';
 
 let isAlertPlaying = false;
+let alertSafetyTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
  * Reproduce la alerta sonora fuerte y continua para el conductor cuando entra una nueva solicitud de viaje.
@@ -12,6 +13,11 @@ export async function playTripRequestAlertSound(_customAudioUrl?: string): Promi
     if (isAlertPlaying) return;
     isAlertPlaying = true;
 
+    if (alertSafetyTimer) clearTimeout(alertSafetyTimer);
+    alertSafetyTimer = setTimeout(() => {
+      stopTripRequestAlertSound();
+    }, 15000);
+
     // Vibración persistente de solicitud entrante
     Vibration.vibrate([0, 500, 200, 500, 200, 500], true);
 
@@ -21,8 +27,12 @@ export async function playTripRequestAlertSound(_customAudioUrl?: string): Promi
       language: 'es-AR',
       rate: 1.05,
       pitch: 1.0,
+      onDone: () => { isAlertPlaying = false; },
+      onStopped: () => { isAlertPlaying = false; },
+      onError: () => { isAlertPlaying = false; },
     });
   } catch (err) {
+    isAlertPlaying = false;
     console.warn('Error playing trip request alert sound:', err);
   }
 }
@@ -33,6 +43,10 @@ export async function playTripRequestAlertSound(_customAudioUrl?: string): Promi
 export async function stopTripRequestAlertSound(): Promise<void> {
   try {
     isAlertPlaying = false;
+    if (alertSafetyTimer) {
+      clearTimeout(alertSafetyTimer);
+      alertSafetyTimer = null;
+    }
     Vibration.cancel();
     Speech.stop();
   } catch (err) {

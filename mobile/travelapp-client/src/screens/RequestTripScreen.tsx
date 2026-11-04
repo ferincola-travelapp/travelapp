@@ -65,6 +65,8 @@ export default function RequestTripScreen() {
     try {
       const user = auth.currentUser!;
       const docRef = await addDoc(collection(db, 'trips'), {
+        passengerId: user.uid,
+        passengerName: user.displayName || user.email,
         userId: user.uid,
         userName: user.displayName || user.email,
         origin,

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, query, orderBy, addDoc, serverTimestamp, onSnapshot, where } from 'firebase/firestore';
+import { collection, query, doc, updateDoc, deleteDoc, addDoc, serverTimestamp, onSnapshot, where } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { subscribeToRealFleet } from '../lib/supervisorService';
 
@@ -10,10 +10,12 @@ interface AnnouncementItem {
   text: string;
   date: string;
   author: string;
+  edited?: boolean;
 }
 
 export default function MessagingScreen({ route, navigation }: any) {
   const [broadcastText, setBroadcastText] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [totalDrivers, setTotalDrivers] = useState(route.params?.totalDrivers || 0);
   const [history, setHistory] = useState<AnnouncementItem[]>([]);
@@ -62,6 +64,7 @@ export default function MessagingScreen({ route, navigation }: any) {
               text: data.text || '',
               date: dateStr,
               author: data.supervisorName || 'Supervisor',
+              edited: Boolean(data.edited),
             });
           });
 
@@ -93,28 +96,67 @@ export default function MessagingScreen({ route, navigation }: any) {
 
     setSending(true);
     try {
-      await addDoc(collection(db, 'fleet_announcements'), {
-        text: trimmed,
-        supervisorId: uid,
-        supervisorEmail: auth.currentUser?.email || '',
-        supervisorName: auth.currentUser?.displayName || 'Supervisor',
-        createdAt: serverTimestamp(),
-        targetFleet: 'all',
-      });
+      if (editingId) {
+        await updateDoc(doc(db, 'fleet_announcements', editingId), {
+          text: trimmed,
+          edited: true,
+          updatedAt: serverTimestamp(),
+        });
+        setEditingId(null);
+        setBroadcastText('');
+        Alert.alert('Comunicado Editado', 'El aviso fue actualizado en tiempo real para toda la flota.');
+      } else {
+        await addDoc(collection(db, 'fleet_announcements'), {
+          text: trimmed,
+          supervisorId: uid,
+          supervisorEmail: auth.currentUser?.email || '',
+          supervisorName: auth.currentUser?.displayName || 'Supervisor',
+          createdAt: serverTimestamp(),
+          targetFleet: 'all',
+        });
 
-      Alert.alert(
-        'Comunicado Enviado',
-        totalDrivers > 0
-          ? `El comunicado fue transmitido a los ${totalDrivers} choferes registrados en tu flota.`
-          : 'El comunicado fue publicado en el sistema para cuando tus choferes se conecten.'
-      );
-      setBroadcastText('');
+        Alert.alert(
+          'Comunicado Enviado',
+          totalDrivers > 0
+            ? `El comunicado fue transmitido a los ${totalDrivers} choferes registrados en tu flota.`
+            : 'El comunicado fue publicado en el sistema para cuando tus choferes se conecten.'
+        );
+        setBroadcastText('');
+      }
     } catch (err) {
       console.warn('Error enviando broadcast:', err);
-      Alert.alert('Error', 'No se pudo enviar el comunicado. Verificá tu conexión.');
+      Alert.alert('Error', 'No se pudo procesar el comunicado. Verificá tu conexión.');
     } finally {
       setSending(false);
     }
+  };
+
+  const handleManageAnnouncement = (item: AnnouncementItem) => {
+    Alert.alert('Gestionar Comunicado', '¿Qué deseás hacer con este aviso emitido?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Editar Texto',
+        onPress: () => {
+          setEditingId(item.id);
+          setBroadcastText(item.text);
+        },
+      },
+      {
+        text: 'Eliminar Aviso',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteDoc(doc(db, 'fleet_announcements', item.id));
+            if (editingId === item.id) {
+              setEditingId(null);
+              setBroadcastText('');
+            }
+          } catch (e) {
+            Alert.alert('Error', 'No se pudo eliminar el aviso.');
+          }
+        },
+      },
+    ]);
   };
 
   return (
@@ -127,13 +169,27 @@ export default function MessagingScreen({ route, navigation }: any) {
         <Text style={styles.headerTitle}>Centro de Mensajería & Avisos</Text>
       </View>
 
-      <Text style={styles.headerSub}>Transmite comunicados o alertas en tiempo real a tu flota</Text>
+      <Text style={styles.headerSub}>Transmite, edita o gestiona comunicados en tiempo real para tu flota</Text>
 
       {/* Broadcast Box */}
       <View style={styles.card}>
-        <View style={styles.cardTitleRow}>
-          <Ionicons name="radio-outline" size={20} color="#A855F7" />
-          <Text style={styles.cardTitle}>Comunicado Broadcast a toda la Flota</Text>
+        <View style={[styles.cardTitleRow, { justifyContent: 'space-between' }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Ionicons name={editingId ? 'create-outline' : 'radio-outline'} size={20} color="#A855F7" />
+            <Text style={styles.cardTitle}>
+              {editingId ? 'Editando Comunicado de Flota' : 'Comunicado Broadcast a toda la Flota'}
+            </Text>
+          </View>
+          {editingId && (
+            <TouchableOpacity
+              onPress={() => {
+                setEditingId(null);
+                setBroadcastText('');
+              }}
+            >
+              <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '800' }}>Cancelar</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <TextInput
@@ -156,9 +212,11 @@ export default function MessagingScreen({ route, navigation }: any) {
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
             <>
-              <Ionicons name="paper-plane-outline" size={16} color="#FFFFFF" />
+              <Ionicons name={editingId ? 'checkmark-done-outline' : 'paper-plane-outline'} size={16} color="#FFFFFF" />
               <Text style={styles.sendBtnText}>
-                Enviar a {totalDrivers > 0 ? `${totalDrivers} Choferes` : 'la Flota'}
+                {editingId
+                  ? 'Guardar Cambios del Aviso'
+                  : `Enviar a ${totalDrivers > 0 ? `${totalDrivers} Choferes` : 'la Flota'}`}
               </Text>
             </>
           )}
@@ -166,7 +224,7 @@ export default function MessagingScreen({ route, navigation }: any) {
       </View>
 
       {/* History (100% Real) */}
-      <Text style={styles.sectionTitle}>Historial de Avisos Emitidos</Text>
+      <Text style={styles.sectionTitle}>Historial de Avisos Emitidos (Tocá para editar o borrar)</Text>
 
       {loadingHistory ? (
         <ActivityIndicator size="small" color="#A855F7" style={{ marginVertical: 20 }} />
@@ -180,11 +238,21 @@ export default function MessagingScreen({ route, navigation }: any) {
         </View>
       ) : (
         history.map((item) => (
-          <View key={item.id} style={styles.historyCard}>
-            <Text style={styles.historyDate}>{item.date}</Text>
+          <TouchableOpacity
+            key={item.id}
+            style={styles.historyCard}
+            onPress={() => handleManageAnnouncement(item)}
+            activeOpacity={0.85}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={styles.historyDate}>
+                {item.date} {item.edited ? '(editado)' : ''}
+              </Text>
+              <Ionicons name="ellipsis-horizontal" size={16} color="#94A3B8" />
+            </View>
             <Text style={styles.historyText}>{item.text}</Text>
             <Text style={styles.historyBadge}>Emitido por {item.author} 🟢</Text>
-          </View>
+          </TouchableOpacity>
         ))
       )}
     </ScrollView>

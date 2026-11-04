@@ -13,13 +13,6 @@ import { TravelCabLogo, TravelAppLogo } from '../components/BrandLogos';
 import { Ionicons } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
 
-const MASTER_ADMIN_EMAILS = [
-  'fernando@travelapp.ar',
-  'ferincola@gmail.com',
-  'edgar@travelapp.ar',
-  'carlos@travelapp.ar',
-];
-
 const SAVED_DRIVER_KEY = 'travelapp_driver_saved_credentials';
 
 export default function LoginScreen() {
@@ -40,7 +33,6 @@ export default function LoginScreen() {
           if (parsed && parsed.email) {
             setSavedDriver(parsed);
             setEmail(parsed.email);
-            if (parsed.pass) setPassword(parsed.pass);
           }
         }
       } catch (e) {
@@ -60,26 +52,33 @@ export default function LoginScreen() {
       const hasHardware = await LocalAuthentication.hasHardwareAsync();
       const isEnrolled = await LocalAuthentication.isEnrolledAsync();
 
-      if (hasHardware && isEnrolled) {
-        const result = await LocalAuthentication.authenticateAsync({
-          promptMessage: `Autenticación Biométrica Conductor (${savedDriver.name || savedDriver.email.split('@')[0]})`,
-          cancelLabel: 'Cancelar',
-          disableDeviceFallback: false,
-        });
+      if (!hasHardware || !isEnrolled) {
+        Alert.alert(
+          'Biometría no disponible',
+          'Tu dispositivo no tiene huella/rostro configurado. Por favor ingresá tu contraseña manualmente.'
+        );
+        return;
+      }
 
-        if (!result.success) {
-          if (result.error !== 'user_cancel' && result.error !== 'app_cancel') {
-            Alert.alert('Autenticación fallida', 'No se reconoció la huella o rostro. Podés ingresar tu clave manualmente.');
-          }
-          return;
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: `Autenticación Biométrica Conductor (${savedDriver.name || savedDriver.email.split('@')[0]})`,
+        cancelLabel: 'Cancelar',
+        disableDeviceFallback: false,
+      });
+
+      if (!result.success) {
+        if (result.error !== 'user_cancel' && result.error !== 'app_cancel') {
+          Alert.alert('Autenticación fallida', 'No se reconoció la huella o rostro. Podés ingresar tu clave manualmente.');
         }
+        return;
       }
     } catch (bioErr) {
-      console.log('Biometric auth error/skipped:', bioErr);
+      console.log('Biometric auth error:', bioErr);
+      Alert.alert('Error Biométrico', 'No se pudo verificar tu identidad biométrica. Ingresá tu clave manualmente.');
+      return;
     }
 
     setEmail(savedDriver.email);
-    setPassword(savedDriver.pass);
     handleLoginDirect(savedDriver.email, savedDriver.pass);
   };
 
@@ -115,6 +114,7 @@ export default function LoginScreen() {
   const [vehiclePlate, setVehiclePlate] = useState('');
 
   // Fotos de Documentos Requeridos
+  const [vehiclePhotoUri, setVehiclePhotoUri] = useState<string | null>(null);
   const [driverLicenseUri, setDriverLicenseUri] = useState<string | null>(null);
   const [cedulaUri, setCedulaUri] = useState<string | null>(null);
   const [rtoUri, setRtoUri] = useState<string | null>(null);
@@ -178,21 +178,7 @@ export default function LoginScreen() {
     if (!trimmedEmail || !targetPass) return Alert.alert('Campos requeridos', 'Ingresá tu email y contraseña.');
     setLoading(true);
     try {
-      let userCred;
-      try {
-        userCred = await signInWithEmailAndPassword(auth, trimmedEmail, targetPass);
-      } catch (err: any) {
-        const isMasterAdmin = MASTER_ADMIN_EMAILS.includes(trimmedEmail);
-        if (isMasterAdmin && err.code === 'auth/user-not-found') {
-          try {
-            userCred = await createUserWithEmailAndPassword(auth, trimmedEmail, targetPass);
-          } catch (createErr: any) {
-            throw createErr;
-          }
-        } else {
-          throw err;
-        }
-      }
+      const userCred = await signInWithEmailAndPassword(auth, trimmedEmail, targetPass);
 
       if (userCred?.user) {
         // Guardar credenciales en AsyncStorage para sesión permanente
@@ -213,25 +199,23 @@ export default function LoginScreen() {
         const driverRef = doc(db, 'drivers', userCred.user.uid);
         const snap = await getDoc(driverRef);
         if (!snap.exists()) {
+          const defaultFirstName = userCred.user.displayName
+            ? userCred.user.displayName.trim().split(/\s+/)[0]
+            : trimmedEmail.split('@')[0];
           await setDoc(driverRef, {
             id: userCred.user.uid,
-            firstName: trimmedEmail.split('@')[0],
-            lastName: 'Admin',
-            name: userCred.user.displayName || (trimmedEmail.includes('fernando') ? 'Fernando Admin' : 'Socio Conductor'),
+            firstName: defaultFirstName,
+            lastName: '',
+            name: userCred.user.displayName || defaultFirstName,
             email: trimmedEmail,
-            phone: '+5491100000000',
-            status: 'Activo',
+            phone: userCred.user.phoneNumber || '',
+            status: 'Pendiente',
+            registrationType: 'direct',
             allowedServiceModes: ['mu', 'aci', 'transfers'],
             maxNegativeBalance: -10000,
             currentCommissionBalance: 0,
             rating: 5.0,
-            activeVehicle: {
-              brand: 'Fiat Cronos',
-              model: '2024',
-              plate: 'AF 123 JK',
-              color: 'Gris Plata',
-              year: 2024,
-            },
+            totalTrips: 0,
             createdAt: Date.now(),
           });
         }
@@ -240,7 +224,7 @@ export default function LoginScreen() {
       console.warn('Driver login error:', err);
       let detail = 'Email o contraseña incorrectos. Verificá tu clave.';
       if (err.code === 'auth/user-not-found') {
-        detail = 'El correo ingresado no está registrado.';
+        detail = 'El correo ingresado no está registrado. Si sos nuevo conductor, tocá "Solicitar Alta de Conductor" abajo.';
       } else if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
         detail = 'Contraseña incorrecta. Si no la recordás, tocá "¿Olvidaste tu contraseña?" abajo.';
       } else if (err.code === 'auth/too-many-requests') {
@@ -269,7 +253,7 @@ export default function LoginScreen() {
     } catch (err: any) {
       console.warn('Password reset error:', err);
       const msg = err.code === 'auth/user-not-found'
-        ? `El correo ${trimmedEmail} aún no estaba creado en la base de datos de Firebase.\n\nSimplemente ingresá con tu correo y una contraseña de al menos 6 caracteres (ej. 123456) y presioná "Ingresar". La cuenta se creará automáticamente en el acto.`
+        ? `El correo ${trimmedEmail} no está registrado como conductor. Podés postularte tocando "Solicitar Alta de Conductor".`
         : (err.message || 'No pudimos enviar el correo de recuperación.');
       Alert.alert('Aviso de Autenticación', msg);
     }
@@ -281,19 +265,19 @@ export default function LoginScreen() {
     }
     setLinkingMp(true);
     try {
-      const authUrl = `https://auth.mercadopago.com.ar/authorization?client_id=3082023901451356&response_type=code&platform_id=mp&state=driver_${encodeURIComponent(mpEmail)}&redirect_uri=${encodeURIComponent('https://travelapp.ar/api/mp/oauth/callback')}`;
+      const authUrl = `https://auth.mercadopago.com.ar/authorization?client_id=6658945348079033&response_type=code&platform_id=mp&state=driver_${encodeURIComponent(mpEmail)}&redirect_uri=${encodeURIComponent('https://travelapp.ar/api/mp/oauth/callback')}`;
       const canOpen = await Linking.canOpenURL(authUrl).catch(() => false);
       if (canOpen) {
         await Linking.openURL(authUrl);
+        setMpLinked(true);
+      } else {
+        Alert.alert('Error', 'No se pudo abrir el navegador para autorizar Mercado Pago.');
       }
     } catch (e) {
       console.log('Error launching MP OAuth:', e);
+      Alert.alert('Error', 'No se pudo iniciar la autorización con Mercado Pago.');
     } finally {
-      setTimeout(() => {
-        setMpLinked(true);
-        setLinkingMp(false);
-        Alert.alert('¡Mercado Pago Conectado!', 'Tu cuenta ha sido autorizada correctamente para procesar las liquidaciones netas de viajes.');
-      }, 1200);
+      setLinkingMp(false);
     }
   };
 
@@ -315,6 +299,9 @@ export default function LoginScreen() {
     } else if (regStep === 3) {
       if (!vehicleMake || !vehicleModel || !vehicleYear || !vehicleColor || !vehiclePlate) {
         return Alert.alert('Campos requeridos', 'Por favor completa todos los datos de tu vehículo.');
+      }
+      if (!vehiclePhotoUri) {
+        return Alert.alert('Foto del Vehículo Requerida', 'Por favor cargá una foto real exterior de tu vehículo (donde se vea la patente) para que los pasajeros puedan identificarlo.');
       }
     }
     setRegStep(prev => prev + 1);
@@ -351,34 +338,40 @@ export default function LoginScreen() {
         throw new Error('No se pudo verificar la sesión de conductor.');
       }
 
-      const isMaster = MASTER_ADMIN_EMAILS.includes(cleanEmail);
-      const driverStatus = isMaster ? 'Activo' : 'En Revisión';
+      const driverStatus = 'En Revisión';
+      const cleanSupervisorCode = supervisorReferralCode.trim().toUpperCase();
+      const registrationType = cleanSupervisorCode ? 'supervisor' : 'direct';
 
-      // 1. Guardar en `drivers` colección de Firestore
+      // 1. Guardar en `drivers` colección de Firestore (soporta Alta Directa y Alta por Supervisor)
       await setDoc(doc(db, 'drivers', userUid), {
         id: userUid,
-        firstName,
-        lastName,
-        name: `${firstName} ${lastName}`.trim(),
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        name: `${firstName.trim()} ${lastName.trim()}`.trim(),
         email: cleanEmail,
-        phone: regPhone,
+        phone: regPhone.trim(),
         photoUrl: profilePhotoUri || undefined,
+        vehiclePhotoUrl: vehiclePhotoUri || undefined,
         status: driverStatus,
+        registrationType,
         allowedServiceModes: ['mu', 'aci', 'transfers'],
         maxNegativeBalance: -10000,
         currentCommissionBalance: 0,
         rating: 5.0,
+        totalTrips: 0,
         taxIdNumber,
         cbuCvu,
         address: { street, streetNumber, floorApp, city, province, postalCode },
         activeVehicle: {
           brand: `${vehicleMake} ${vehicleModel}`.trim(),
           model: vehicleModel,
-          plate: vehiclePlate.toUpperCase(),
+          plate: vehiclePlate.trim().toUpperCase(),
           color: vehicleColor,
           year: Number(vehicleYear) || 2024,
+          photoUrl: vehiclePhotoUri || undefined,
         },
         documents: {
+          vehiclePhoto: vehiclePhotoUri || undefined,
           driverLicense: driverLicenseUri || undefined,
           cedula: cedulaUri || undefined,
           rto: rtoUri || undefined,
@@ -386,22 +379,24 @@ export default function LoginScreen() {
         },
         mercadoPagoEmail: mpEmail || undefined,
         mercadoPagoLinked: mpLinked,
-        supervisorCode: supervisorReferralCode.trim().toUpperCase() || undefined,
+        supervisorCode: cleanSupervisorCode || null,
         createdAt: Date.now(),
       });
 
-      // 2. Guardar en `partner_applications` para expediente
+      // 2. Guardar en `partner_applications` para expediente en Concorde 360
       try {
         await addDoc(collection(db, 'partner_applications'), {
           userId: userUid,
-          firstName,
-          lastName,
-          name: `${firstName} ${lastName}`.trim(),
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          name: `${firstName.trim()} ${lastName.trim()}`.trim(),
           dob,
           email: cleanEmail,
-          phone: regPhone,
+          phone: regPhone.trim(),
           photoUrl: profilePhotoUri || undefined,
-          supervisorCode: supervisorReferralCode.trim().toUpperCase() || undefined,
+          vehiclePhotoUrl: vehiclePhotoUri || undefined,
+          registrationType,
+          supervisorCode: cleanSupervisorCode || null,
           address: { street, streetNumber, floorApp, city, province, postalCode },
           taxIdNumber,
           cbuCvu,
@@ -409,9 +404,11 @@ export default function LoginScreen() {
             brand: `${vehicleMake} ${vehicleModel}`.trim(),
             year: vehicleYear,
             color: vehicleColor,
-            plate: vehiclePlate.toUpperCase(),
+            plate: vehiclePlate.trim().toUpperCase(),
+            photoUrl: vehiclePhotoUri || undefined,
           },
           documents: {
+            vehiclePhoto: vehiclePhotoUri || undefined,
             driverLicense: driverLicenseUri || undefined,
             cedula: cedulaUri || undefined,
             rto: rtoUri || undefined,
@@ -419,7 +416,7 @@ export default function LoginScreen() {
           },
           mercadoPagoEmail: mpEmail || undefined,
           mercadoPagoLinked: mpLinked,
-          status: isMaster ? 'approved' : 'pending',
+          status: 'pending',
           createdAt: Timestamp.now()
         });
       } catch (appErr) {
@@ -433,7 +430,7 @@ export default function LoginScreen() {
           JSON.stringify({
             email: cleanEmail,
             pass: regPassword,
-            name: `${firstName} ${lastName}`.trim(),
+            name: `${firstName.trim()} ${lastName.trim()}`.trim(),
           })
         );
       } catch (storageErr) {
@@ -444,7 +441,7 @@ export default function LoginScreen() {
       setRegisterModalVisible(false);
       setRegStep(1);
       setFirstName(''); setLastName(''); setDob(''); setRegEmail(''); setRegPassword(''); setRegPhone('');
-      setProfilePhotoUri(null); setStreet(''); setStreetNumber(''); setFloorApp(''); setCity('');
+      setProfilePhotoUri(null); setVehiclePhotoUri(null); setStreet(''); setStreetNumber(''); setFloorApp(''); setCity('');
       setProvince(''); setPostalCode(''); setTaxIdNumber(''); setCbuCvu(''); setVehicleMake('');
       setVehicleModel(''); setVehicleYear(''); setVehicleColor(''); setVehiclePlate('');
       setDriverLicenseUri(null); setCedulaUri(null); setRtoUri(null); setSeguroUri(null);
@@ -452,7 +449,7 @@ export default function LoginScreen() {
 
       Alert.alert(
         '¡Registro Completado! 🚗',
-        `Tu solicitud fue procesada correctamente. ${isMaster ? 'Tu cuenta ha sido habilitada inmediatamente.' : 'El equipo de flota revisará tu documentación en 24-48 hs.'}`
+        `Tu solicitud (${registrationType === 'direct' ? 'Alta Directa' : 'Vinculada a Supervisor'}) fue procesada correctamente. El equipo de Concorde 360 revisará tu documentación.`
       );
     } catch (err: any) {
       console.error('Error submitting driver onboarding:', err);
@@ -709,15 +706,20 @@ export default function LoginScreen() {
                   </View>
 
                   <View style={styles.formGroup}>
-                    <Text style={styles.formLabel}>Código de Supervisor / Referido (Opcional)</Text>
+                    <Text style={styles.formLabel}>Modalidad de Alta (Directa o Supervisor)</Text>
                     <TextInput
                       style={styles.formInput}
-                      placeholder="Ej. SUP-FERNANDO-ABCD"
+                      placeholder="Dejá vacío para Alta Directa o ingresá Código Supervisor"
                       placeholderTextColor={Colors.textMuted}
                       value={supervisorReferralCode}
                       onChangeText={(val) => setSupervisorReferralCode(val.toUpperCase())}
                       autoCapitalize="characters"
                     />
+                    <Text style={{ fontSize: 11, color: Colors.textSecondary, marginTop: 4 }}>
+                      {supervisorReferralCode.trim()
+                        ? `✓ Vinculación por Supervisor (${supervisorReferralCode.trim()})`
+                        : '✓ Alta Directa en Concorde 360 (no requiere código de supervisor)'}
+                    </Text>
                   </View>
                 </View>
               )}
@@ -878,7 +880,7 @@ export default function LoginScreen() {
                   </View>
 
                   <View style={styles.formGroup}>
-                    <Text style={styles.formLabel}>Patente / Matrícula *</Text>
+                    <Text style={styles.formLabel}>Patente / Dominio *</Text>
                     <TextInput
                       style={styles.formInput}
                       placeholder="Ej. AF 123 JK"
@@ -891,7 +893,25 @@ export default function LoginScreen() {
 
                   {/* Sección de Carga de Documentación con Cámara/Galería */}
                   <View style={styles.docsSectionBox}>
-                    <Text style={styles.docsSectionTitle}>📸 Documentos del Conductor y Vehículo</Text>
+                    <Text style={styles.docsSectionTitle}>📸 Foto Real del Vehículo y Documentación</Text>
+
+                    {/* Item 0: Foto Real del Vehículo (Visible al Pasajero) */}
+                    <View style={styles.docItemCard}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.docItemTitle}>Foto Real del Auto (Exterior con Patente) *</Text>
+                        <Text style={styles.docItemStatus}>
+                          {vehiclePhotoUri ? '✓ Foto real del vehículo cargada' : 'Obligatoria: se mostrará al pasajero'}
+                        </Text>
+                      </View>
+                      <View style={styles.docBtnRow}>
+                        <TouchableOpacity style={styles.docMiniBtn} onPress={() => handleTakePhoto(setVehiclePhotoUri)}>
+                          <Ionicons name="camera" size={14} color={Colors.white} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.docMiniSecBtn} onPress={() => handlePickImage(setVehiclePhotoUri)}>
+                          <Ionicons name="image" size={14} color={Colors.primary} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
                     
                     {/* Item 1: Licencia de Conducir */}
                     <View style={styles.docItemCard}>

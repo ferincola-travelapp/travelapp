@@ -4,12 +4,12 @@ import {
   ActivityIndicator, Alert, Linking, RefreshControl, Platform
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, query, where, onSnapshot, doc, updateDoc, Timestamp, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, runTransaction, Timestamp, orderBy } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db, auth } from '../lib/firebase';
 import { Colors } from '../lib/constants';
-import { playTripRequestAlertSound, playCustomVoiceNotification } from '../lib/audioService';
+import { playTripRequestAlertSound, stopTripRequestAlertSound, playCustomVoiceNotification } from '../lib/audioService';
 
 interface ScheduledTrip {
   id: string;
@@ -137,8 +137,15 @@ export default function ScheduleScreen() {
             '🚨 ¡Hora de Salir!',
             `El viaje hacia ${trip.destination} está programado para dentro de ${diffMinutes} minutos. Tocá "Iniciar Salida" para guiarte con el mapa.`,
             [
-              { text: 'Entendido' },
-              { text: 'Iniciar Salida', style: 'default', onPress: () => handleStartDeparture(trip) }
+              { text: 'Entendido', onPress: () => stopTripRequestAlertSound() },
+              {
+                text: 'Iniciar Salida',
+                style: 'default',
+                onPress: () => {
+                  stopTripRequestAlertSound();
+                  handleStartDeparture(trip);
+                },
+              }
             ]
           );
         }
@@ -153,24 +160,43 @@ export default function ScheduleScreen() {
     if (!user) return;
     try {
       const driverRef = doc(db, 'drivers', user.uid);
-      const { getDoc } = await import('firebase/firestore');
       const driverSnap = await getDoc(driverRef);
       const driverData = driverSnap.data();
 
-      const driverName = driverData?.name || user.displayName || 'Socio Conductor';
-      const driverPhone = driverData?.phone || '+5491100000000';
-      const vehicleModel = driverData?.activeVehicle?.brand || 'Vehículo Conductor';
-      const vehiclePlate = driverData?.activeVehicle?.plate || 'AF 123 JK';
+      const rawName = driverData?.firstName || driverData?.name || user.displayName || 'Conductor';
+      const driverName = String(rawName).trim().split(/\s+/)[0] || 'Conductor';
+      const driverPhone = driverData?.phone || user.phoneNumber || '';
+      const driverRating = Number(driverData?.rating || 5.0);
+      const driverTotalTrips = Number(driverData?.totalTrips || 0);
+      const vehicleModel = driverData?.activeVehicle?.brand || driverData?.vehicleModel || 'Vehículo Asignado';
+      const vehiclePlate = String(driverData?.activeVehicle?.plate || driverData?.vehiclePlate || '').trim().toUpperCase();
+      const driverProfilePhoto = driverData?.photoUrl || driverData?.profilePhotoUrl || user.photoURL || '';
+      const driverCarPhoto = driverData?.activeVehicle?.photoUrl || driverData?.vehiclePhotoUrl || '';
 
-      await updateDoc(doc(db, 'trips', trip.id), {
-        status: 'accepted',
-        driverId: user.uid,
-        driverName,
-        driverPhone,
-        vehicleModel,
-        vehiclePlate,
-        assignedAt: Timestamp.now(),
-        updatedAt: Timestamp.now()
+      const tripRef = doc(db, 'trips', trip.id);
+      await runTransaction(db, async (tx) => {
+        const latestSnap = await tx.get(tripRef);
+        if (!latestSnap.exists()) {
+          throw new Error('TRIP_NOT_FOUND');
+        }
+        const currentData = latestSnap.data();
+        if (currentData?.status !== 'searching' || currentData?.driverId) {
+          throw new Error('TRIP_ALREADY_TAKEN');
+        }
+        tx.update(tripRef, {
+          status: 'accepted',
+          driverId: user.uid,
+          driverName,
+          driverPhone,
+          driverRating,
+          driverTotalTrips,
+          vehicleModel,
+          vehiclePlate,
+          driverProfilePhoto,
+          driverCarPhoto,
+          assignedAt: Timestamp.now(),
+          updatedAt: Timestamp.now()
+        });
       });
 
       playCustomVoiceNotification("¡Viaje agendado con éxito a tu jornada!");

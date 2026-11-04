@@ -3,6 +3,7 @@
     "name": "TravelApp",
     "owner": "fer-travelapp",
     "slug": "travelapp-client",
+    "scheme": "travelapp-client",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -17,7 +18,9 @@
       "bundleIdentifier": "ar.travelapp.client",
       "infoPlist": {
         "NSCameraUsageDescription": "TravelApp necesita usar la cámara para escanear el código QR del chofer y capturar fotos de documentación.",
-        "NSPhotoLibraryUsageDescription": "TravelApp necesita acceso a la galería para subir comprobantes y documentos."
+        "NSPhotoLibraryUsageDescription": "TravelApp necesita acceso a la galería para subir comprobantes y documentos.",
+        "NSLocationWhenInUseUsageDescription": "TravelApp necesita tu ubicación para encontrarte en el mapa, mostrarte conductores cercanos y calcular la ruta de tu viaje.",
+        "NSFaceIDUsageDescription": "TravelApp utiliza Face ID para permitirte iniciar sesión de forma rápida y segura."
       },
       "config": {
         "googleMapsApiKey": "AIzaSyD4XIT5MNfECRy6wQe8BNgBb9pWC6lsr9U"

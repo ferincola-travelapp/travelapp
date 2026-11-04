@@ -27,33 +27,7 @@ export default function NotificationsScreen() {
         if (!snap.empty) {
           setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         } else {
-          // Si está vacío, cargamos notificaciones mockeadas premium
-          setNotifications([
-            {
-              id: 'notif-1',
-              title: '¡Bono especial activo! 🎁',
-              body: 'Completá 5 viajes hoy entre las 18:00 y las 22:00 y ganá un bono extra de $5,000 ARS.',
-              createdAt: Timestamp.fromDate(new Date(Date.now() - 1800000)),
-              type: 'promo',
-              read: false,
-            },
-            {
-              id: 'notif-2',
-              title: 'Actualización de Tarifas 📈',
-              body: 'Las tarifas base nocturnas de fin de semana han aumentado un 15% para TravelCab standard.',
-              createdAt: Timestamp.fromDate(new Date(Date.now() - 7200000)),
-              type: 'system',
-              read: true,
-            },
-            {
-              id: 'notif-3',
-              title: '¡Tu cuenta está lista! ✅',
-              body: 'Tus documentos de socio conductor han sido aprobados con éxito. ¡Ya podés recibir viajes!',
-              createdAt: Timestamp.fromDate(new Date(Date.now() - 86400000 * 2)),
-              type: 'system',
-              read: true,
-            }
-          ]);
+          setNotifications([]);
         }
       } catch (e) {
         console.log("Error fetching notifications", e);

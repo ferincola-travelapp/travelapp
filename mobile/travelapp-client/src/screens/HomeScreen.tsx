@@ -8,8 +8,8 @@ import MapView, { Marker, PROVIDER_GOOGLE, Polyline, UrlTile } from 'react-nativ
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { doc, getDoc, setDoc, onSnapshot, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, Timestamp, orderBy, limit } from 'firebase/firestore';
-import { updateProfile } from 'firebase/auth';
+import { doc, getDoc, setDoc, onSnapshot, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, Timestamp, orderBy, limit, increment } from 'firebase/firestore';
+import { updateProfile, deleteUser } from 'firebase/auth';
 import * as ImagePicker from 'expo-image-picker';
 import { auth, db } from '../lib/firebase';
 import { Colors, Fonts, TRAVIS_WEBHOOK_URL, GOOGLE_MAPS_KEY, API_BASE_URL } from '../lib/constants';
@@ -139,13 +139,8 @@ export const formatDriverName = (fullName?: string) => {
 };
 
 export const formatPlate = (plate?: string) => {
-  if (!plate) return '•••• 76 YZ';
-  const clean = plate.trim().toUpperCase();
-  if (clean.length > 4) {
-    const visibleEnd = clean.slice(-4);
-    return `•••• ${visibleEnd}`;
-  }
-  return `•••• ${clean}`;
+  if (!plate) return 'S/D';
+  return plate.trim().toUpperCase();
 };
 
 export default function HomeScreen() {
@@ -203,6 +198,26 @@ export default function HomeScreen() {
   const [driverDetails, setDriverDetails] = useState<any>(null);
   const [searchTimer, setSearchTimer] = useState<any>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const unsubTripRef = useRef<(() => void) | null>(null);
+  const unsubGroupMessagesRef = useRef<(() => void) | null>(null);
+  const placeAutocompleteTimerRef = useRef<any>(null);
+  const processedPaymentTripIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (unsubTripRef.current) {
+        unsubTripRef.current();
+        unsubTripRef.current = null;
+      }
+      if (unsubGroupMessagesRef.current) {
+        unsubGroupMessagesRef.current();
+        unsubGroupMessagesRef.current = null;
+      }
+      if (placeAutocompleteTimerRef.current) {
+        clearTimeout(placeAutocompleteTimerRef.current);
+      }
+    };
+  }, []);
   // Categorías de Vehículos (Dinámicas de Firestore)
   const [categories, setCategories] = useState<any[]>([]);
   const [allTariffs, setAllTariffs] = useState<any[]>([]);
@@ -254,7 +269,7 @@ export default function HomeScreen() {
   const [rewardsList, setRewardsList] = useState<RewardItem[]>([]);
   const [experiences, setExperiences] = useState<any[]>([]);
   const [passengerTrips, setPassengerTrips] = useState<any[]>([]);
-  const [rewardsPoints, setRewardsPoints] = useState(1450); // Puntos por defecto
+  const [rewardsPoints, setRewardsPoints] = useState(0); // Puntos reales desde Concorde 360 / Firestore
   const [hasReceivedPhotoBonus, setHasReceivedPhotoBonus] = useState(false);
   const [activeSubMode, setActiveSubMode] = useState<'urbana' | 'interurbano' | 'traslados'>('urbana');
   const [intermediateStops, setIntermediateStops] = useState<string[]>([]); // Hasta 3 paradas intermedias
@@ -396,9 +411,7 @@ export default function HomeScreen() {
           setMpLinked(!!data.mpLinked);
           setMpLinkedEmail(data.mpUserEmail || '');
           setHasPurchasedOrganizedTrip(!!data.hasPurchasedOrganizedTrip);
-          if (data.rewardsPoints !== undefined) {
-            setRewardsPoints(data.rewardsPoints);
-          }
+          setRewardsPoints(Number(data.rewardsPoints ?? 0));
           if (data.hasReceivedPhotoBonus !== undefined) {
             setHasReceivedPhotoBonus(!!data.hasReceivedPhotoBonus);
           }
@@ -487,7 +500,8 @@ export default function HomeScreen() {
       const photoUri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
       setUserPhotoURL(photoUri);
 
-      if (auth.currentUser) {
+      // Firebase Auth solo admite URLs HTTP cortas (<2KB), no cadenas Base64
+      if (auth.currentUser && !photoUri.startsWith('data:')) {
         await updateProfile(auth.currentUser, { photoURL: photoUri });
       }
 
@@ -540,36 +554,63 @@ export default function HomeScreen() {
     }
   };
 
-  // Escuchar mensajes del chat del viaje activo en Firestore (Sincronizado con Concorde 360)
+  const [editingChatMessageId, setEditingChatMessageId] = useState<string | null>(null);
+  const [unreadDriverMessages, setUnreadDriverMessages] = useState(0);
+  const isChatEnabledForTrip = Boolean(
+    activeTrip?.id && ['accepted', 'on_way', 'arrived', 'in_progress'].includes(activeTrip?.status)
+  );
+
+  // Escuchar mensajes del chat del viaje activo en Firestore (Habilitado SOLO cuando el conductor acepta el viaje)
   useEffect(() => {
-    if (activeTrip?.id) {
+    if (activeTrip?.id && ['accepted', 'on_way', 'arrived', 'in_progress'].includes(activeTrip?.status)) {
       const q = collection(db, 'trips', activeTrip.id, 'messages');
       const unsubChat = onSnapshot(q, (snap) => {
-        const msgs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const msgs = snap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as any));
         msgs.sort((a: any, b: any) => {
           const tA = a.createdAt?.seconds || 0;
           const tB = b.createdAt?.seconds || 0;
           return tA - tB;
         });
         setChatMessages(msgs);
+        if (!isChatModalVisible) {
+          const driverMsgs = msgs.filter(m => m.senderRole === 'driver' || (m.senderId && m.senderId !== user?.uid));
+          setUnreadDriverMessages(driverMsgs.length);
+        }
       });
       return unsubChat;
+    } else {
+      setChatMessages([]);
+      setUnreadDriverMessages(0);
+      setEditingChatMessageId(null);
     }
-  }, [activeTrip?.id]);
+  }, [activeTrip?.id, activeTrip?.status]);
 
-  const handleSendMessage = async () => {
-    if (!chatInputText.trim() || !activeTrip?.id) return;
-    const messageText = chatInputText.trim();
-    setChatInputText('');
+  const handleSendMessage = async (presetText?: string) => {
+    const messageText = (presetText ?? chatInputText).trim();
+    if (!messageText || !activeTrip?.id) return;
+    if (!['accepted', 'on_way', 'arrived', 'in_progress'].includes(activeTrip?.status)) {
+      Alert.alert('Chat no disponible', 'El chat con el conductor se habilita únicamente cuando el conductor acepta tu viaje.');
+      return;
+    }
+    if (!presetText) setChatInputText('');
     setIsSendingMessage(true);
     try {
-      await addDoc(collection(db, 'trips', activeTrip.id, 'messages'), {
-        text: messageText,
-        senderId: user.uid,
-        senderName: firstName || 'Pasajero',
-        senderRole: 'passenger',
-        createdAt: Timestamp.now(),
-      });
+      if (editingChatMessageId && !presetText) {
+        await updateDoc(doc(db, 'trips', activeTrip.id, 'messages', editingChatMessageId), {
+          text: messageText,
+          edited: true,
+          updatedAt: Timestamp.now(),
+        });
+        setEditingChatMessageId(null);
+      } else {
+        await addDoc(collection(db, 'trips', activeTrip.id, 'messages'), {
+          text: messageText,
+          senderId: user.uid,
+          senderName: firstName || 'Pasajero',
+          senderRole: 'passenger',
+          createdAt: Timestamp.now(),
+        });
+      }
     } catch (e) {
       console.error('Error enviando mensaje:', e);
       Alert.alert('Error', 'No se pudo enviar el mensaje.');
@@ -577,37 +618,80 @@ export default function HomeScreen() {
       setIsSendingMessage(false);
     }
   };
+
+  const handleSelectChatMessage = (msg: any) => {
+    const isMe = msg.senderId === user?.uid || msg.senderRole === 'passenger';
+    if (!isMe || !activeTrip?.id) return;
+    Alert.alert(
+      'Gestionar Mensaje',
+      `"${msg.text}"`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Editar mensaje',
+          onPress: () => {
+            setEditingChatMessageId(msg.id);
+            setChatInputText(msg.text || '');
+          },
+        },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteDoc(doc(db, 'trips', activeTrip.id, 'messages', msg.id));
+              if (editingChatMessageId === msg.id) {
+                setEditingChatMessageId(null);
+                setChatInputText('');
+              }
+            } catch (err) {
+              Alert.alert('Error', 'No se pudo eliminar el mensaje.');
+            }
+          },
+        },
+      ]
+    );
+  };
   useEffect(() => {
     if (user?.uid) {
       const q = query(collection(db, 'contracted_trips'), where('userId', '==', user.uid));
       const unsubTrip = onSnapshot(q, (snap) => {
+        if (unsubGroupMessagesRef.current) {
+          unsubGroupMessagesRef.current();
+          unsubGroupMessagesRef.current = null;
+        }
         if (!snap.empty) {
           const tripDoc = snap.docs[0];
           const data = { id: tripDoc.id, ...tripDoc.data() } as any;
           setContractedTrip(data);
           setExcursionsList(data.optionalExcursions || []);
           
-          // Suscribirse a los mensajes del grupo de este viaje
-          const unsubMessages = onSnapshot(collection(db, 'contracted_trips', tripDoc.id, 'group_messages'), (msgSnap) => {
+          // Suscribirse a los mensajes del grupo de este viaje limpiando la suscripción previa
+          unsubGroupMessagesRef.current = onSnapshot(collection(db, 'contracted_trips', tripDoc.id, 'group_messages'), (msgSnap) => {
             const msgs = msgSnap.docs.map(d => ({ id: d.id, ...d.data() }));
             msgs.sort((a: any, b: any) => (a.timestamp || 0) - (b.timestamp || 0));
             setGroupMessages(msgs);
           });
-          return () => unsubMessages();
         } else {
           setContractedTrip(null);
           setExcursionsList([]);
           setGroupMessages([]);
         }
       });
-      return unsubTrip;
+      return () => {
+        unsubTrip();
+        if (unsubGroupMessagesRef.current) {
+          unsubGroupMessagesRef.current();
+          unsubGroupMessagesRef.current = null;
+        }
+      };
     }
   }, [user?.uid]);
 
-  // Escuchar viajes de TravelCab del usuario en tiempo real
+  // Escuchar viajes de TravelCab del usuario en tiempo real (limitado a los últimos 50)
   useEffect(() => {
     if (user?.uid) {
-      const q = query(collection(db, 'trips'), where('passengerId', '==', user.uid));
+      const q = query(collection(db, 'trips'), where('passengerId', '==', user.uid), limit(50));
       const unsubPassengerTrips = onSnapshot(q, (snap) => {
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         list.sort((a: any, b: any) => {
@@ -739,37 +823,27 @@ export default function HomeScreen() {
     }
   };
 
-  // Enviar mensaje al grupo del coordinador
+  // Enviar mensaje real al grupo del coordinador (Concorde 360 / App Supervisor)
   const handleSendCoordinatorMessage = async () => {
     const text = coordinatorMessage.trim();
     if (!text || !contractedTrip?.id) return;
     try {
       const msgRef = doc(collection(db, 'contracted_trips', contractedTrip.id, 'group_messages'), `msg_${Date.now()}`);
       await setDoc(msgRef, {
-        sender: user.displayName || 'Pasajero',
+        sender: user.displayName || firstName || 'Pasajero',
+        senderId: user.uid,
         senderRole: 'pasajero',
         text: text,
         timestamp: Date.now()
       });
       setCoordinatorMessage('');
-      
-      // Auto respuesta simulada del coordinador después de 3 segundos
-      setTimeout(async () => {
-        const replyRef = doc(collection(db, 'contracted_trips', contractedTrip.id, 'group_messages'), `msg_reply_${Date.now()}`);
-        await setDoc(replyRef, {
-          sender: "Marcos Vignola",
-          senderRole: "coordinador",
-          text: `¡Hola ${firstName}! Recibí tu mensaje. Recordá que nos reunimos todos hoy a las 20hs en el lobby del hotel para repasar los detalles de mañana.`,
-          timestamp: Date.now()
-        });
-      }, 3000);
-      
     } catch (err) {
       console.log("Error sending coordinator message:", err);
+      Alert.alert("Error", "No se pudo enviar tu mensaje al grupo.");
     }
   };
 
-  // Procesar pago con Nave Galicia
+  // Procesar pago real de excursión opcional con Nave Galicia / Concorde 360
   const handleStartGaliciaPayment = (excursion: any) => {
     setSelectedExcursion(excursion);
     setIsGaliciaPaying(true);
@@ -778,37 +852,65 @@ export default function HomeScreen() {
   const handleConfirmGaliciaPayment = async () => {
     if (!selectedExcursion || !contractedTrip?.id) return;
     setIsGaliciaPaying(true);
-    
-    setTimeout(async () => {
-      try {
-        const tripRef = doc(db, 'contracted_trips', contractedTrip.id);
-        const updatedExcursions = excursionsList.map(exc => {
-          if (exc.id === selectedExcursion.id) {
-            return { ...exc, paid: true };
-          }
-          return exc;
-        });
-        
-        await updateDoc(tripRef, {
-          optionalExcursions: updatedExcursions,
-          'payment.paidAmount': contractedTrip.payment.paidAmount + selectedExcursion.price
-        });
 
-        // Sumar puntos en Rewards (1 punto por cada USD gastado)
-        const userRef = doc(db, 'users', user.uid);
-        await updateDoc(userRef, {
-          rewardsPoints: rewardsPoints + selectedExcursion.price
-        });
-        
-        setExcursionsList(updatedExcursions);
-        setIsGaliciaPaying(false);
-        setPaymentSuccessModal(true);
-      } catch (err) {
-        console.log("Error executing Galicia payment:", err);
-        setIsGaliciaPaying(false);
-        Alert.alert("Error de pago", "No se pudo procesar la transacción.");
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/checkout/nave`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tripId: contractedTrip.id,
+          excursionId: selectedExcursion.id,
+          title: selectedExcursion.title || selectedExcursion.name || 'Excursión Opcional',
+          amount: selectedExcursion.price,
+          userId: user.uid,
+          businessUnit: contractedTrip.businessUnit || 'EXPERIENCE',
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData?.error || 'No se pudo generar la orden de cobro.');
       }
-    }, 2000);
+
+      const data = await res.json();
+      if (data?.checkoutUrl) {
+        await Linking.openURL(data.checkoutUrl);
+      }
+
+      const tripRef = doc(db, 'contracted_trips', contractedTrip.id);
+      const updatedExcursions = excursionsList.map(exc => {
+        if (exc.id === selectedExcursion.id) {
+          return { ...exc, paid: true, paidAt: new Date().toISOString() };
+        }
+        return exc;
+      });
+
+      const currentPaid = Number(contractedTrip?.payment?.paidAmount || 0);
+      await updateDoc(tripRef, {
+        optionalExcursions: updatedExcursions,
+        'payment.paidAmount': currentPaid + Number(selectedExcursion.price || 0),
+      });
+
+      // Consultar configuración de puntos en Concorde 360 antes de acreditar puntos por compra
+      const rewardsCfgSnap = await getDoc(doc(db, 'rewards_config', 'global'));
+      const pointsPerUnit = rewardsCfgSnap.exists() ? Number(rewardsCfgSnap.data()?.pointsPerPurchaseUnit ?? 0) : 0;
+      if (pointsPerUnit > 0) {
+        const earned = Math.round(Number(selectedExcursion.price || 0) * pointsPerUnit);
+        if (earned > 0) {
+          await updateDoc(doc(db, 'users', user.uid), {
+            rewardsPoints: increment(earned),
+          });
+        }
+      }
+
+      setExcursionsList(updatedExcursions);
+      setIsGaliciaPaying(false);
+      setPaymentSuccessModal(true);
+    } catch (err: any) {
+      console.warn("Error executing Galicia payment:", err);
+      setIsGaliciaPaying(false);
+      Alert.alert("Error de pago", err?.message || "No se pudo procesar la transacción.");
+    }
   };
 
   // Cargar ubicación GPS inicial
@@ -1095,9 +1197,13 @@ export default function HomeScreen() {
     }
   };
 
-  const fetchPlaceSuggestions = async (text: string, field: 'origin' | 'destination') => {
+  const fetchPlaceSuggestions = (text: string, field: 'origin' | 'destination') => {
     if (field === 'origin') setOrigin(text);
     else setDestination(text);
+
+    if (placeAutocompleteTimerRef.current) {
+      clearTimeout(placeAutocompleteTimerRef.current);
+    }
 
     if (!text || text.length < 3) {
       if (field === 'origin') setOriginSuggestions([]);
@@ -1105,14 +1211,24 @@ export default function HomeScreen() {
       return;
     }
 
-    try {
-      const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(text)}&key=${GOOGLE_MAPS_KEY}&language=es&components=country:ar`;
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.predictions && data.predictions.length > 0) {
-        if (field === 'origin') setOriginSuggestions(data.predictions);
-        else setDestSuggestions(data.predictions);
-      } else {
+    placeAutocompleteTimerRef.current = setTimeout(async () => {
+      try {
+        const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(text)}&key=${GOOGLE_MAPS_KEY}&language=es&components=country:ar`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.predictions && data.predictions.length > 0) {
+          if (field === 'origin') setOriginSuggestions(data.predictions);
+          else setDestSuggestions(data.predictions);
+        } else {
+          const mockSuggestions = [
+            { place_id: `mock-1-${field}`, description: `${text}, San Miguel de Tucumán` },
+            { place_id: `mock-2-${field}`, description: `${text}, Yerba Buena, Tucumán` },
+            { place_id: `mock-3-${field}`, description: `${text}, Tafí Viejo, Tucumán` },
+          ];
+          if (field === 'origin') setOriginSuggestions(mockSuggestions);
+          else setDestSuggestions(mockSuggestions);
+        }
+      } catch (e) {
         const mockSuggestions = [
           { place_id: `mock-1-${field}`, description: `${text}, San Miguel de Tucumán` },
           { place_id: `mock-2-${field}`, description: `${text}, Yerba Buena, Tucumán` },
@@ -1121,15 +1237,7 @@ export default function HomeScreen() {
         if (field === 'origin') setOriginSuggestions(mockSuggestions);
         else setDestSuggestions(mockSuggestions);
       }
-    } catch (e) {
-      const mockSuggestions = [
-        { place_id: `mock-1-${field}`, description: `${text}, San Miguel de Tucumán` },
-        { place_id: `mock-2-${field}`, description: `${text}, Yerba Buena, Tucumán` },
-        { place_id: `mock-3-${field}`, description: `${text}, Tafí Viejo, Tucumán` },
-      ];
-      if (field === 'origin') setOriginSuggestions(mockSuggestions);
-      else setDestSuggestions(mockSuggestions);
-    }
+    }, 350);
   };
 
   const handleSelectSuggestion = async (suggestion: any, field: 'origin' | 'destination') => {
@@ -1349,6 +1457,28 @@ export default function HomeScreen() {
 
     try {
       const estimatedPrice = calculateFare(selectedCategory);
+
+      // Si el pasajero elige pagar con Puntos Rewards, validar saldo real contra la tasa de Concorde 360
+      let requiredPoints = 0;
+      let pointValueArs = 1;
+      if (selectedPayment === 'Rewards') {
+        try {
+          const rewardsCfgSnap = await getDoc(doc(db, 'rewards_config', 'global'));
+          if (rewardsCfgSnap.exists() && Number(rewardsCfgSnap.data()?.pointValueArs) > 0) {
+            pointValueArs = Number(rewardsCfgSnap.data()?.pointValueArs);
+          }
+        } catch {
+          pointValueArs = 1;
+        }
+        requiredPoints = Math.ceil(estimatedPrice / pointValueArs);
+        if (rewardsPoints < requiredPoints) {
+          return Alert.alert(
+            'Puntos Rewards insuficientes',
+            `Este viaje requiere ${requiredPoints.toLocaleString('es-AR')} Pts y tu saldo actual es de ${rewardsPoints.toLocaleString('es-AR')} Pts. Elegí Efectivo o Mercado Pago.`
+          );
+        }
+      }
+
       const randomPin = String(Math.floor(1000 + Math.random() * 9000));
       const cat = activeSubMode === 'traslados' ? 'TRANSFER' : activeSubMode === 'interurbano' ? 'ARC' : 'MU';
       const isTripScheduled = isScheduled || Boolean(scheduleDate && scheduleTime);
@@ -1381,6 +1511,8 @@ export default function HomeScreen() {
         scheduledTime: isTripScheduled ? scheduleTime : null,
         scheduledDateTime: isTripScheduled && scheduleDate && scheduleTime ? new Date(`${scheduleDate}T${scheduleTime}:00`) : null,
         estimatedPrice,
+        pointsUsed: selectedPayment === 'Rewards' ? requiredPoints : 0,
+        pointValueArs: selectedPayment === 'Rewards' ? pointValueArs : null,
         securityPin: randomPin,
         paymentMethod: selectedPayment,
         paymentStatus: selectedPayment === 'Efectivo' ? 'pending' : 'awaiting_payment',
@@ -1393,6 +1525,11 @@ export default function HomeScreen() {
       const docRef = await addDoc(collection(db, 'trips'), tripData);
       setActiveTrip({ id: docRef.id, ...tripData });
 
+      if (unsubTripRef.current) {
+        unsubTripRef.current();
+        unsubTripRef.current = null;
+      }
+
       // Escuchar el documento en tiempo real
       const unsubTrip = onSnapshot(doc(db, 'trips', docRef.id), async (snap) => {
         if (!snap.exists()) return;
@@ -1401,53 +1538,84 @@ export default function HomeScreen() {
         // 1. Aceptado
         if (data.status === 'accepted' && data.driverId) {
           if (searchTimer) clearTimeout(searchTimer);
-          
+
+          let fallbackDriverDoc: any = null;
+          if (!data.driverCarPhoto || !data.driverProfilePhoto || !data.vehiclePlate) {
+            try {
+              const dSnap = await getDoc(doc(db, 'drivers', data.driverId));
+              if (dSnap.exists()) fallbackDriverDoc = dSnap.data();
+            } catch (e) {}
+          }
+
+          const rawDriverName = data.driverName || fallbackDriverDoc?.name || 'Conductor';
+          const firstNameOnly = formatDriverName(rawDriverName);
+          const realPlate = formatPlate(
+            data.vehiclePlate || data.driverPlate || fallbackDriverDoc?.activeVehicle?.plate || fallbackDriverDoc?.plate || 'S/D'
+          );
+          const realModel =
+            data.vehicleModel ||
+            (fallbackDriverDoc?.activeVehicle
+              ? `${fallbackDriverDoc.activeVehicle.brand || ''} ${fallbackDriverDoc.activeVehicle.color ? `(${fallbackDriverDoc.activeVehicle.color})` : ''}`.trim()
+              : fallbackDriverDoc?.vehicleBrand || 'Vehículo Habilitado');
+          const realRating = Number(data.driverRating || fallbackDriverDoc?.rating || 5.0).toFixed(1);
+          const realTotalTrips = Number(data.driverTotalTrips ?? fallbackDriverDoc?.totalTrips ?? 0);
+
           const driverDetailsObj = {
             id: data.driverId,
-            name: data.driverName || 'Roberto Gómez',
-            plate: data.vehiclePlate || 'AB 876 YZ',
-            model: data.vehicleModel || 'Chevrolet Prisma (Blanco)',
-            rating: String(data.driverRating || '4.9'),
-            phone: data.driverPhone || '+5491100000000',
-            avatar: data.driverProfilePhoto || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-            carPhoto: data.driverCarPhoto || 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&w=400&q=80'
+            name: firstNameOnly,
+            plate: realPlate,
+            model: realModel,
+            rating: realRating,
+            totalTrips: realTotalTrips,
+            phone: data.driverPhone || fallbackDriverDoc?.phone || '',
+            avatar: data.driverProfilePhoto || fallbackDriverDoc?.photoUrl || '',
+            carPhoto: data.driverCarPhoto || fallbackDriverDoc?.activeVehicle?.photoUrl || fallbackDriverDoc?.vehiclePhotoUrl || '',
           };
 
-          // DEBITAR SI EL PAGO ES MERCADO PAGO Y ESTÁ VINCULADO
-          if (data.paymentMethod === 'Mercado Pago' && data.paymentStatus === 'awaiting_payment') {
-            if (mpLinked) {
-              try {
-                const payResponse = await fetch(`${API_BASE_URL}/api/checkout/process-debit`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    tripId: docRef.id,
-                    passengerId: user.uid,
-                    driverId: data.driverId,
-                    amount: estimatedPrice
-                  })
-                });
-                const payData = await payResponse.json();
-                if (payData.success) {
-                  showOverlayNotification(`¡Pago Acreditado! Cobrado automáticamente en Mercado Pago.`);
-                  await updateDoc(doc(db, 'trips', docRef.id), { paymentStatus: 'paid', paymentId: payData.paymentId });
-                } else {
-                  showOverlayNotification(`Pago fallido. Se cambió el viaje a Efectivo.`);
-                  await updateDoc(doc(db, 'trips', docRef.id), { paymentMethod: 'Efectivo', paymentStatus: 'pending' });
-                }
-              } catch (err) {
-                console.log("Error debiting trip:", err);
-              }
-            } else {
-              showOverlayNotification(`Mercado Pago no vinculado. Pago en Efectivo.`);
-              await updateDoc(doc(db, 'trips', docRef.id), { paymentMethod: 'Efectivo', paymentStatus: 'pending' });
+          // DEBITAR PUNTOS REWARDS UNA SOLA VEZ SI EL VIAJE FUE SOLICITADO CON PUNTOS
+          if (
+            data.paymentMethod === 'Rewards' &&
+            data.paymentStatus === 'awaiting_payment' &&
+            processedPaymentTripIdRef.current !== docRef.id
+          ) {
+            processedPaymentTripIdRef.current = docRef.id;
+            try {
+              const ptsToDeduct = Number(data.pointsUsed || requiredPoints || estimatedPrice);
+              await updateDoc(doc(db, 'users', user.uid), {
+                rewardsPoints: increment(-ptsToDeduct),
+              });
+              await updateDoc(doc(db, 'trips', docRef.id), {
+                paymentStatus: 'paid_with_points',
+                pointsUsed: ptsToDeduct,
+              });
+              await setDoc(
+                doc(db, 'drivers', data.driverId),
+                {
+                  pendingRewardsPoints: increment(ptsToDeduct),
+                  pendingRewardsArs: increment(Number(data.estimatedPrice || estimatedPrice)),
+                },
+                { merge: true }
+              );
+              showOverlayNotification(`¡Viaje abonado con ${ptsToDeduct.toLocaleString('es-AR')} Puntos Rewards!`);
+            } catch (ptsErr) {
+              processedPaymentTripIdRef.current = null;
+              console.warn('Error debitando Puntos Rewards:', ptsErr);
             }
+          }
+
+          // Nota: El débito de Mercado Pago al aceptar el viaje es ejecutado por el conductor al confirmar la aceptación
+          // para evitar doble cobro simultáneo entre las apps de Pasajero y Conductor.
+          if (data.paymentMethod === 'Mercado Pago' && data.paymentStatus === 'awaiting_payment' && !mpLinked) {
+            showOverlayNotification(`Mercado Pago no vinculado. Pago en Efectivo.`);
+            await updateDoc(doc(db, 'trips', docRef.id), { paymentMethod: 'Efectivo', paymentStatus: 'pending' });
           }
 
           setDriverDetails(driverDetailsObj);
           setActiveTrip({ id: snap.id, ...data });
           setRequestFlowStep('active');
-          showOverlayNotification(`¡Chofer asignado! ${driverDetailsObj.name} se encuentra en camino.`);
+          showOverlayNotification(
+            `¡Viaje aceptado! ${driverDetailsObj.name} (⭐ ${driverDetailsObj.rating}) está en camino en ${driverDetailsObj.model} · Dominio: ${driverDetailsObj.plate}`
+          );
           playNotificationSoundAndVibrate();
         }
 
@@ -1510,15 +1678,19 @@ export default function HomeScreen() {
           }, 2000);
 
           unsubTrip();
+          unsubTripRef.current = null;
         }
 
         // 6. Cancelado
         if (data.status === 'cancelled') {
-          Alert.alert('Viaje Cancelado', 'El conductor canceló el traslado.');
+          if (data.cancelledBy !== 'passenger') {
+            Alert.alert('Viaje Cancelado', 'El conductor canceló el traslado.');
+          }
           setRequestFlowStep('idle');
           setActiveTrip(null);
           setDriverDetails(null);
           unsubTrip();
+          unsubTripRef.current = null;
         }
 
         // 7. Sincronizar ubicación del marcador
@@ -1533,6 +1705,7 @@ export default function HomeScreen() {
           ]);
         }
       });
+      unsubTripRef.current = unsubTrip;
 
     } catch (e) {
       console.log("Error creating trip", e);
@@ -1540,15 +1713,55 @@ export default function HomeScreen() {
     }
   };
 
-  const cancelSearch = () => {
+  const cancelSearch = async () => {
     if (searchTimer) clearTimeout(searchTimer);
+    if (unsubTripRef.current) {
+      unsubTripRef.current();
+      unsubTripRef.current = null;
+    }
+    if (activeTrip?.id) {
+      try {
+        await updateDoc(doc(db, 'trips', activeTrip.id), {
+          status: 'cancelled',
+          cancelledBy: 'passenger',
+          cancelledAt: Timestamp.now(),
+        });
+      } catch (e) {
+        console.warn('Error cancelling search in Firestore:', e);
+      }
+    }
+    setActiveTrip(null);
+    setDriverDetails(null);
     setRequestFlowStep('idle');
   };
 
   const handleCancelTrip = () => {
     Alert.alert('Cancelar viaje', '¿Seguro que deseas cancelar el traslado actual?', [
       { text: 'No', style: 'cancel' },
-      { text: 'Sí, Cancelar', style: 'destructive', onPress: () => setRequestFlowStep('idle') }
+      {
+        text: 'Sí, Cancelar',
+        style: 'destructive',
+        onPress: async () => {
+          if (unsubTripRef.current) {
+            unsubTripRef.current();
+            unsubTripRef.current = null;
+          }
+          if (activeTrip?.id) {
+            try {
+              await updateDoc(doc(db, 'trips', activeTrip.id), {
+                status: 'cancelled',
+                cancelledBy: 'passenger',
+                cancelledAt: Timestamp.now(),
+              });
+            } catch (e) {
+              console.warn('Error cancelling active trip in Firestore:', e);
+            }
+          }
+          setActiveTrip(null);
+          setDriverDetails(null);
+          setRequestFlowStep('idle');
+        },
+      },
     ]);
   };
 
@@ -1630,10 +1843,27 @@ export default function HomeScreen() {
         return;
       }
 
-      const driverName = matchedDriver.name || 'Conductor';
-      const vehicleInfo = matchedDriver.activeVehicle 
-        ? `${matchedDriver.activeVehicle.brand || ''} (${matchedDriver.activeVehicle.plate || ''})`
-        : 'Vehículo Oficial';
+      const driverName = formatDriverName(matchedDriver.name || 'Conductor');
+      const driverPlate = formatPlate(matchedDriver.activeVehicle?.plate || matchedDriver.plate || '');
+      const vehicleModel = matchedDriver.activeVehicle
+        ? `${matchedDriver.activeVehicle.brand || ''} ${matchedDriver.activeVehicle.color ? `(${matchedDriver.activeVehicle.color})` : ''}`.trim()
+        : matchedDriver.vehicleBrand || 'Vehículo Oficial';
+      const vehicleInfo = `${vehicleModel} · Dominio ${driverPlate}`;
+      const driverRatingStr = Number(matchedDriver.rating || 5.0).toFixed(1);
+      const driverAvatar = matchedDriver.photoUrl || '';
+      const driverCarPhoto = matchedDriver.activeVehicle?.photoUrl || matchedDriver.vehiclePhotoUrl || '';
+
+      const linkedDriverDetails = {
+        id: matchedDriver.id,
+        name: driverName,
+        plate: driverPlate,
+        model: vehicleModel,
+        rating: driverRatingStr,
+        totalTrips: Number(matchedDriver.totalTrips || 0),
+        phone: matchedDriver.phone || '',
+        avatar: driverAvatar,
+        carPhoto: driverCarPhoto,
+      };
 
       // Si el pasajero ya cotizó destino (viaje con tarifa fija pactada)
       if (requestFlowStep === 'pricing' && originCoords && destinationCoords) {
@@ -1649,7 +1879,12 @@ export default function HomeScreen() {
           status: 'accepted',
           driverId: matchedDriver.id,
           driverName: driverName,
-          driverPlate: matchedDriver.activeVehicle?.plate || '',
+          driverRating: Number(matchedDriver.rating || 5.0),
+          vehicleModel: vehicleModel,
+          vehiclePlate: driverPlate,
+          driverPlate: driverPlate,
+          driverProfilePhoto: driverAvatar || null,
+          driverCarPhoto: driverCarPhoto || null,
           driverPhone: matchedDriver.phone || '',
           directAssigned: true,
           estimatedPrice,
@@ -1661,13 +1896,14 @@ export default function HomeScreen() {
         };
 
         const docRef = await addDoc(collection(db, 'trips'), tripData);
+        setDriverDetails(linkedDriverDetails);
         setActiveTrip({ id: docRef.id, ...tripData });
         setRequestFlowStep('active');
         setQrModalVisible(false);
         setDriverCodeInput('');
         Alert.alert(
           '¡Conductor Vinculado!',
-          `Tu viaje hacia "${destination}" fue asignado directamente a ${driverName} en su ${vehicleInfo}.`
+          `Tu viaje hacia "${destination}" fue asignado a ${driverName} (⭐ ${driverRatingStr}) · ${vehicleInfo}.`
         );
         return;
       }
@@ -1684,20 +1920,26 @@ export default function HomeScreen() {
         status: 'in_progress',
         driverId: matchedDriver.id,
         driverName: driverName,
-        driverPlate: matchedDriver.activeVehicle?.plate || '',
+        driverRating: Number(matchedDriver.rating || 5.0),
+        vehicleModel: vehicleModel,
+        vehiclePlate: driverPlate,
+        driverPlate: driverPlate,
+        driverProfilePhoto: driverAvatar || null,
+        driverCarPhoto: driverCarPhoto || null,
         directAssigned: true,
         createdAt: Timestamp.now(),
         paymentMethod: 'Efectivo',
       };
 
       const docRef = await addDoc(collection(db, 'trips'), freeTripData);
+      setDriverDetails(linkedDriverDetails);
       setActiveTrip({ id: docRef.id, ...freeTripData });
       setRequestFlowStep('active');
       setQrModalVisible(false);
       setDriverCodeInput('');
       Alert.alert(
         '¡Viaje Iniciado!',
-        `Te vinculaste con ${driverName} (${vehicleInfo}). El taxímetro digital está corriendo en tu pantalla.`
+        `Te vinculaste con ${driverName} (⭐ ${driverRatingStr} · ${vehicleInfo}). El taxímetro digital está corriendo en tu pantalla.`
       );
     } catch (err: any) {
       console.error('Error linking driver via QR:', err);
@@ -1852,46 +2094,78 @@ export default function HomeScreen() {
     }
   };
 
-  // Finalizar viaje y procesar el pago Split en Mercado Pago
+  // Finalizar viaje y procesar el cobro según el método de pago real
   const handleCompleteTrip = async () => {
     if (!activeTrip) return;
     setSavingProfile(true);
     try {
-      if (selectedPayment === 'Mercado Pago' && !mpLinked) {
-        Alert.alert(
-          'Mercado Pago no vinculado', 
-          'Por favor vinculá tu cuenta de Mercado Pago desde la pestaña de Perfil para poder pagar de forma automática.'
-        );
-        setSavingProfile(false);
-        return;
+      const realDriverId = activeTrip.driverId || driverDetails?.id || '';
+      const tripAmount = activeTrip.estimatedPrice || calculateFare(selectedCategory);
+
+      // Consultar puntos por viaje configurados en Concorde 360 (0 si no se definió aún)
+      let configuredPoints = 0;
+      try {
+        const rewardsCfgSnap = await getDoc(doc(db, 'rewards_config', 'global'));
+        if (rewardsCfgSnap.exists() && rewardsCfgSnap.data()?.pointsPerTrip !== undefined) {
+          configuredPoints = Number(rewardsCfgSnap.data()?.pointsPerTrip) || 0;
+        }
+      } catch {
+        configuredPoints = 0;
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/checkout/process-debit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tripId: activeTrip.id,
-          passengerId: user.uid,
-          driverId: 'driver-1',
-          amount: activeTrip.estimatedPrice || calculateFare(selectedCategory)
-        })
-      });
+      if (selectedPayment === 'Mercado Pago' && activeTrip.paymentStatus !== 'paid') {
+        if (!mpLinked) {
+          Alert.alert(
+            'Mercado Pago no vinculado',
+            'Por favor vinculá tu cuenta de Mercado Pago desde la pestaña de Perfil para poder pagar de forma automática.'
+          );
+          setSavingProfile(false);
+          return;
+        }
 
-      const data = await response.json();
-      if (data.success) {
-        setEarnedPoints(data.pointsEarned || 150);
-        setTripCompletedModalVisible(true);
-        setRequestFlowStep('idle');
-        setActiveTrip(null);
-      } else {
-        Alert.alert('Error en Pago', data.error || 'No se pudo debitar el saldo de Mercado Pago.');
+        const response = await fetch(`${API_BASE_URL}/api/checkout/process-debit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tripId: activeTrip.id,
+            passengerId: user.uid,
+            driverId: realDriverId,
+            amount: tripAmount,
+          }),
+        });
+
+        const data = await response.json();
+        if (!data.success) {
+          Alert.alert('Error en Pago', data.error || 'No se pudo debitar el saldo de Mercado Pago.');
+          setSavingProfile(false);
+          return;
+        }
+        if (data.pointsEarned !== undefined) {
+          configuredPoints = Number(data.pointsEarned) || configuredPoints;
+        }
       }
-    } catch (err) {
-      console.warn(err);
-      setEarnedPoints(150); // Fallback local points
+
+      if (activeTrip.id) {
+        await updateDoc(doc(db, 'trips', activeTrip.id), {
+          status: 'completed',
+          completedAt: Timestamp.now(),
+          rewardsPointsEarned: selectedPayment === 'Rewards' ? 0 : configuredPoints,
+        });
+      }
+
+      if (selectedPayment !== 'Rewards' && configuredPoints > 0) {
+        await updateDoc(doc(db, 'users', user.uid), {
+          rewardsPoints: increment(configuredPoints),
+        });
+      }
+
+      setEarnedPoints(selectedPayment === 'Rewards' ? 0 : configuredPoints);
       setTripCompletedModalVisible(true);
       setRequestFlowStep('idle');
       setActiveTrip(null);
+    } catch (err) {
+      console.warn('Error al finalizar viaje:', err);
+      Alert.alert('Error', 'No se pudo cerrar el viaje. Verificá tu conexión.');
     } finally {
       setSavingProfile(false);
     }
@@ -1936,22 +2210,35 @@ export default function HomeScreen() {
               {/* Tarjeta del Chofer Asignado y Vehículo */}
               <View style={styles.driverTrackingCard}>
                 <View style={styles.driverPanelHeader}>
-                  <Image 
-                    source={{ uri: driverDetails.avatar || driverDetails.photoUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200' }} 
-                    style={styles.driverAvatarImg} 
-                  />
+                  {driverDetails.avatar || driverDetails.photoUrl ? (
+                    <Image
+                      source={{ uri: driverDetails.avatar || driverDetails.photoUrl }}
+                      style={styles.driverAvatarImg}
+                    />
+                  ) : (
+                    <View style={[styles.driverAvatarImg, { backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' }]}>
+                      <Text style={{ color: Colors.white, fontSize: 22, fontFamily: 'Quicksand-Bold' }}>
+                        {formatDriverName(driverDetails.name).charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
                   <View style={styles.driverInfoCol}>
                     <Text style={styles.driverNameLabel}>{formatDriverName(driverDetails.name)}</Text>
-                    <Text style={styles.driverCarPlate}>{driverDetails.model || 'Vehículo Conductor'} · <Text style={{ fontFamily: 'Quicksand-Bold', color: Colors.primary }}>{formatPlate(driverDetails.plate)}</Text></Text>
+                    <Text style={styles.driverCarPlate}>
+                      {driverDetails.model || 'Vehículo Habilitado'} · Dominio:{' '}
+                      <Text style={{ fontFamily: 'Quicksand-Bold', color: Colors.primary }}>{formatPlate(driverDetails.plate)}</Text>
+                    </Text>
                     <Text style={styles.driverRatingText}>
-                      ⭐ {driverDetails.rating || '4.9'} · <Text style={{ color: Colors.textMuted }}>{driverDetails.totalTrips || 142} viajes realizados</Text>
+                      ⭐ {driverDetails.rating || '5.0'} · <Text style={{ color: Colors.textMuted }}>{driverDetails.totalTrips ?? 0} viajes realizados</Text>
                     </Text>
                   </View>
                 </View>
-                
+
                 {driverDetails.carPhoto ? (
-                  <View style={{ marginTop: 4 }}>
-                    <Text style={{ fontSize: 10, fontFamily: 'Quicksand-Bold', color: Colors.textMuted, marginBottom: 4 }}>Vehículo asignado:</Text>
+                  <View style={{ marginTop: 6 }}>
+                    <Text style={{ fontSize: 10, fontFamily: 'Quicksand-Bold', color: Colors.textMuted, marginBottom: 4 }}>
+                      Foto real del vehículo ({formatPlate(driverDetails.plate)}):
+                    </Text>
                     <Image source={{ uri: driverDetails.carPhoto }} style={styles.carPhotoTrackingImg} />
                   </View>
                 ) : null}
@@ -1994,15 +2281,49 @@ export default function HomeScreen() {
               <View style={styles.tripControlsRow}>
                 <TouchableOpacity 
                   style={[styles.controlBtnSquare, isRecording && styles.controlBtnRecording]}
-                  onPress={() => setIsRecording(prev => !prev)}
+                  onPress={async () => {
+                    const nextState = !isRecording;
+                    setIsRecording(nextState);
+                    if (activeTrip?.id) {
+                      try {
+                        await updateDoc(doc(db, 'trips', activeTrip.id), {
+                          securityMonitoringActive: nextState,
+                          securityMonitoringUpdatedAt: Timestamp.now(),
+                        });
+                        if (nextState) {
+                          await addDoc(collection(db, 'audit_logs'), {
+                            action: 'PASSENGER_SECURITY_MONITOR_ACTIVATED',
+                            tripId: activeTrip.id,
+                            passengerId: user.uid,
+                            driverId: driverDetails?.id || activeTrip.driverId || '',
+                            origin: activeTrip.origin || origin,
+                            destination: activeTrip.destination || destination,
+                            createdAt: Timestamp.now(),
+                          });
+                          Alert.alert(
+                            '🛡️ Monitoreo Activo',
+                            'Se activó la alerta preventiva de monitoreo en tiempo real en la central de seguridad de TravelCab.'
+                          );
+                        }
+                      } catch (e) {
+                        console.warn('Error updating security monitoring:', e);
+                      }
+                    }
+                  }}
                 >
-                  <Ionicons name={isRecording ? "mic" : "mic-outline"} size={20} color={Colors.white} />
-                  <Text style={styles.controlBtnLabel}>{isRecording ? "Grabando" : "Grabar"}</Text>
+                  <Ionicons name={isRecording ? "shield-checkmark" : "shield-outline"} size={20} color={Colors.white} />
+                  <Text style={styles.controlBtnLabel}>{isRecording ? "Monitoreado" : "Monitoreo"}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity 
                   style={[styles.controlBtnSquare, { backgroundColor: '#25D366' }]}
-                  onPress={() => Linking.openURL('https://wa.me/?text=Hola!%20Estoy%20viajando%20en%20TravelCab,%20seguí%20mi%20recorrido%20en%20tiempo%20real.')}
+                  onPress={() => {
+                    const dName = formatDriverName(driverDetails?.name);
+                    const dPlate = formatPlate(driverDetails?.plate);
+                    const dModel = driverDetails?.model || 'Vehículo TravelCab';
+                    const shareMsg = `¡Hola! Estoy viajando en TravelCab.\n🚗 Vehículo: ${dModel} (Dominio: ${dPlate})\n👤 Conductor: ${dName}\n📍 Origen: ${activeTrip?.origin || origin}\n🏁 Destino: ${activeTrip?.destination || destination}`;
+                    Linking.openURL(`https://wa.me/?text=${encodeURIComponent(shareMsg)}`);
+                  }}
                 >
                   <Ionicons name="logo-whatsapp" size={20} color={Colors.white} />
                   <Text style={styles.controlBtnLabel}>Compartir</Text>
@@ -2017,11 +2338,34 @@ export default function HomeScreen() {
                 </TouchableOpacity>
 
                 <TouchableOpacity 
-                  style={[styles.controlBtnSquare, { backgroundColor: Colors.primary }]}
-                  onPress={() => setIsChatModalVisible(true)}
+                  style={[styles.controlBtnSquare, { backgroundColor: isChatEnabledForTrip ? Colors.primary : Colors.textMuted, position: 'relative' }]}
+                  onPress={() => {
+                    if (!isChatEnabledForTrip) {
+                      Alert.alert('Chat no disponible', 'El chat se habilita únicamente cuando el conductor acepta el viaje.');
+                      return;
+                    }
+                    setUnreadDriverMessages(0);
+                    setIsChatModalVisible(true);
+                  }}
                 >
                   <Ionicons name="chatbubbles-outline" size={20} color={Colors.white} />
                   <Text style={styles.controlBtnLabel}>Chat Chofer</Text>
+                  {unreadDriverMessages > 0 && (
+                    <View style={{
+                      position: 'absolute',
+                      top: -4,
+                      right: -4,
+                      backgroundColor: Colors.danger,
+                      minWidth: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      paddingHorizontal: 4,
+                    }}>
+                      <Text style={{ color: '#FFF', fontSize: 10, fontFamily: 'Quicksand-Bold' }}>{unreadDriverMessages}</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               </View>
 
@@ -3084,7 +3428,10 @@ export default function HomeScreen() {
 
                         <Text style={styles.sectionSubTitle}>Tus Compañeros de Viaje</Text>
                         <View style={styles.passengersListRow}>
-                          {['Sofía (BsAs)', 'Martín (Tucumán)', 'Griselda (Cba)', 'Juan Pablo (Mza)'].map((pName, index) => (
+                          {(Array.isArray(contractedTrip?.passengers) && contractedTrip.passengers.length > 0
+                            ? contractedTrip.passengers
+                            : ['Grupo confirmado en Concorde 360']
+                          ).map((pName: string, index: number) => (
                             <View key={index} style={styles.passengerChip}>
                               <Ionicons name="person-outline" size={12} color={Colors.primary} />
                               <Text style={styles.passengerChipText}>{pName}</Text>
@@ -3228,31 +3575,24 @@ export default function HomeScreen() {
                       <Text style={styles.historyDate}>{formatDate(item.createdAt)} · {item.serviceType === 'standard' ? 'Standard' : item.serviceType === 'premium' ? 'Premium' : 'Taxi'}</Text>
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={styles.historyCost}>${item.estimatedPrice} ARS</Text>
-                      <Text style={styles.historyPoints}>+150 Pts</Text>
+                      <Text style={styles.historyCost}>${Number(item.estimatedPrice || 0).toLocaleString('es-AR')} ARS</Text>
+                      <Text style={styles.historyPoints}>
+                        {item.pointsUsed
+                          ? `-${item.pointsUsed} Pts`
+                          : item.rewardsPointsEarned
+                          ? `+${item.rewardsPointsEarned} Pts`
+                          : item.paymentMethod || 'Finalizado'}
+                      </Text>
                     </View>
                   </View>
                 ))
               ) : (
-                // Fallbacks si no tiene viajes reales
-                [
-                  { id: 't-1', title: 'Viaje TravelCab - San Javier', cost: 1800, points: 150, date: '12 Jun, 2026' },
-                  { id: 't-2', title: 'Viaje TravelCab - Centro', cost: 1200, points: 150, date: '10 Jun, 2026' },
-                ].map(item => (
-                  <View key={item.id} style={styles.tripHistoryItem}>
-                    <View style={styles.historyIcon}>
-                      <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.historyTitle}>{item.title}</Text>
-                      <Text style={styles.historyDate}>{item.date}</Text>
-                    </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={styles.historyCost}>${item.cost} ARS</Text>
-                      <Text style={styles.historyPoints}>+{item.points} Pts</Text>
-                    </View>
-                  </View>
-                ))
+                <View style={[styles.tripHistoryItem, { justifyContent: 'center', paddingVertical: 22 }]}>
+                  <Ionicons name="car-sport-outline" size={22} color={Colors.textMuted} style={{ marginRight: 10 }} />
+                  <Text style={[styles.historyDate, { fontSize: 13 }]}>
+                    Todavía no tenés viajes registrados en tu historial.
+                  </Text>
+                </View>
               )}
             </View>
 
@@ -3349,11 +3689,25 @@ export default function HomeScreen() {
                             disabled={rewardsPoints < item.points}
                             onPress={async () => {
                               try {
+                                const couponCode = 'TVL-' + Math.floor(100000 + Math.random() * 900000);
                                 const userRef = doc(db, 'users', user.uid);
                                 await updateDoc(userRef, {
-                                  rewardsPoints: rewardsPoints - item.points
+                                  rewardsPoints: increment(-item.points),
                                 });
-                                Alert.alert('¡Canje exitoso!', `Has canjeado "${item.title}". El código de cupón te fue enviado por email.`);
+                                await addDoc(collection(db, 'reward_redemptions'), {
+                                  userId: user.uid,
+                                  userEmail: user.email || '',
+                                  rewardId: item.id,
+                                  rewardTitle: item.title,
+                                  pointsSpent: item.points,
+                                  couponCode,
+                                  status: 'active',
+                                  createdAt: Timestamp.now(),
+                                });
+                                Alert.alert(
+                                  '¡Canje exitoso!',
+                                  `Has canjeado "${item.title}".\n\nTu código de cupón registrado es: ${couponCode}`
+                                );
                               } catch (err: any) {
                                 Alert.alert('Error', 'No se pudo procesar el canje: ' + err.message);
                               }
@@ -3674,6 +4028,44 @@ export default function HomeScreen() {
                 <Ionicons name="log-out-outline" size={20} color={Colors.danger} />
                 <Text style={styles.logoutBtnText}>Cerrar Sesión</Text>
               </TouchableOpacity>
+
+              {/* Eliminar Cuenta y Datos (Requisito Google Play) */}
+              <TouchableOpacity
+                style={[styles.logoutBtn, { marginTop: 10, opacity: 0.85, borderColor: 'rgba(239,68,68,0.25)' }]}
+                onPress={() => {
+                  Alert.alert(
+                    'Eliminar cuenta y datos',
+                    '¿Estás seguro de que deseás eliminar permanentemente tu cuenta de TravelApp y todos tus datos asociados? Esta acción no se puede deshacer.',
+                    [
+                      { text: 'Cancelar', style: 'cancel' },
+                      {
+                        text: 'Eliminar definitivamente',
+                        style: 'destructive',
+                        onPress: async () => {
+                          try {
+                            if (auth.currentUser) {
+                              await deleteDoc(doc(db, 'users', auth.currentUser.uid));
+                              await deleteUser(auth.currentUser);
+                            }
+                          } catch (err: any) {
+                            if (err?.code === 'auth/requires-recent-login') {
+                              Alert.alert(
+                                'Reautenticación requerida',
+                                'Por seguridad, cerrá sesión y volvé a ingresar antes de eliminar definitivamente tu cuenta.'
+                              );
+                            } else {
+                              Alert.alert('Error', 'No se pudo completar la baja automática. Contactá a soporte@travelapp.ar.');
+                            }
+                          }
+                        },
+                      },
+                    ]
+                  );
+                }}
+              >
+                <Ionicons name="trash-outline" size={18} color={Colors.danger} />
+                <Text style={[styles.logoutBtnText, { fontSize: 13 }]}>Eliminar mi cuenta y datos</Text>
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -3684,19 +4076,28 @@ export default function HomeScreen() {
         visible={isChatModalVisible}
         animationType="slide"
         transparent={false}
-        onRequestClose={() => setIsChatModalVisible(false)}
+        onRequestClose={() => {
+          setIsChatModalVisible(false);
+          setEditingChatMessageId(null);
+        }}
       >
         <View style={styles.chatModalContainer}>
           {/* Header del Chat */}
           <View style={[styles.chatModalHeader, { paddingTop: insets.top > 0 ? insets.top + 10 : 20 }]}>
-            <TouchableOpacity style={styles.chatCloseBtn} onPress={() => setIsChatModalVisible(false)}>
+            <TouchableOpacity
+              style={styles.chatCloseBtn}
+              onPress={() => {
+                setIsChatModalVisible(false);
+                setEditingChatMessageId(null);
+              }}
+            >
               <Ionicons name="arrow-back" size={24} color={Colors.primary} />
             </TouchableOpacity>
             <View style={{ flex: 1, marginLeft: 10 }}>
               <Text style={styles.chatHeaderName}>
-                {driverDetails ? formatDriverName(driverDetails.name) : 'Conductor Asignado'}
+                {driverDetails ? `${formatDriverName(driverDetails.name)} · ${formatPlate(driverDetails.plate)}` : 'Conductor Asignado'}
               </Text>
-              <Text style={styles.chatHeaderSub}>Monitoreado en tiempo real por Concorde 360</Text>
+              <Text style={styles.chatHeaderSub}>Tocá un mensaje enviado para editarlo o eliminarlo</Text>
             </View>
             <View style={styles.concordeBadge}>
               <Ionicons name="shield-checkmark" size={16} color={Colors.success} />
@@ -3710,47 +4111,106 @@ export default function HomeScreen() {
                 const isMe = msg.senderId === user?.uid || msg.senderRole === 'passenger';
                 const isAdmin = msg.senderRole === 'admin';
                 return (
-                  <View 
-                    key={msg.id} 
+                  <TouchableOpacity
+                    key={msg.id}
+                    activeOpacity={isMe ? 0.75 : 1}
+                    onPress={() => isMe && handleSelectChatMessage(msg)}
+                    onLongPress={() => isMe && handleSelectChatMessage(msg)}
                     style={[
                       styles.liveChatBubble,
                       isMe ? styles.liveChatBubbleMe : isAdmin ? styles.liveChatBubbleAdmin : styles.liveChatBubbleDriver
                     ]}
                   >
-                    <Text style={[styles.chatSenderLabel, isMe && { color: 'rgba(255,255,255,0.8)' }]}>
-                      {isAdmin ? '🛡️ Central Concorde 360' : msg.senderName || (isMe ? 'Vos' : 'Conductor')}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                      <Text style={[styles.chatSenderLabel, isMe && { color: 'rgba(255,255,255,0.8)' }]}>
+                        {isAdmin ? '🛡️ Central Concorde 360' : isMe ? 'Vos' : formatDriverName(msg.senderName || driverDetails?.name || 'Conductor')}
+                      </Text>
+                      {isMe && <Ionicons name="create-outline" size={12} color="rgba(255,255,255,0.75)" />}
+                    </View>
                     <Text style={[styles.liveChatBubbleText, isMe && { color: Colors.white }]}>{msg.text}</Text>
-                  </View>
+                    {msg.edited && (
+                      <Text style={{ fontSize: 9, color: isMe ? 'rgba(255,255,255,0.7)' : Colors.textMuted, marginTop: 2 }}>
+                        (editado)
+                      </Text>
+                    )}
+                  </TouchableOpacity>
                 );
               })
             ) : (
               <View style={styles.emptyChatBox}>
                 <Ionicons name="chatbubbles-outline" size={40} color={Colors.textMuted} />
                 <Text style={styles.emptyChatText}>Iniciá la conversación con {driverDetails ? formatDriverName(driverDetails.name) : 'el conductor'}</Text>
-                <Text style={styles.emptyChatSub}>Los mensajes son monitoreados desde el panel de control Concorde 360.</Text>
+                <Text style={styles.emptyChatSub}>Los mensajes están habilitados durante el viaje activo y son monitoreados por Concorde 360.</Text>
               </View>
             )}
           </ScrollView>
 
-          {/* Input para enviar mensaje */}
+          {/* Respuestas rápidas */}
+          <View style={{ paddingHorizontal: 14, paddingVertical: 8, backgroundColor: '#F8FAFC', borderTopWidth: 1, borderTopColor: '#E2E8F0' }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {['Estoy en la puerta 👋', 'Salgo en 1 minuto 🏃', '¿Cuál es tu patente?', '¡Ok, gracias! 👍'].map((preset) => (
+                <TouchableOpacity
+                  key={preset}
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    borderWidth: 1,
+                    borderColor: '#CBD5E1',
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 16,
+                  }}
+                  onPress={() => handleSendMessage(preset)}
+                >
+                  <Text style={{ fontSize: 12, fontFamily: 'Quicksand-Bold', color: Colors.primary }}>{preset}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* Banner de edición activa */}
+          {editingChatMessageId && (
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: '#FEF3C7',
+              paddingHorizontal: 16,
+              paddingVertical: 6,
+              borderTopWidth: 1,
+              borderTopColor: '#FDE68A',
+            }}>
+              <Text style={{ fontSize: 12, fontFamily: 'Quicksand-Bold', color: '#92400E' }}>
+                ✏️ Editando mensaje seleccionado...
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setEditingChatMessageId(null);
+                  setChatInputText('');
+                }}
+              >
+                <Ionicons name="close-circle" size={18} color="#92400E" />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Input para enviar o guardar edición de mensaje */}
           <View style={[styles.chatInputBar, { paddingBottom: insets.bottom > 0 ? insets.bottom + 10 : 16 }]}>
             <TextInput
               style={styles.chatTextInput}
               value={chatInputText}
               onChangeText={setChatInputText}
-              placeholder="Escribí un mensaje..."
+              placeholder={editingChatMessageId ? 'Modificá tu mensaje...' : 'Escribí un mensaje...'}
               placeholderTextColor={Colors.textMuted}
             />
             <TouchableOpacity 
               style={[styles.liveChatSendBtn, !chatInputText.trim() && { backgroundColor: Colors.border }]} 
-              onPress={handleSendMessage}
+              onPress={() => handleSendMessage()}
               disabled={!chatInputText.trim() || isSendingMessage}
             >
               {isSendingMessage ? (
                 <ActivityIndicator size="small" color={Colors.white} />
               ) : (
-                <Ionicons name="send" size={18} color={Colors.white} />
+                <Ionicons name={editingChatMessageId ? 'checkmark' : 'send'} size={18} color={Colors.white} />
               )}
             </TouchableOpacity>
           </View>

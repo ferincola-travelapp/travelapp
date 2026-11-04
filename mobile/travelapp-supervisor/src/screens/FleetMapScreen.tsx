@@ -6,67 +6,50 @@ import {
   TouchableOpacity,
   ScrollView,
   Linking,
-  ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { auth } from '../lib/firebase';
+import { subscribeToRealFleet, DriverItem } from '../lib/supervisorService';
 import { FleetMapView, FleetVehicle } from '../components/FleetMapView';
 
 export default function FleetMapScreen({ route, navigation }: any) {
   const initialSelectedId = route.params?.driverId || null;
   const [fleet, setFleet] = useState<FleetVehicle[]>([]);
+  const [rawDrivers, setRawDrivers] = useState<DriverItem[]>([]);
   const [selectedDriver, setSelectedDriver] = useState<FleetVehicle | null>(null);
   const [filter, setFilter] = useState<'all' | 'Activo' | 'En Ruta' | 'Inactivo'>('all');
-  const [loading, setLoading] = useState(false);
 
-  // Escuchar conductores reales en Firestore en tiempo real (100% REAL)
+  // Escuchar conductores reales asignados al supervisor (o todos si es Master Admin)
   useEffect(() => {
-    let unsub = () => {};
-    try {
-      unsub = onSnapshot(
-        collection(db, 'drivers'),
-        (snapshot) => {
-          const liveDrivers: FleetVehicle[] = [];
-          snapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            const loc = data.location || (typeof data.latitude === 'number' ? { latitude: data.latitude, longitude: data.longitude } : null);
-            if (loc && typeof loc.latitude === 'number' && typeof loc.longitude === 'number') {
-              const vehicleObj = data.activeVehicle || data.vehicle || {};
-              const vehicleModel = vehicleObj.model 
-                ? `${vehicleObj.brand || ''} ${vehicleObj.model}`.trim()
-                : (data.vehicleModel || 'Vehículo Registrado');
-              const plate = vehicleObj.plate || data.licensePlate || data.plate || '';
-
-              liveDrivers.push({
-                id: docSnap.id,
-                name: data.name || data.displayName || `${data.firstName || ''} ${data.lastName || ''}`.trim() || 'Conductor Flota',
-                vehicle: `${vehicleModel} ${plate ? `(${plate})` : ''}`.trim(),
-                plate,
-                status: data.isOnline ? (data.currentTripId ? 'En Ruta' : 'Activo') : 'Inactivo',
-                phone: data.phone || data.phoneNumber || '',
-                speed: data.speed ?? (data.isOnline ? (data.currentTripId ? 45 : 25) : 0),
-                location: {
-                  latitude: loc.latitude,
-                  longitude: loc.longitude,
-                },
-                heading: data.heading ?? 0,
-                lastUpdate: 'En vivo',
-              });
-            }
+    const uid = auth.currentUser?.uid || '';
+    const unsub = subscribeToRealFleet(uid, (realDrivers) => {
+      setRawDrivers(realDrivers);
+      const liveDrivers: FleetVehicle[] = [];
+      realDrivers.forEach((d) => {
+        if (typeof d.latitude === 'number' && typeof d.longitude === 'number') {
+          liveDrivers.push({
+            id: d.id,
+            name: d.name,
+            vehicle: d.vehicle,
+            plate: d.plate,
+            status: d.status,
+            phone: d.phone,
+            speed: typeof d.speed === 'number' ? d.speed : 0,
+            location: {
+              latitude: d.latitude,
+              longitude: d.longitude,
+            },
+            heading: d.heading ?? 0,
+            lastUpdate: 'En vivo',
+            vehiclePhotoUrl: d.vehiclePhotoUrl,
+            profilePhotoUrl: d.profilePhotoUrl,
+            registrationType: d.registrationType,
           });
-
-          setFleet(liveDrivers);
-        },
-        (err) => {
-          console.warn('Firestore live drivers listener note:', err);
-          setFleet([]);
         }
-      );
-    } catch (e) {
-      console.warn('Live drivers snapshot catch:', e);
-      setFleet([]);
-    }
+      });
+      setFleet(liveDrivers);
+    });
 
     return () => unsub();
   }, []);
@@ -194,9 +177,17 @@ export default function FleetMapScreen({ route, navigation }: any) {
       {selectedDriver && (
         <View style={styles.driverCard}>
           <View style={styles.driverCardHeader}>
-            <View style={styles.driverAvatar}>
-              <Ionicons name="car-sport" size={24} color="#38BDF8" />
-            </View>
+            {selectedDriver.vehiclePhotoUrl ? (
+              <Image
+                source={{ uri: selectedDriver.vehiclePhotoUrl }}
+                style={{ width: 52, height: 44, borderRadius: 12, borderWidth: 1, borderColor: '#38BDF8' }}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={styles.driverAvatar}>
+                <Ionicons name="car-sport" size={24} color="#38BDF8" />
+              </View>
+            )}
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.driverName}>{selectedDriver.name}</Text>
               <Text style={styles.driverVehicle}>{selectedDriver.vehicle}</Text>
@@ -255,7 +246,8 @@ export default function FleetMapScreen({ route, navigation }: any) {
             <TouchableOpacity
               style={styles.btnDetail}
               onPress={() => {
-                navigation.navigate('DriverDetail', { driver: selectedDriver });
+                const fullDrv = rawDrivers.find((r) => r.id === selectedDriver.id) || selectedDriver;
+                navigation.navigate('DriverDetail', { driver: fullDrv });
               }}
               activeOpacity={0.8}
             >

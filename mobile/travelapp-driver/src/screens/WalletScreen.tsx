@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { doc, onSnapshot, updateDoc, collection, addDoc, query, orderBy, getDocs, Timestamp } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, collection, addDoc, query, where, orderBy, getDocs, Timestamp } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { Colors } from '../lib/constants';
 
@@ -14,17 +14,14 @@ export default function WalletScreen() {
   const user = auth.currentUser!;
 
   const [balance, setBalance] = useState(0);
-  const [cashEarnings, setCashEarnings] = useState(18500);
-  const [digitalEarnings, setDigitalEarnings] = useState(24000);
-  const [rewardsEarnings, setRewardsEarnings] = useState(3500);
-  const [commissionPaid, setCommissionPaid] = useState(6900); // 15% aprox
+  const [cashEarnings, setCashEarnings] = useState(0);
+  const [digitalEarnings, setDigitalEarnings] = useState(0);
+  const [rewardsEarnings, setRewardsEarnings] = useState(0);
+  const [commissionPaid, setCommissionPaid] = useState(0);
   const [maxNegativeBalance, setMaxNegativeBalance] = useState(-10000);
-  const [currentCommissionBalance, setCurrentCommissionBalance] = useState(-2500);
-  
-  const [expenses, setExpenses] = useState<any[]>([
-    { id: 'exp-1', concept: 'Combustible ⛽', amount: 8500, time: '14:30' },
-    { id: 'exp-2', concept: 'Peaje 🛣️', amount: 1200, time: '16:15' },
-  ]);
+  const [currentCommissionBalance, setCurrentCommissionBalance] = useState(0);
+
+  const [expenses, setExpenses] = useState<any[]>([]);
 
   const [expenseModalVisible, setExpenseModalVisible] = useState(false);
   const [expenseConcept, setExpenseConcept] = useState('Combustible ⛽');
@@ -33,51 +30,125 @@ export default function WalletScreen() {
   const [loadingData, setLoadingData] = useState(true);
 
   useEffect(() => {
-    // Escuchar datos del conductor
-    const unsubDriver = onSnapshot(doc(db, 'drivers', user?.uid || 'demo'), (snap) => {
+    if (!user?.uid) return;
+
+    // 1. Escuchar datos financieros del conductor en Firestore
+    const unsubDriver = onSnapshot(doc(db, 'drivers', user.uid), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
         setBalance(data.balance ?? 0);
-        if (data.cashEarnings !== undefined) setCashEarnings(data.cashEarnings);
-        if (data.digitalEarnings !== undefined) setDigitalEarnings(data.digitalEarnings);
-        if (data.rewardsEarnings !== undefined) setRewardsEarnings(data.rewardsEarnings);
-        if (data.commissionPaid !== undefined) setCommissionPaid(data.commissionPaid);
-        if (data.maxNegativeBalance !== undefined) setMaxNegativeBalance(data.maxNegativeBalance);
-        if (data.currentCommissionBalance !== undefined) setCurrentCommissionBalance(data.currentCommissionBalance);
+        if (typeof data.cashEarnings === 'number') setCashEarnings(data.cashEarnings);
+        if (typeof data.digitalEarnings === 'number') setDigitalEarnings(data.digitalEarnings);
+        if (typeof data.rewardsEarnings === 'number') setRewardsEarnings(data.rewardsEarnings);
+        else if (typeof data.pendingRewardsArs === 'number') setRewardsEarnings(data.pendingRewardsArs);
+        if (typeof data.commissionPaid === 'number') setCommissionPaid(data.commissionPaid);
+        if (typeof data.maxNegativeBalance === 'number') setMaxNegativeBalance(data.maxNegativeBalance);
+        if (typeof data.currentCommissionBalance === 'number') setCurrentCommissionBalance(data.currentCommissionBalance);
       }
       setLoadingData(false);
     });
 
-    return unsubDriver;
+    // 2. Calcular recaudación real del día desde viajes completados
+    const qTrips = query(
+      collection(db, 'trips'),
+      where('driverId', '==', user.uid),
+      where('status', '==', 'completed')
+    );
+    const unsubTrips = onSnapshot(qTrips, (snap) => {
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      let todayCash = 0;
+      let todayDigital = 0;
+      let todayRewards = 0;
+
+      snap.forEach((docSnap) => {
+        const t = docSnap.data();
+        const completedDate = t.completedAt?.toDate ? t.completedAt.toDate() : (t.createdAt?.toDate ? t.createdAt.toDate() : new Date());
+        if (completedDate >= startOfDay) {
+          const fare = Number(t.finalFare || t.fare || t.estimatedPrice || 0);
+          const method = String(t.paymentMethod || '').toLowerCase();
+          if (method.includes('reward') || method.includes('punto')) {
+            todayRewards += fare;
+          } else if (method.includes('mercado') || method.includes('mp') || method.includes('tarjeta') || method.includes('digital') || method.includes('transferencia')) {
+            todayDigital += fare;
+          } else {
+            todayCash += fare;
+          }
+        }
+      });
+
+      setCashEarnings(todayCash);
+      setDigitalEarnings(todayDigital);
+      setRewardsEarnings(todayRewards);
+      setCommissionPaid(Math.round((todayCash + todayDigital + todayRewards) * 0.15));
+    });
+
+    // 3. Escuchar gastos reales cargados hoy por el conductor
+    const qExpenses = collection(db, 'drivers', user.uid, 'expenses');
+    const unsubExpenses = onSnapshot(qExpenses, (snap) => {
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const list: any[] = [];
+      snap.forEach((d) => {
+        const data = d.data();
+        const expDate = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
+        if (expDate >= startOfDay) {
+          list.push({ id: d.id, ...data });
+        }
+      });
+      list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      setExpenses(list);
+    });
+
+    return () => {
+      unsubDriver();
+      unsubTrips();
+      unsubExpenses();
+    };
   }, [user?.uid]);
 
   const grossEarnings = cashEarnings + digitalEarnings + rewardsEarnings;
-  const totalExpenses = expenses.reduce((acc, curr) => acc + curr.amount, 0);
+  const totalExpenses = expenses.reduce((acc, curr) => acc + Number(curr.amount || 0), 0);
   const netEarnings = grossEarnings - commissionPaid - totalExpenses;
   const isOverNegativeLimit = currentCommissionBalance < maxNegativeBalance;
 
-  const handleAddExpense = () => {
+  const handleAddExpense = async () => {
     const amt = parseFloat(expenseAmount);
     if (isNaN(amt) || amt <= 0) {
       return Alert.alert('Monto inválido', 'Por favor ingresá un monto mayor a cero.');
     }
-    const newExp = {
-      id: Date.now().toString(),
-      concept: expenseConcept,
-      amount: amt,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-    setExpenses([newExp, ...expenses]);
-    setExpenseModalVisible(false);
-    setExpenseAmount('');
-    Alert.alert('Gasto registrado 📝', `Se descontaron $${amt} ARS de tu control diario.`);
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    try {
+      if (user?.uid) {
+        await addDoc(collection(db, 'drivers', user.uid, 'expenses'), {
+          concept: expenseConcept,
+          amount: amt,
+          time: timeStr,
+          createdAt: Timestamp.now(),
+        });
+      }
+      setExpenseModalVisible(false);
+      setExpenseAmount('');
+      Alert.alert('Gasto registrado 📝', `Se descontaron $${amt.toLocaleString('es-AR')} ARS de tu control diario.`);
+    } catch (err) {
+      Alert.alert('Error', 'No se pudo guardar el gasto en la nube.');
+    }
   };
 
   const handleRequestWithdraw = async (amount: number) => {
     try {
+      if (user?.uid) {
+        await addDoc(collection(db, 'withdrawal_requests'), {
+          driverId: user.uid,
+          driverName: user.displayName || 'Conductor',
+          amount,
+          status: 'pending',
+          createdAt: Timestamp.now(),
+        });
+      }
       Alert.alert(
         'Retiro solicitado',
-        `Hemos recibido tu solicitud de retiro por $${amount} ARS. Se acreditará en tu cuenta de Mercado Pago / CBU registrado.`
+        `Hemos recibido tu solicitud de retiro por $${amount.toLocaleString('es-AR')} ARS. Se acreditará en tu cuenta de Mercado Pago / CBU registrado.`
       );
     } catch (err) {
       Alert.alert('Error', 'No se pudo procesar el retiro. Intentá nuevamente.');

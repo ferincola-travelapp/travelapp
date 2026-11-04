@@ -4,7 +4,7 @@ import {
   Animated, Alert, ActivityIndicator, Vibration, Dimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { doc, getDoc, updateDoc, Timestamp, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, runTransaction, Timestamp, onSnapshot } from 'firebase/firestore';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { db, auth } from '../lib/firebase';
 import { Colors, API_BASE_URL } from '../lib/constants';
@@ -80,82 +80,88 @@ export default function TripRequestScreen() {
       const user = auth.currentUser;
       if (!user) return;
 
-      // Verificar atómicamente que el viaje sigue en búsqueda antes de asignar
-      const tripDocRef = doc(db, 'trips', trip.id);
-      const latestTripSnap = await getDoc(tripDocRef);
-      if (!latestTripSnap.exists() || latestTripSnap.data()?.status !== 'searching') {
-        Alert.alert('Viaje no disponible', 'Lo sentimos, este viaje ya fue tomado por otro conductor o fue cancelado.');
-        navigation.goBack();
-        return;
-      }
-
       const driverRef = doc(db, 'drivers', user.uid);
       const driverSnap = await getDoc(driverRef);
       const driverData = driverSnap.data();
 
-      const driverName = driverData?.name || user.displayName || (user.email ? user.email.split('@')[0] : 'Socio Conductor');
-      const driverPhone = driverData?.phone || '+5491100000000';
-      const driverRating = driverData?.rating || 5.0;
-      const vehicleModel = driverData?.activeVehicle?.brand || 'Fiat Cronos (Gris Plata)';
-      const vehiclePlate = driverData?.activeVehicle?.plate || 'AF 123 JK';
-      const driverProfilePhoto = driverData?.photoUrl || undefined;
-      const driverCarPhoto = driverData?.activeVehicle?.photoUrl || undefined;
+      const rawName = driverData?.firstName || driverData?.name || user.displayName || (user.email ? user.email.split('@')[0] : 'Conductor');
+      const driverName = String(rawName).trim().split(/\s+/)[0] || 'Conductor';
+      const driverPhone = driverData?.phone || user.phoneNumber || '';
+      const driverRating = Number(driverData?.rating || 5.0);
+      const driverTotalTrips = Number(driverData?.totalTrips || 0);
+      const vehicleModel = driverData?.activeVehicle?.brand || driverData?.vehicleModel || 'Vehículo Asignado';
+      const vehiclePlate = String(driverData?.activeVehicle?.plate || driverData?.vehiclePlate || '').trim().toUpperCase();
+      const driverProfilePhoto = driverData?.photoUrl || driverData?.profilePhotoUrl || user.photoURL || '';
+      const driverCarPhoto = driverData?.activeVehicle?.photoUrl || driverData?.vehiclePhotoUrl || '';
 
       const isMercadoPago = trip?.paymentMethod === 'Mercado Pago';
-      let paymentSuccess = false;
-      let payData: any = null;
+      const isRewards = trip?.paymentMethod === 'Rewards';
 
+      const tripDocRef = doc(db, 'trips', trip.id);
+
+      // Asignación atómica mediante transacción para evitar doble asignación
+      await runTransaction(db, async (tx) => {
+        const latestTripSnap = await tx.get(tripDocRef);
+        if (!latestTripSnap.exists() || latestTripSnap.data()?.status !== 'searching') {
+          throw new Error('TRIP_ALREADY_TAKEN');
+        }
+
+        const updatePayload: any = {
+          status: 'accepted',
+          driverId: user.uid,
+          driverName,
+          driverPhone,
+          driverRating,
+          driverTotalTrips,
+          vehicleModel,
+          vehiclePlate,
+          driverProfilePhoto,
+          driverCarPhoto,
+          acceptedAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+          paymentMethod: trip?.paymentMethod || 'Efectivo',
+          paymentStatus: (isRewards || isMercadoPago) ? 'awaiting_payment' : 'pending',
+        };
+        if (trip?.pin) updatePayload.pin = trip.pin;
+
+        tx.update(tripDocRef, updatePayload);
+      });
+
+      // Si el método es Mercado Pago, intentar débito automático luego de reservar el viaje atómicamente
       if (isMercadoPago) {
-        const endpoints = [`${API_BASE_URL}/api/checkout/process-debit`];
-        for (const url of endpoints) {
-          try {
-            const payResponse = await fetch(url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                tripId: trip.id,
-                passengerId: trip.passengerId,
-                driverId: user.uid,
-                amount: trip.estimatedPrice
-              })
-            });
-            if (payResponse.ok) {
-              payData = await payResponse.json();
-              if (payData && payData.success) {
-                paymentSuccess = true;
-                break;
-              }
+        try {
+          const payResponse = await fetch(`${API_BASE_URL}/api/checkout/process-debit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              tripId: trip.id,
+              passengerId: trip.passengerId,
+              driverId: user.uid,
+              amount: trip.estimatedPrice,
+            }),
+          });
+          if (payResponse.ok) {
+            const payData = await payResponse.json();
+            if (payData && payData.success) {
+              await updateDoc(tripDocRef, {
+                paymentStatus: 'paid',
+                ...(payData.paymentId ? { paymentId: payData.paymentId } : {}),
+                updatedAt: Timestamp.now(),
+              });
             }
-          } catch (e) {
-            console.log(`Failed to connect to ${url}`);
           }
+        } catch (e) {
+          console.log('Optional auto-debit notice:', e);
         }
       }
 
-      const updatePayload: any = {
-        status: 'accepted',
-        driverId: user.uid,
-        driverName: driverName || 'Socio Conductor',
-        driverPhone: driverPhone || '+5491100000000',
-        driverRating: Number(driverRating || 5.0),
-        vehicleModel: vehicleModel || 'Fiat Cronos (Gris Plata)',
-        vehiclePlate: vehiclePlate || 'AF 123 JK',
-        acceptedAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
-        paymentMethod: trip?.paymentMethod || 'Efectivo',
-        paymentStatus: (isMercadoPago && paymentSuccess) ? 'paid' : 'pending',
-      };
-
-      if (driverData?.photoUrl) updatePayload.driverProfilePhoto = driverData.photoUrl;
-      if (driverData?.activeVehicle?.photoUrl) updatePayload.driverCarPhoto = driverData.activeVehicle.photoUrl;
-      if (isMercadoPago && paymentSuccess && payData?.paymentId) {
-        updatePayload.paymentId = payData.paymentId;
-      }
-      if (trip?.pin) updatePayload.pin = trip.pin;
-
-      await updateDoc(doc(db, 'trips', trip.id), updatePayload);
       navigation.navigate('ActiveTrip', { tripId: trip.id });
     } catch (err: any) {
+      if (err?.message === 'TRIP_ALREADY_TAKEN') {
+        Alert.alert('Viaje no disponible', 'Lo sentimos, este viaje ya fue tomado por otro conductor o fue cancelado.');
+        navigation.goBack();
+        return;
+      }
       console.error("Error accepting trip:", err);
       Alert.alert('Error', 'No se pudo aceptar el viaje: ' + (err?.message || 'Intentá nuevamente.'));
     } finally {
@@ -197,12 +203,12 @@ export default function TripRequestScreen() {
           <Text style={styles.panelTitle}>Nueva solicitud de viaje</Text>
           <View style={styles.payBadge}>
             <Ionicons
-              name={trip.paymentMethod === 'Efectivo' ? 'cash' : 'card'}
+              name={trip.paymentMethod === 'Efectivo' ? 'cash' : trip.paymentMethod === 'Rewards' ? 'sparkles' : 'card'}
               size={14}
-              color={trip.paymentMethod === 'Efectivo' ? '#15803D' : Colors.primary}
+              color={trip.paymentMethod === 'Efectivo' ? '#15803D' : trip.paymentMethod === 'Rewards' ? '#D97706' : Colors.primary}
             />
-            <Text style={[styles.payBadgeText, { color: trip.paymentMethod === 'Efectivo' ? '#15803D' : Colors.primary }]}>
-              {trip.paymentMethod || 'Efectivo'}
+            <Text style={[styles.payBadgeText, { color: trip.paymentMethod === 'Efectivo' ? '#15803D' : trip.paymentMethod === 'Rewards' ? '#D97706' : Colors.primary }]}>
+              {trip.paymentMethod === 'Rewards' ? '✨ Puntos Rewards' : (trip.paymentMethod || 'Efectivo')}
             </Text>
           </View>
         </View>

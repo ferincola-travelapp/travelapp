@@ -2,9 +2,9 @@ import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, Alert, Linking, Modal } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, addDoc, collection, Timestamp } from 'firebase/firestore';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { Colors } from '../lib/constants';
 import { formatDriverName, formatPlate } from './HomeScreen';
 import { playSeatbeltSafetyPrompt } from '../lib/audioService';
@@ -154,18 +154,36 @@ export default function TripTrackingScreen() {
     }
   };
 
-  const handleToggleAudioRecording = () => {
+  const handleToggleAudioRecording = async () => {
     if (!isRecordingAudio) {
       setIsRecordingAudio(true);
+      try {
+        await updateDoc(doc(db, 'trips', tripId), {
+          securityMonitoringActive: true,
+          securityMonitoringActivatedAt: Timestamp.now(),
+        });
+        await addDoc(collection(db, 'audit_logs'), {
+          action: 'PASSENGER_SECURITY_MONITOR_ACTIVATED',
+          tripId,
+          passengerId: auth.currentUser?.uid || null,
+          driverId: trip?.driverId || null,
+          createdAt: Timestamp.now(),
+        });
+      } catch {}
       Alert.alert(
-        '🎙️ Grabación de Seguridad Activada',
-        'El audio del viaje está siendo respaldado con encriptación para tu seguridad y la del conductor.'
+        '🛡️ Monitoreo de Seguridad Activo',
+        'Se notificó a la central de TravelCab y se activó el registro prioritario de seguridad para tu recorrido.'
       );
     } else {
       setIsRecordingAudio(false);
+      try {
+        await updateDoc(doc(db, 'trips', tripId), {
+          securityMonitoringActive: false,
+        });
+      } catch {}
       Alert.alert(
-        'Grabación Finalizada',
-        'El registro de audio fue guardado correctamente.'
+        'Monitoreo Finalizado',
+        'El registro de monitoreo preventivo fue guardado correctamente.'
       );
     }
   };

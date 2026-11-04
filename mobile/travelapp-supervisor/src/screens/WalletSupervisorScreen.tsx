@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, query, where, orderBy, getDocs, addDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, doc, getDoc, setDoc, addDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { subscribeToRealFleet, FleetMetrics } from '../lib/supervisorService';
 
@@ -10,6 +10,7 @@ interface PayoutItem {
   amount: number;
   status: string;
   date: string;
+  cbuAlias?: string;
 }
 
 export default function WalletSupervisorScreen({ route, navigation }: any) {
@@ -24,12 +25,22 @@ export default function WalletSupervisorScreen({ route, navigation }: any) {
   );
 
   const [payouts, setPayouts] = useState<PayoutItem[]>([]);
+  const [cbuAlias, setCbuAlias] = useState('');
   const [loadingPayouts, setLoadingPayouts] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   // Escuchar métricas en tiempo real si no vinieron por params
   useEffect(() => {
     const uid = auth.currentUser?.uid || '';
+    if (uid) {
+      getDoc(doc(db, 'users', uid))
+        .then((snap) => {
+          if (snap.exists() && snap.data().cbuAlias) {
+            setCbuAlias(snap.data().cbuAlias);
+          }
+        })
+        .catch(() => {});
+    }
     const unsub = subscribeToRealFleet(uid, (_, realMetrics) => {
       setMetrics(realMetrics);
     });
@@ -69,6 +80,7 @@ export default function WalletSupervisorScreen({ route, navigation }: any) {
               amount: Number(data.amount || 0),
               status: data.status === 'approved' ? 'Pagado' : data.status === 'rejected' ? 'Rechazado' : 'En Proceso',
               date: dateStr,
+              cbuAlias: data.cbuAlias || '',
             });
           });
 
@@ -89,13 +101,22 @@ export default function WalletSupervisorScreen({ route, navigation }: any) {
     }
   }, []);
 
+  const totalRequestedOrPaid = payouts
+    .filter((p) => p.status !== 'Rechazado')
+    .reduce((acc, p) => acc + p.amount, 0);
+
+  const availableCommission = Math.max(0, metrics.supervisorCommission - totalRequestedOrPaid);
+
   const handleRequestPayout = async () => {
-    const commission = metrics.supervisorCommission;
-    if (commission <= 0) {
+    if (availableCommission <= 0) {
       return Alert.alert(
         'Saldo Insuficiente',
-        'Tu comisión acumulada actual es $0. A medida que tus choferes realicen viajes, se generarán haberes disponibles para retiro.'
+        'Tu comisión disponible actual para retiro es $0. A medida que tus choferes realicen viajes, se generarán haberes disponibles.'
       );
+    }
+
+    if (!cbuAlias.trim()) {
+      return Alert.alert('CBU / Alias requerido', 'Ingresá tu CBU, CVU o Alias bancario para recibir la transferencia.');
     }
 
     const uid = auth.currentUser?.uid;
@@ -103,20 +124,22 @@ export default function WalletSupervisorScreen({ route, navigation }: any) {
 
     setSubmitting(true);
     try {
+      await setDoc(doc(db, 'users', uid), { cbuAlias: cbuAlias.trim() }, { merge: true });
       await addDoc(collection(db, 'payout_requests'), {
         supervisorId: uid,
         supervisorEmail: auth.currentUser?.email || '',
         supervisorName: auth.currentUser?.displayName || 'Supervisor',
-        amount: commission,
+        amount: availableCommission,
+        cbuAlias: cbuAlias.trim(),
         status: 'pending',
         createdAt: serverTimestamp(),
       });
 
       Alert.alert(
         'Solicitud Enviada',
-        `Tu solicitud de liquidación de haberes por $${commission.toLocaleString(
+        `Tu solicitud de liquidación de haberes por $${availableCommission.toLocaleString(
           'es-AR'
-        )} fue registrada y transmitida al área de Finanzas.`
+        )} al destino (${cbuAlias.trim()}) fue registrada y transmitida al área de Finanzas.`
       );
     } catch (err: any) {
       console.warn('Error al solicitar retiro:', err);
@@ -140,19 +163,38 @@ export default function WalletSupervisorScreen({ route, navigation }: any) {
 
       {/* Balance Card (100% Real) */}
       <View style={styles.card}>
-        <Text style={styles.cardLabel}>COMISIÓN PENDIENTE DE LIQUIDACIÓN</Text>
+        <Text style={styles.cardLabel}>COMISIÓN DISPONIBLE PARA RETIRO</Text>
         <Text style={styles.cardAmount}>
-          ${metrics.supervisorCommission.toLocaleString('es-AR')}
+          ${availableCommission.toLocaleString('es-AR')}
         </Text>
         <Text style={styles.cardSub}>
-          Calculado sobre Fee de Empresa acumulado (${metrics.companyFee.toLocaleString('es-AR')})
+          Acumulado Mes: ${metrics.supervisorCommission.toLocaleString('es-AR')} · Fee Empresa: ${metrics.companyFee.toLocaleString('es-AR')}
         </Text>
+
+        <TextInput
+          style={{
+            backgroundColor: '#0F172A',
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: '#334155',
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            color: '#FFFFFF',
+            fontSize: 13,
+            marginBottom: 14,
+          }}
+          placeholder="Ingresá tu CBU, CVU o Alias bancario..."
+          placeholderTextColor="#64748B"
+          value={cbuAlias}
+          onChangeText={setCbuAlias}
+          autoCapitalize="none"
+        />
 
         <TouchableOpacity
           disabled={submitting}
           style={[
             styles.payoutBtn,
-            { backgroundColor: metrics.supervisorCommission > 0 ? '#10B981' : '#334155' },
+            { backgroundColor: availableCommission > 0 ? '#10B981' : '#334155' },
           ]}
           onPress={handleRequestPayout}
           activeOpacity={0.85}
@@ -163,9 +205,9 @@ export default function WalletSupervisorScreen({ route, navigation }: any) {
             <>
               <Ionicons name="card-outline" size={18} color="#FFFFFF" />
               <Text style={styles.payoutBtnText}>
-                {metrics.supervisorCommission > 0
+                {availableCommission > 0
                   ? 'Solicitar Retiro / Transferencia'
-                  : 'Sin saldo para retirar ($0)'}
+                  : 'Sin saldo disponible para retirar ($0)'}
               </Text>
             </>
           )}

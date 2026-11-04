@@ -3,28 +3,19 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ActivityIndicator, KeyboardAvoidingView, Platform, Alert, ScrollView,
 } from 'react-native';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateProfile } from 'firebase/auth';
+import { signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'firebase/auth';
 import { auth } from '../lib/firebase';
+import { getOrInitSupervisorProfile } from '../lib/supervisorService';
 import { Colors } from '../lib/constants';
 import { TravelAppLogo } from '../components/BrandLogos';
 import { Ionicons } from '@expo/vector-icons';
 
-const MASTER_ADMIN_EMAILS = [
-  'fernando@travelapp.ar',
-  'ferincola@gmail.com',
-  'edgar@travelapp.ar',
-  'carlos@travelapp.ar',
-];
-
 export default function LoginScreen() {
-  const [isLogin, setIsLogin] = useState(true);
   const [isForgot, setIsForgot] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   // Campos de autenticación
-  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -40,7 +31,6 @@ export default function LoginScreen() {
         await sendPasswordResetEmail(auth, trimmedEmail);
         Alert.alert('Correo enviado', 'Te enviamos las instrucciones para restablecer tu contraseña de Supervisor.');
         setIsForgot(false);
-        setIsLogin(true);
       } catch (err: any) {
         Alert.alert('Error', 'No se pudo enviar el correo de recuperación. Verificá los datos.');
       } finally {
@@ -55,37 +45,23 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      const isMasterAdmin = MASTER_ADMIN_EMAILS.includes(trimmedEmail);
-
-      if (isLogin) {
-        try {
-          await signInWithEmailAndPassword(auth, trimmedEmail, password);
-        } catch (err: any) {
-          if (isMasterAdmin && (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential')) {
-            await createUserWithEmailAndPassword(auth, trimmedEmail, password);
-          } else {
-            throw err;
-          }
-        }
-      } else {
-        if (!name || !phone) {
-          setLoading(false);
-          return Alert.alert('Campos requeridos', 'Completá tu nombre completo y teléfono de guardia.');
-        }
-        const cred = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
-        if (cred.user) {
-          await updateProfile(cred.user, { displayName: name });
-        }
-      }
+      await signInWithEmailAndPassword(auth, trimmedEmail, password);
+      await getOrInitSupervisorProfile();
     } catch (err: any) {
       console.warn('Supervisor Login error:', err);
+      if (err?.message === 'UNAUTHORIZED_ROLE') {
+        await signOut(auth).catch(() => {});
+        Alert.alert(
+          'Acceso Restringido',
+          'Esta aplicación es exclusiva para Supervisores y Auditores autorizados por Concorde 360.'
+        );
+        return;
+      }
       let msg = 'Email o contraseña incorrectos.';
       if (err.code === 'auth/user-not-found') {
         msg = 'El usuario de supervisión no está registrado.';
       } else if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
         msg = 'Contraseña incorrecta. Verificá tu clave o presioná "¿Olvidaste tu contraseña?".';
-      } else if (err.code === 'auth/email-already-in-use') {
-        msg = 'Este email ya está registrado.';
       } else if (err.message) {
         msg = err.message;
       }
@@ -116,48 +92,18 @@ export default function LoginScreen() {
               <Text style={styles.travisText}>
                 {isForgot 
                   ? 'Ingresá tu correo oficial para recuperar el acceso a tu cuenta de Supervisión.'
-                  : isLogin 
-                    ? '¡Bienvenido Inspector! Accedé al control de unidades, choferes y documentación:'
-                    : '¡Alta de Supervisor de Guardia! Ingresá los datos del operador:'}
+                  : '¡Bienvenido Inspector! Accedé al control de unidades, choferes y documentación:'}
               </Text>
             </View>
           </View>
 
-          {/* Formulario de Login / Registro */}
+          {/* Formulario de Login */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>
-              {isForgot ? 'Recuperar Acceso' : isLogin ? 'Ingreso de Guardia' : 'Registrar Supervisor'}
+              {isForgot ? 'Recuperar Acceso' : 'Ingreso de Guardia'}
             </Text>
 
             <View style={styles.form}>
-              {!isLogin && !isForgot && (
-                <>
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Nombre completo del Inspector</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Inspector Carlos Gómez"
-                      placeholderTextColor="#64748B"
-                      value={name}
-                      onChangeText={setName}
-                      autoCapitalize="words"
-                    />
-                  </View>
-
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Teléfono de guardia</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="+5491100000000"
-                      placeholderTextColor="#64748B"
-                      value={phone}
-                      onChangeText={setPhone}
-                      keyboardType="phone-pad"
-                    />
-                  </View>
-                </>
-              )}
-
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Email corporativo / usuario</Text>
                 <TextInput
@@ -198,8 +144,8 @@ export default function LoginScreen() {
                 </View>
               )}
 
-              {isLogin && !isForgot && (
-                <TouchableOpacity onPress={() => { setIsForgot(true); setIsLogin(false); }} style={styles.forgotBtn}>
+              {!isForgot && (
+                <TouchableOpacity onPress={() => setIsForgot(true)} style={styles.forgotBtn}>
                   <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
                 </TouchableOpacity>
               )}
@@ -209,7 +155,7 @@ export default function LoginScreen() {
                   <ActivityIndicator color={Colors.white} />
                 ) : (
                   <Text style={styles.buttonText}>
-                    {isForgot ? 'Enviar Instrucciones' : isLogin ? 'Ingresar a la Central' : 'Crear Usuario Supervisor'}
+                    {isForgot ? 'Enviar Instrucciones' : 'Ingresar a la Central'}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -219,21 +165,13 @@ export default function LoginScreen() {
           {/* Switchers en Footer */}
           <View style={styles.footerLinks}>
             {isForgot ? (
-              <TouchableOpacity onPress={() => { setIsForgot(false); setIsLogin(true); }}>
+              <TouchableOpacity onPress={() => setIsForgot(false)}>
                 <Text style={styles.footerLinkText}>Volver al Login</Text>
               </TouchableOpacity>
-            ) : isLogin ? (
-              <TouchableOpacity onPress={() => setIsLogin(false)}>
-                <Text style={styles.footerLinkText}>
-                  ¿Nuevo operador? <Text style={styles.footerLinkBold}>Registrar supervisor</Text>
-                </Text>
-              </TouchableOpacity>
             ) : (
-              <TouchableOpacity onPress={() => setIsLogin(true)}>
-                <Text style={styles.footerLinkText}>
-                  ¿Ya tenés usuario? <Text style={styles.footerLinkBold}>Iniciá sesión</Text>
-                </Text>
-              </TouchableOpacity>
+              <Text style={styles.footerLinkText}>
+                Altas de inspectores gestionadas por Concorde 360
+              </Text>
             )}
           </View>
         </View>

@@ -30,9 +30,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Código de autorización no provisto por Mercado Pago' }, { status: 400 });
     }
 
-    const clientId = process.env.MP_CLIENT_ID;
+    const accessToken = process.env.MP_ACCESS_TOKEN || '';
+    const extractedClientId = accessToken.startsWith('APP_USR-') ? accessToken.split('-')[1] : undefined;
+    const clientId = process.env.MP_CLIENT_ID || extractedClientId;
     const clientSecret = process.env.MP_CLIENT_SECRET;
-    const redirectUri = process.env.MP_OAUTH_REDIRECT_URI || `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/mp/oauth/callback`;
+    const redirectUri = process.env.MP_OAUTH_REDIRECT_URI || `${process.env.NEXT_PUBLIC_APP_URL || 'https://travelapp.ar'}/api/mp/oauth/callback`;
 
     // 1. Intercambiar 'code' por 'access_token' en la API OAuth de Mercado Pago
     let mpTokenData: any = null;

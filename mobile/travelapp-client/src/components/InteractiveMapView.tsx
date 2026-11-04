@@ -1,7 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { CAR_MARKER_SVG } from '../assets/carMarkerSvgBase64';
+import { CAR_MARKER_BASE64 } from '../assets/carMarkerBase64';
 
 interface InteractiveMapViewProps {
   originCoords?: { latitude?: number; longitude?: number; lat?: number; lng?: number } | null;
@@ -18,7 +18,9 @@ export const InteractiveMapView: React.FC<InteractiveMapViewProps> = ({
   onlineDrivers = [],
   style,
 }) => {
-  const htmlContent = useMemo(() => {
+  const webViewRef = useRef<WebView>(null);
+
+  const buildMapPayload = useCallback(() => {
     const originLat = originCoords?.latitude ?? (originCoords as any)?.lat ?? -26.8326;
     const originLng = originCoords?.longitude ?? (originCoords as any)?.lng ?? -65.2038;
     const destLat = destinationCoords?.latitude ?? (destinationCoords as any)?.lat ?? null;
@@ -42,6 +44,27 @@ export const InteractiveMapView: React.FC<InteractiveMapViewProps> = ({
       ? routeCoordinates.map((c: any) => [c.latitude ?? c.lat, c.longitude ?? c.lng])
       : (destLat && destLng ? [[originLat, originLng], [destLat, destLng]] : []);
 
+    return {
+      originLat,
+      originLng,
+      destLat,
+      destLng,
+      driversData,
+      routeData,
+    };
+  }, [originCoords, destinationCoords, routeCoordinates, onlineDrivers]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' && webViewRef.current) {
+      const payload = JSON.stringify(buildMapPayload());
+      webViewRef.current.injectJavaScript(
+        `if (window.updateMapState) { window.updateMapState(${payload}); } true;`
+      );
+    }
+  }, [buildMapPayload]);
+
+  const htmlContent = useMemo(() => {
+    const initial = buildMapPayload();
     return `
 <!DOCTYPE html>
 <html>
@@ -90,67 +113,95 @@ export const InteractiveMapView: React.FC<InteractiveMapViewProps> = ({
     var map = L.map('map', {
       zoomControl: false,
       attributionControl: false
-    }).setView([${originLat}, ${originLng}], 15);
+    }).setView([${initial.originLat}, ${initial.originLng}], 15);
 
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
+      subdomains: 'abcd'
     }).addTo(map);
 
-    var carImg = "${CAR_MARKER_SVG}";
-
-    // Marcador de Origen
+    var carImg = "${CAR_MARKER_BASE64}";
     var originIcon = L.divIcon({
       className: '',
       html: '<div class="pulse-pin-origin"></div>',
       iconSize: [22, 22],
       iconAnchor: [11, 11]
     });
-    L.marker([${originLat}, ${originLng}], { icon: originIcon }).addTo(map);
-
-    // Marcador de Destino
-    ${destLat && destLng ? `
     var destIcon = L.divIcon({
       className: '',
       html: '<div class="pulse-pin-dest"></div>',
       iconSize: [22, 22],
       iconAnchor: [11, 11]
     });
-    L.marker([${destLat}, ${destLng}], { icon: destIcon }).addTo(map);
-    ` : ''}
 
-    // Ruta
-    var routePoints = ${JSON.stringify(routeData)};
-    if (routePoints.length > 0) {
-      var polyline = L.polyline(routePoints, {
-        color: '#FF6B00',
-        weight: 6,
-        opacity: 0.95,
-        lineCap: 'round',
-        lineJoin: 'round'
-      }).addTo(map);
+    var originMarker = null;
+    var destMarker = null;
+    var routePolyline = null;
+    var driverMarkers = [];
+    var lastRouteKey = '';
 
-      map.fitBounds(polyline.getBounds(), {
-        padding: [60, 60],
-        maxZoom: 16
+    window.updateMapState = function(state) {
+      if (!state) return;
+      if (originMarker) {
+        originMarker.setLatLng([state.originLat, state.originLng]);
+      } else {
+        originMarker = L.marker([state.originLat, state.originLng], { icon: originIcon }).addTo(map);
+      }
+
+      if (state.destLat && state.destLng) {
+        if (destMarker) {
+          destMarker.setLatLng([state.destLat, state.destLng]);
+        } else {
+          destMarker = L.marker([state.destLat, state.destLng], { icon: destIcon }).addTo(map);
+        }
+      } else if (destMarker) {
+        map.removeLayer(destMarker);
+        destMarker = null;
+      }
+
+      if (routePolyline) {
+        map.removeLayer(routePolyline);
+        routePolyline = null;
+      }
+      if (state.routeData && state.routeData.length > 0) {
+        routePolyline = L.polyline(state.routeData, {
+          color: '#FF6B00',
+          weight: 6,
+          opacity: 0.95,
+          lineCap: 'round',
+          lineJoin: 'round'
+        }).addTo(map);
+        var routeKey = state.originLat + ',' + state.originLng + '-' + state.destLat + ',' + state.destLng;
+        if (routeKey !== lastRouteKey) {
+          lastRouteKey = routeKey;
+          map.fitBounds(routePolyline.getBounds(), {
+            padding: [60, 60],
+            maxZoom: 16
+          });
+        }
+      }
+
+      driverMarkers.forEach(function(m) { map.removeLayer(m); });
+      driverMarkers = [];
+      (state.driversData || []).forEach(function(d) {
+        if (d.lat && d.lng) {
+          var driverIcon = L.divIcon({
+            className: '',
+            html: '<img src="' + carImg + '" class="car-marker-icon" style="width:42px;height:42px;object-fit:contain;transform:rotate(' + d.heading + 'deg);" />',
+            iconSize: [42, 42],
+            iconAnchor: [21, 21]
+          });
+          driverMarkers.push(L.marker([d.lat, d.lng], { icon: driverIcon }).addTo(map));
+        }
       });
-    }
+    };
 
-    // Choferes con tu icono SVG diseñado y rotación exacta
-    var drivers = ${JSON.stringify(driversData)};
-    drivers.forEach(function(d) {
-      var driverIcon = L.divIcon({
-        className: '',
-        html: '<img src="' + carImg + '" class="car-marker-icon" style="width:42px;height:42px;object-fit:contain;transform:rotate(' + d.heading + 'deg);" />',
-        iconSize: [42, 42],
-        iconAnchor: [21, 21]
-      });
-      L.marker([d.lat, d.lng], { icon: driverIcon }).addTo(map);
-    });
+    window.updateMapState(${JSON.stringify(initial)});
   </script>
 </body>
 </html>
     `;
-  }, [originCoords, destinationCoords, routeCoordinates, onlineDrivers]);
+  }, [Platform.OS === 'web' ? buildMapPayload : null]);
 
   if (Platform.OS === 'web') {
     return (
@@ -167,6 +218,7 @@ export const InteractiveMapView: React.FC<InteractiveMapViewProps> = ({
   return (
     <View style={[styles.container, style]}>
       <WebView
+        ref={webViewRef}
         originWhitelist={['*']}
         source={{ html: htmlContent }}
         style={styles.webview}
@@ -174,6 +226,12 @@ export const InteractiveMapView: React.FC<InteractiveMapViewProps> = ({
         domStorageEnabled={true}
         startInLoadingState={false}
         scalesPageToFit={true}
+        onLoadEnd={() => {
+          const payload = JSON.stringify(buildMapPayload());
+          webViewRef.current?.injectJavaScript(
+            `if (window.updateMapState) { window.updateMapState(${payload}); } true;`
+          );
+        }}
       />
     </View>
   );

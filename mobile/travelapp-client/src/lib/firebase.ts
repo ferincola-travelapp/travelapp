@@ -53,7 +53,7 @@ try {
     : createReactNativePersistence(AsyncStorage);
 
   authInstance = initializeAuth(app, {
-    persistence: persistenceClass,
+    persistence: persistenceClass as any,
   });
 } catch (_err) {
   authInstance = getAuth(app);

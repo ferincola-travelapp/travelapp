@@ -23,16 +23,16 @@ const BENEFITS = [
 export default function RewardsScreen() {
   const navigation = useNavigation<any>();
   const user = auth.currentUser;
-  const [userPoints, setUserPoints] = useState(850);
+  const [userPoints, setUserPoints] = useState(0);
 
   useEffect(() => {
     if (user?.uid) {
       const unsub = onSnapshot(doc(db, 'users', user.uid), (snap) => {
         if (snap.exists()) {
           const data = snap.data();
-          if (data.rewardsPoints !== undefined) {
-            setUserPoints(data.rewardsPoints);
-          }
+          setUserPoints(Number(data.rewardsPoints) || 0);
+        } else {
+          setUserPoints(0);
         }
       });
       return unsub;

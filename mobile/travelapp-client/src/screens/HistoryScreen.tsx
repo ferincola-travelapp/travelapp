@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, limit } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
 import { db, auth } from '../lib/firebase';
 import { Colors } from '../lib/constants';
@@ -24,8 +24,9 @@ export default function HistoryScreen() {
         const user = auth.currentUser!;
         const q = query(
           collection(db, 'trips'),
-          where('userId', '==', user.uid),
-          orderBy('createdAt', 'desc')
+          where('passengerId', '==', user.uid),
+          orderBy('createdAt', 'desc'),
+          limit(50)
         );
         const snap = await getDocs(q);
         setTrips(snap.docs.map(d => ({ id: d.id, ...d.data() })));

@@ -4,7 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { auth, db } from '../lib/firebase';
 import { Colors } from '../lib/constants';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, deleteDoc } from 'firebase/firestore';
+import { deleteUser } from 'firebase/auth';
 
 const MENU_ITEMS = [
   { icon: 'person-circle-outline', label: 'Ficha de Cliente (Datos & Familia)', route: 'CompleteProfile', highlight: true },
@@ -18,7 +19,8 @@ const MENU_ITEMS = [
 export default function ProfileScreen() {
   const navigation = useNavigation<any>();
   const user = auth.currentUser;
-  const [points, setPoints] = useState(850);
+  const [points, setPoints] = useState(0);
+  const [tripsCount, setTripsCount] = useState(0);
   const [customerLevel, setCustomerLevel] = useState<number>(1);
   const [progress, setProgress] = useState<number>(30);
   const [familyCount, setFamilyCount] = useState<number>(0);
@@ -27,12 +29,10 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     if (user?.uid) {
-      const unsub = onSnapshot(doc(db, 'users', user.uid), (snap) => {
+      const unsubUser = onSnapshot(doc(db, 'users', user.uid), (snap) => {
         if (snap.exists()) {
           const data = snap.data();
-          if (data.rewardsPoints !== undefined) {
-            setPoints(data.rewardsPoints);
-          }
+          setPoints(Number(data.rewardsPoints) || 0);
           if (data.customerLevel !== undefined) {
             setCustomerLevel(data.customerLevel);
           }
@@ -44,7 +44,16 @@ export default function ProfileScreen() {
           }
         }
       });
-      return unsub;
+
+      const qTrips = query(collection(db, 'trips'), where('passengerId', '==', user.uid));
+      const unsubTrips = onSnapshot(qTrips, (snap) => {
+        setTripsCount(snap.size);
+      });
+
+      return () => {
+        unsubUser();
+        unsubTrips();
+      };
     }
   }, [user?.uid]);
 
@@ -57,6 +66,34 @@ export default function ProfileScreen() {
         onPress: () => auth.signOut(),
       },
     ]);
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Eliminar mi cuenta',
+      '¿Estás seguro de que deseás eliminar permanentemente tu cuenta y tus datos de TravelApp? Esta acción no se puede deshacer.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar Cuenta',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const currentUser = auth.currentUser;
+              if (!currentUser) return;
+              await deleteDoc(doc(db, 'users', currentUser.uid)).catch(() => {});
+              try {
+                await deleteUser(currentUser);
+              } catch {
+                await auth.signOut();
+              }
+            } catch {
+              Alert.alert('Aviso', 'Por seguridad, iniciá sesión nuevamente antes de eliminar tu cuenta.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleSupportAction = (type: 'phone' | 'email' | 'whatsapp' | 'travis' | 'emergency') => {
@@ -108,7 +145,7 @@ export default function ProfileScreen() {
 
           <View style={styles.statRow}>
             <View style={styles.stat}>
-              <Text style={styles.statValue}>0</Text>
+              <Text style={styles.statValue}>{tripsCount}</Text>
               <Text style={styles.statLabel}>Viajes</Text>
             </View>
             <View style={styles.statDivider} />
@@ -196,6 +233,17 @@ export default function ProfileScreen() {
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={20} color={Colors.danger} />
           <Text style={styles.logoutText}>Cerrar sesión</Text>
+        </TouchableOpacity>
+
+        {/* Eliminar Cuenta (Requisito Oficial Google Play) */}
+        <TouchableOpacity
+          style={[styles.logoutBtn, { borderColor: '#CBD5E1', marginTop: 0 }]}
+          onPress={handleDeleteAccount}
+        >
+          <Ionicons name="trash-outline" size={18} color={Colors.textMuted} />
+          <Text style={[styles.logoutText, { color: Colors.textMuted, fontSize: 13 }]}>
+            Eliminar mi cuenta y datos
+          </Text>
         </TouchableOpacity>
 
         <Text style={styles.version}>TravelApp v1.0.0 · Producción Segura</Text>

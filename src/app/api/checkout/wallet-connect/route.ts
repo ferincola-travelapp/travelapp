@@ -10,8 +10,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'userId es requerido' }, { status: 400 });
     }
 
-    const clientId = process.env.MP_CLIENT_ID;
-    const redirectUri = process.env.MP_OAUTH_REDIRECT_URI || `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/mp/oauth/callback`;
+    const accessToken = process.env.MP_ACCESS_TOKEN || '';
+    const extractedClientId = accessToken.startsWith('APP_USR-') ? accessToken.split('-')[1] : undefined;
+    const clientId = process.env.MP_CLIENT_ID || extractedClientId;
+    const redirectUri = process.env.MP_OAUTH_REDIRECT_URI || `${process.env.NEXT_PUBLIC_APP_URL || 'https://travelapp.ar'}/api/mp/oauth/callback`;
     const state = `${role}_${userId}`;
 
     if (clientId && !clientId.includes('TU_CLIENT_ID')) {

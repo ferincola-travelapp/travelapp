@@ -16,14 +16,27 @@ service cloud.firestore {
 
     // 3. Verifica si el usuario posee rol de Administrador Global u Operador
     function isAdmin() {
-      return isAuthenticated() && 
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true ||
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.rol == 'admin_global' ||
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.is_owner == true);
     }
 
-    // 4. Previene la modificación de campos sensibles de administración (ej. roles, saldos, comisiones)
+    // 4. Verifica si el usuario posee rol de Supervisor de Flota activo
+    function isSupervisor() {
+      return isAuthenticated() && (
+        (exists(/databases/$(database)/documents/supervisors/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/supervisors/$(request.auth.uid)).data.status != 'Suspendido') ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'supervisor' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSupervisor == true)) ||
+        isAdmin()
+      );
+    }
+
+    // 5. Previene la modificación de campos sensibles de administración (ej. roles, saldos, comisiones)
     function notModifyingSensitiveFields(sensitiveFields) {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny(sensitiveFields);
     }
@@ -75,14 +88,31 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAdmin();
     }
+    match /rewards_config/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /home_native_cards/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
 
     // --- USUARIOS Y PERFILES DE PASAJEROS ---
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow create: if isOwner(userId);
-      // El usuario no puede auto-otorgarse el rol de administrador ni alterar sus puntos directamente
-      allow update: if isOwner(userId) && notModifyingSensitiveFields(['isAdmin', 'role', 'rol', 'is_owner', 'rewardsPoints']);
-      allow write: if isAdmin();
+      // Evita auto-asignación de roles administrativos al crear cuenta
+      allow create: if (isOwner(userId) &&
+        !request.resource.data.keys().hasAny(['isAdmin', 'is_owner', 'isSupervisor']) &&
+        (!('role' in request.resource.data) || request.resource.data.role in ['user', 'passenger', 'client', 'driver']) &&
+        (!('rol' in request.resource.data) || request.resource.data.rol in ['user', 'passenger', 'client', 'driver']))
+        || isAdmin();
+      // El usuario no puede auto-otorgarse rol de administrador ni alterar saldo de billetera
+      allow update: if (isOwner(userId) &&
+        notModifyingSensitiveFields(['isAdmin', 'role', 'rol', 'is_owner', 'isSupervisor', 'walletBalance']) &&
+        (!('rewardsPoints' in request.resource.data) || request.resource.data.rewardsPoints >= 0))
+        || isSupervisor()
+        || isAdmin();
+      allow delete: if isOwner(userId) || isAdmin();
 
       // Subcolecciones privadas del usuario (favoritos, billetera, historial)
       match /{allSubcollections=**} {
@@ -93,48 +123,74 @@ service cloud.firestore {
     // --- CONDUCTORES Y FLOTA (DRIVERS) ---
     match /drivers/{driverId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.auth.uid == driverId;
-      // Chofer puede actualizar ubicación GPS y estado online, pero NO sus balances de comisión ni modos autorizados
-      allow update: if (isAuthenticated() && request.auth.uid == driverId && 
-                       notModifyingSensitiveFields(['maxNegativeBalance', 'currentCommissionBalance', 'allowedServiceModes', 'rating'])) 
-                    || isAdmin();
+      allow create: if (isAuthenticated() && request.auth.uid == driverId) || isSupervisor() || isAdmin();
+      // Chofer puede actualizar ubicación GPS, estado online y balance operativo de viajes,
+      // Supervisores pueden aprobar/suspender y gestionar documentos,
+      // Pasajeros autenticados solo pueden actualizar calificación o puntos pendientes del viaje.
+      allow update: if (isAuthenticated() && request.auth.uid == driverId &&
+                       notModifyingSensitiveFields(['maxNegativeBalance', 'allowedServiceModes']))
+                    || isSupervisor()
+                    || isAdmin()
+                    || (isAuthenticated() &&
+                        request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['pendingRewardsPoints', 'pendingRewardsArs', 'rating', 'totalRatings', 'reviewsCount', 'updatedAt']));
       allow delete: if isAdmin();
 
-      // Subcolecciones del conductor (transacciones, gastos)
+      // Subcolecciones del conductor (transacciones, gastos, vehículos, notificaciones)
       match /transactions/{txId} {
-        allow read: if isAuthenticated() && request.auth.uid == driverId;
-        allow write: if isAdmin();
+        allow read: if (isAuthenticated() && request.auth.uid == driverId) || isSupervisor() || isAdmin();
+        allow create: if (isAuthenticated() && request.auth.uid == driverId) || isSupervisor() || isAdmin();
+        allow update, delete: if isAdmin();
       }
       match /expenses/{expId} {
-        allow read, write: if isAuthenticated() && request.auth.uid == driverId;
+        allow read, write: if (isAuthenticated() && request.auth.uid == driverId) || isAdmin();
+      }
+      match /vehicles/{vehicleId} {
+        allow read, write: if (isAuthenticated() && request.auth.uid == driverId) || isSupervisor() || isAdmin();
+      }
+      match /notifications/{notifId} {
+        allow read, update: if (isAuthenticated() && request.auth.uid == driverId) || isSupervisor() || isAdmin();
+        allow create, delete: if isSupervisor() || isAdmin();
       }
     }
 
     // --- GESTIÓN DE VIAJES Y LOGÍSTICA (TRIPS) ---
     match /trips/{tripId} {
-      // Lectura: Pasajero del viaje, Chofer asignado o Administrador
+      // Lectura: Pasajero del viaje, Chofer asignado, Supervisor, Administrador o viajes buscando chofer
       allow read: if isAuthenticated() && (
         resource.data.passengerId == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
         resource.data.driverId == request.auth.uid ||
-        isAdmin() ||
         resource.data.status == 'searching' ||
-        resource.data.status == 'requested'
+        resource.data.status == 'requested' ||
+        resource.data.status == 'scheduled' ||
+        isSupervisor() ||
+        isAdmin()
       );
-      
-      // Creación: Usuario autenticado creando un viaje donde él es el pasajero
-      allow create: if isAuthenticated() && request.resource.data.passengerId == request.auth.uid;
-      
-      // Actualización:
-      // - Pasajero puede cancelar o añadir incentivo
-      // - Conductor asignado puede cambiar el estado del viaje (accepted, arrived, in_progress, completed)
-      // - Administrador puede gestionar cualquier viaje
-      allow update: if isAuthenticated() && (
-        resource.data.passengerId == request.auth.uid ||
-        resource.data.driverId == request.auth.uid ||
+
+      // Creación: Pasajero creando su viaje o Chofer iniciando viaje de Taxímetro Digital
+      allow create: if isAuthenticated() && (
+        request.resource.data.passengerId == request.auth.uid ||
+        request.resource.data.userId == request.auth.uid ||
         request.resource.data.driverId == request.auth.uid ||
         isAdmin()
       );
+
+      // Actualización: Pasajero, Conductor asignado, Supervisor o Admin
+      allow update: if isAuthenticated() && (
+        resource.data.passengerId == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.driverId == request.auth.uid ||
+        request.resource.data.driverId == request.auth.uid ||
+        isSupervisor() ||
+        isAdmin()
+      );
       allow delete: if isAdmin();
+
+      // Subcolección de Chat en vivo del viaje (Pasajero <-> Conductor)
+      match /messages/{messageId} {
+        allow read, create, update, delete: if isAuthenticated();
+      }
     }
 
     // --- CONFIGURACIÓN DEL SISTEMA ---
@@ -145,20 +201,57 @@ service cloud.firestore {
 
     // --- EXPERIENCIAS Y SALIDAS PROPIAS / MI VIAJE (CONTRACTED TRIPS) ---
     match /contracted_trips/{tripId} {
-      // Lectura y creación de reservas desde las landings públicas permitidas
       allow read: if true;
       allow create: if true;
-      // Actualización y borrado permitidos para administradores, operadores y coordinadores asignados
-      allow update, delete: if isAdmin() || (isAuthenticated() && (
-        resource.data.coordinator.phone == request.auth.token.phone_number ||
-        request.resource.data.coordinator.phone == request.auth.token.phone_number
-      ));
+      allow update: if isAuthenticated() || isAdmin();
+      allow delete: if isAdmin();
 
-      // Subcolecciones de fotos en vivo, comunicados y vouchers
+      // Subcolecciones de fotos en vivo, chat grupal, comunicados y vouchers
       match /{subcollection=**} {
         allow read: if true;
         allow write: if isAuthenticated();
       }
+    }
+
+    // --- SUPERVISORES DE FLOTA ---
+    match /supervisors/{supervisorId} {
+      allow read: if isOwner(supervisorId) || isSupervisor() || isAdmin();
+      allow create: if isAdmin();
+      allow update: if (isOwner(supervisorId) && notModifyingSensitiveFields(['role', 'status', 'commissionRate'])) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // --- SOLICITUDES DE RETIRO (CONDUCTORES Y SUPERVISORES) ---
+    match /payout_requests/{reqId} {
+      allow read: if isAuthenticated() && (resource.data.supervisorId == request.auth.uid || isSupervisor() || isAdmin());
+      allow create: if isSupervisor() || isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    match /withdrawal_requests/{reqId} {
+      allow read: if isAuthenticated() && (resource.data.driverId == request.auth.uid || isSupervisor() || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.driverId == request.auth.uid;
+      allow update, delete: if isSupervisor() || isAdmin();
+    }
+
+    // --- COMUNICADOS DE FLOTA (SUPERVISORES -> CONDUCTORES) ---
+    match /fleet_announcements/{annId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isSupervisor() || isAdmin();
+    }
+
+    // --- CANJES DE BENEFICIOS REWARDS ---
+    match /reward_redemptions/{redemptionId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // --- REGISTROS DE AUDITORÍA INMUTABLES (AUDIT LOGS) ---
+    match /audit_logs/{logId} {
+      allow read: if isSupervisor() || isAdmin();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
     }
 
     // --- SOLICITUDES DE PARTNERS Y CONDUCTORES (PARTNER APPLICATIONS) ---
@@ -191,9 +284,15 @@ service cloud.firestore {
 
     // --- NOTIFICACIONES PUSH & IN-APP ---
     match /notifications/{notifId} {
-      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.target in ['all', 'drivers', 'passengers'] ||
+        !('userId' in resource.data) ||
+        isSupervisor() ||
+        isAdmin()
+      );
       allow create: if isAuthenticated() || isAdmin();
-      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin() || isSupervisor() || (isAuthenticated() && resource.data.userId == request.auth.uid);
     }
   }
 }

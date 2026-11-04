@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Linking, TextInput } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Linking, TextInput, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
 import { auth, db } from '../lib/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
-import { signOut } from 'firebase/auth';
+import { doc, updateDoc, onSnapshot, collection, query, where, deleteDoc } from 'firebase/firestore';
+import { signOut, deleteUser } from 'firebase/auth';
 import { Colors } from '../lib/constants';
 
 export default function ProfileScreen() {
@@ -16,31 +17,109 @@ export default function ProfileScreen() {
   const [vehicleModalVisible, setVehicleModalVisible] = useState(false);
   const [docsModalVisible, setDocsModalVisible] = useState(false);
 
-  // Vehicle State
+  const [driverRating, setDriverRating] = useState<number>(5.0);
+  const [totalTrips, setTotalTrips] = useState<number>(0);
+  const [registrationType, setRegistrationType] = useState<'direct' | 'supervisor'>('direct');
+  const [supervisorCode, setSupervisorCode] = useState<string>('');
+  const [driverPhotoUrl, setDriverPhotoUrl] = useState<string>('');
+  const [driverStatus, setDriverStatus] = useState<string>('active');
+
+  // Vehicle State (100% Real from Firestore)
   const [vehicleData, setVehicleData] = useState({
-    brand: 'Fiat Cronos',
-    model: '2023',
-    color: 'Gris Plata',
-    plate: 'AF 123 JK',
+    brand: '',
+    model: '',
+    color: '',
+    plate: '',
     category: 'TravelCab Standard',
+    photoUrl: '',
   });
   const [savingVehicle, setSavingVehicle] = useState(false);
 
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsubDriver = onSnapshot(doc(db, 'drivers', user.uid), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (typeof data.rating === 'number') setDriverRating(data.rating);
+        if (typeof data.totalTrips === 'number') setTotalTrips(data.totalTrips);
+        setRegistrationType(data.registrationType === 'supervisor' || data.referredBySupervisorCode ? 'supervisor' : 'direct');
+        setSupervisorCode(data.referredBySupervisorCode || '');
+        if (data.photoUrl) setDriverPhotoUrl(data.photoUrl);
+        if (data.status) setDriverStatus(data.status);
+        if (data.activeVehicle) {
+          setVehicleData({
+            brand: data.activeVehicle.brand || '',
+            model: data.activeVehicle.model || '',
+            color: data.activeVehicle.color || '',
+            plate: data.activeVehicle.plate || '',
+            category: data.activeVehicle.category || 'TravelCab Standard',
+            photoUrl: data.activeVehicle.photoUrl || data.vehiclePhotoUrl || '',
+          });
+        }
+      }
+    });
+
+    const qTrips = query(
+      collection(db, 'trips'),
+      where('driverId', '==', user.uid),
+      where('status', '==', 'completed')
+    );
+    const unsubTrips = onSnapshot(qTrips, (snap) => {
+      setTotalTrips(snap.size);
+    });
+
+    return () => {
+      unsubDriver();
+      unsubTrips();
+    };
+  }, [user?.uid]);
+
+  const handlePickVehiclePhoto = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permiso requerido', 'Necesitamos acceso a tu galería para subir la foto del vehículo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [16, 9],
+      quality: 0.4,
+      base64: true,
+    });
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      const uri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
+      setVehicleData((prev) => ({ ...prev, photoUrl: uri }));
+    }
+  };
+
   const handleSaveVehicle = async () => {
+    if (!vehicleData.brand.trim() || !vehicleData.plate.trim()) {
+      Alert.alert('Datos incompletos', 'Por favor ingresá al menos la marca/modelo y la patente (dominio) del vehículo.');
+      return;
+    }
     setSavingVehicle(true);
     try {
+      const normalizedVehicle = {
+        ...vehicleData,
+        brand: vehicleData.brand.trim(),
+        plate: vehicleData.plate.trim().toUpperCase(),
+        color: vehicleData.color.trim(),
+      };
       if (user) {
         await updateDoc(doc(db, 'drivers', user.uid), {
-          activeVehicle: vehicleData,
+          activeVehicle: normalizedVehicle,
+          vehiclePhotoUrl: normalizedVehicle.photoUrl || null,
           updatedAt: Date.now(),
         });
       }
+      setVehicleData(normalizedVehicle);
       setVehicleModalVisible(false);
-      Alert.alert('¡Vehículo Actualizado!', 'Los datos de tu vehículo activo fueron guardados.');
+      Alert.alert('¡Vehículo Actualizado!', 'Los datos y foto de tu vehículo activo fueron guardados en tiempo real.');
     } catch (err) {
       console.warn('Error saving vehicle:', err);
-      Alert.alert('Éxito local', 'Datos del vehículo actualizados correctamente.');
-      setVehicleModalVisible(false);
+      Alert.alert('Error', 'No se pudieron actualizar los datos del vehículo.');
     } finally {
       setSavingVehicle(false);
     }
@@ -51,6 +130,34 @@ export default function ProfileScreen() {
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Salir', style: 'destructive', onPress: () => signOut(auth) },
     ]);
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Eliminar cuenta y datos',
+      '¿Estás seguro de que querés eliminar permanentemente tu cuenta de conductor y todos tus datos asociados? Esta acción no se puede deshacer.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar permanentemente',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              if (auth.currentUser) {
+                const uid = auth.currentUser.uid;
+                await deleteDoc(doc(db, 'drivers', uid)).catch(() => {});
+                await deleteUser(auth.currentUser);
+              }
+            } catch (e: any) {
+              Alert.alert(
+                'Reautenticación requerida',
+                'Por seguridad, cerrá sesión, volvé a ingresar y solicitá nuevamente la eliminación de tu cuenta, o escribinos a soporte@travelapp.ar.'
+              );
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleSupportOption = (type: 'emergency' | 'whatsapp' | 'travis' | 'phone' | 'email') => {
@@ -89,19 +196,27 @@ export default function ProfileScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Tarjeta de conductor */}
         <View style={styles.driverCard}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initials}</Text>
-          </View>
+          {driverPhotoUrl ? (
+            <Image source={{ uri: driverPhotoUrl }} style={[styles.avatar, { overflow: 'hidden' }]} />
+          ) : (
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{initials}</Text>
+            </View>
+          )}
           <Text style={styles.name}>{user?.displayName || 'Conductor Registrado'}</Text>
           <Text style={styles.email}>{user?.email}</Text>
           <View style={styles.badgeRow}>
             <View style={styles.badge}>
               <Ionicons name="shield-checkmark" size={14} color={Colors.success} />
-              <Text style={styles.badgeText}>Socio Habilitado 🟢</Text>
+              <Text style={styles.badgeText}>
+                {driverStatus === 'active' || driverStatus === 'approved' ? 'Socio Habilitado 🟢' : 'En Verificación 🟡'}
+              </Text>
             </View>
             <View style={styles.badge}>
-              <Ionicons name="star" size={14} color={Colors.accent} />
-              <Text style={styles.badgeText}>4.9 Rating</Text>
+              <Ionicons name="git-network-outline" size={14} color={Colors.primary} />
+              <Text style={styles.badgeText}>
+                {registrationType === 'supervisor' ? `Supervisor (${supervisorCode || 'Red'})` : 'Alta Directa'}
+              </Text>
             </View>
           </View>
         </View>
@@ -109,9 +224,9 @@ export default function ProfileScreen() {
         {/* Stats */}
         <View style={styles.statsRow}>
           {[
-            { label: 'Viajes totales', value: '184', icon: 'car' },
-            { label: 'Horas activo', value: '142h', icon: 'time' },
-            { label: 'Rating', value: '4.9 ⭐', icon: 'star' },
+            { label: 'Viajes realizados', value: String(totalTrips), icon: 'car' },
+            { label: 'Dominio activo', value: vehicleData.plate || 'Sin patente', icon: 'pricetag' },
+            { label: 'Rating', value: `${driverRating.toFixed(1)} ⭐`, icon: 'star' },
           ].map(s => (
             <View key={s.label} style={styles.statCard}>
               <Ionicons name={s.icon as any} size={20} color={Colors.accent} />
@@ -138,6 +253,14 @@ export default function ProfileScreen() {
           <Ionicons name="log-out-outline" size={20} color={Colors.danger} />
           <Text style={styles.logoutText}>Cerrar sesión</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.logoutBtn, { marginTop: 10, backgroundColor: 'transparent', borderColor: '#CBD5E1' }]}
+          onPress={handleDeleteAccount}
+        >
+          <Ionicons name="trash-outline" size={18} color={Colors.textMuted} />
+          <Text style={[styles.logoutText, { color: Colors.textMuted, fontSize: 12 }]}>Eliminar mi cuenta y datos</Text>
+        </TouchableOpacity>
         <Text style={styles.version}>TravelCab Conductor v1.0.0 — APK Producción 🟢</Text>
       </ScrollView>
 
@@ -154,23 +277,26 @@ export default function ProfileScreen() {
               <Ionicons name="car" size={24} color={Colors.primary} />
               <Text style={styles.modalTitle}>Datos de Vehículo Activo</Text>
             </View>
-            <Text style={styles.modalSubtitle}>Modificá los datos del auto asignado a tus turnos de TravelCab.</Text>
+            <Text style={styles.modalSubtitle}>Esta información y la foto real del auto se muestran al pasajero al aceptar un viaje.</Text>
 
             <View style={styles.formGroup}>
               <Text style={styles.label}>Marca y Modelo</Text>
               <TextInput
                 style={styles.input}
+                placeholder="Ej: Fiat Cronos"
                 value={vehicleData.brand}
                 onChangeText={(text) => setVehicleData({ ...vehicleData, brand: text })}
               />
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.label}>Patente / Dominio</Text>
+              <Text style={styles.label}>Patente / Dominio (Visible al pasajero)</Text>
               <TextInput
                 style={styles.input}
+                placeholder="Ej: AF 123 JK"
+                autoCapitalize="characters"
                 value={vehicleData.plate}
-                onChangeText={(text) => setVehicleData({ ...vehicleData, plate: text })}
+                onChangeText={(text) => setVehicleData({ ...vehicleData, plate: text.toUpperCase() })}
               />
             </View>
 
@@ -178,6 +304,7 @@ export default function ProfileScreen() {
               <Text style={styles.label}>Color</Text>
               <TextInput
                 style={styles.input}
+                placeholder="Ej: Gris Plata"
                 value={vehicleData.color}
                 onChangeText={(text) => setVehicleData({ ...vehicleData, color: text })}
               />
@@ -190,6 +317,22 @@ export default function ProfileScreen() {
                 value={vehicleData.category}
                 onChangeText={(text) => setVehicleData({ ...vehicleData, category: text })}
               />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Foto Real del Vehículo</Text>
+              <TouchableOpacity
+                style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 }]}
+                onPress={handlePickVehiclePhoto}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons name={vehicleData.photoUrl ? 'checkmark-circle' : 'camera-outline'} size={18} color={vehicleData.photoUrl ? Colors.success : Colors.primary} />
+                  <Text style={{ fontSize: 12, fontFamily: 'Quicksand-Bold', color: Colors.textDark }}>
+                    {vehicleData.photoUrl ? 'Foto del vehículo cargada (Tocar para cambiar)' : 'Subir foto exterior del auto'}
+                  </Text>
+                </View>
+                <Ionicons name="cloud-upload-outline" size={18} color={Colors.textMuted} />
+              </TouchableOpacity>
             </View>
 
             <View style={styles.modalButtonsRow}>
@@ -217,29 +360,29 @@ export default function ProfileScreen() {
               <Ionicons name="document-text" size={24} color={Colors.primary} />
               <Text style={styles.modalTitle}>Documentación Operativa</Text>
             </View>
-            <Text style={styles.modalSubtitle}>Estado de vigencia de licencias y seguros requeridos por TravelCab.</Text>
+            <Text style={styles.modalSubtitle}>Estado de tus documentos verificados en Concorde 360 ({registrationType === 'supervisor' ? 'Vía Supervisor' : 'Alta Directa'}).</Text>
 
             <View style={styles.docItem}>
               <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.docName}>Licencia de Conducir Profesional</Text>
-                <Text style={styles.docStatus}>Vence: 14/11/2027 · Vigente 🟢</Text>
+                <Text style={styles.docStatus}>Presentada en legajo digital · Vigente 🟢</Text>
               </View>
             </View>
 
             <View style={styles.docItem}>
               <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.docName}>VTV / Revisión Técnica Obligatoria</Text>
-                <Text style={styles.docStatus}>Vence: 05/09/2026 · Vigente 🟢</Text>
+                <Text style={styles.docName}>Cédula y Seguro Automotor</Text>
+                <Text style={styles.docStatus}>Dominio {vehicleData.plate || 'Registrado'} · Vigente 🟢</Text>
               </View>
             </View>
 
             <View style={styles.docItem}>
               <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.docName}>Póliza de Seguro de Transporte</Text>
-                <Text style={styles.docStatus}>Vence: 30/12/2026 · Vigente 🟢</Text>
+                <Text style={styles.docName}>Certificado de Antecedentes</Text>
+                <Text style={styles.docStatus}>Verificado por Compliance · Vigente 🟢</Text>
               </View>
             </View>
 

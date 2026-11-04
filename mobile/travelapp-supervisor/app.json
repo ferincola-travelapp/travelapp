@@ -3,6 +3,7 @@
     "name": "TravelApp Supervisor",
     "owner": "fer-travelapp",
     "slug": "travelapp-supervisor",
+    "scheme": "travelapp-supervisor",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -14,7 +15,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "ar.travelapp.supervisor"
+      "bundleIdentifier": "ar.travelapp.supervisor",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "TravelApp Supervisor utiliza tu ubicación para centrar el mapa de monitoreo satelital de tu flota."
+      }
     },
     "android": {
       "versionCode": 1,
@@ -35,7 +39,7 @@
     "updates": {
       "url": "https://u.expo.dev/6b13d12b-552d-4098-84ac-4bd3c44f92cc",
       "enabled": true,
-      "fallbackToCacheTimeout": 5000
+      "fallbackToCacheTimeout": 0
     },
     "runtimeVersion": {
       "policy": "appVersion"

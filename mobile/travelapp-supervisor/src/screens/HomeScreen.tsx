@@ -12,7 +12,9 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { auth } from '../lib/firebase';
+import { signOut } from 'firebase/auth';
+import { doc, deleteDoc } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
 import {
   getOrInitSupervisorProfile,
   subscribeToRealFleet,
@@ -32,7 +34,7 @@ export default function HomeScreen({ navigation }: any) {
     email: auth.currentUser?.email || '',
     phone: '',
     supervisorCode: 'CARGANDO...',
-    downloadUrl: 'https://travelapp.ar/descargas',
+    downloadUrl: 'https://travelapp.ar/descargas/conductor',
     qrImageUrl: '',
   });
 
@@ -57,7 +59,15 @@ export default function HomeScreen({ navigation }: any) {
         if (prof && isMounted) {
           setSupervisor(prof);
         }
-      } catch (err) {
+      } catch (err: any) {
+        if (err?.message === 'UNAUTHORIZED_ROLE') {
+          Alert.alert(
+            'Acceso Restringido',
+            'Tu cuenta no posee permisos de Supervisión de Flota.'
+          );
+          await signOut(auth).catch(() => {});
+          return;
+        }
         console.warn('Error cargando perfil de supervisor:', err);
       } finally {
         if (isMounted) setLoadingProfile(false);
@@ -92,13 +102,46 @@ export default function HomeScreen({ navigation }: any) {
     }
   };
 
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Eliminar Cuenta Definitivamente',
+      '¿Estás seguro de que deseás eliminar tu cuenta de Supervisor y tus datos asociados? Esta acción es permanente.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar Mi Cuenta',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const user = auth.currentUser;
+              if (user) {
+                await deleteDoc(doc(db, 'supervisors', user.uid)).catch(() => {});
+                await deleteDoc(doc(db, 'users', user.uid)).catch(() => {});
+                await user.delete();
+              }
+            } catch (e: any) {
+              Alert.alert(
+                'Seguridad de Cuenta',
+                'Para eliminar tu cuenta definitivamente, cerrá sesión, volvé a ingresar y repetí la operación.'
+              );
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleLogout = () => {
-    Alert.alert('Cerrar Sesión', '¿Estás seguro de que deseas salir del panel de supervisión?', [
+    Alert.alert('Cuenta de Supervisión', 'Seleccioná una acción para tu sesión actual:', [
       { text: 'Cancelar', style: 'cancel' },
       {
-        text: 'Cerrar Sesión',
+        text: 'Eliminar Cuenta',
         style: 'destructive',
-        onPress: () => auth.signOut(),
+        onPress: handleDeleteAccount,
+      },
+      {
+        text: 'Cerrar Sesión',
+        onPress: () => signOut(auth),
       },
     ]);
   };

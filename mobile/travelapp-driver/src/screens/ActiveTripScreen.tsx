@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Switch, Modal, TextInput, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Switch, Modal, TextInput, Linking, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { doc, onSnapshot, updateDoc, Timestamp } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, Timestamp, collection, query, orderBy, addDoc, deleteDoc, increment } from 'firebase/firestore';
 import * as Location from 'expo-location';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { db, auth } from '../lib/firebase';
@@ -17,6 +17,13 @@ const STEPS = [
   { status: 'in_progress', label: 'Viaje en curso', action: 'Completar viaje', next: 'completed' },
 ];
 
+const QUICK_REPLIES_DRIVER = [
+  '¡Hola! Ya salgo para tu ubicación 🚗',
+  'Estoy llegando en 2 minutos 📍',
+  'Ya estoy en el punto de encuentro ✅',
+  'Hay un poco de tránsito, ya llego 🙏',
+];
+
 export default function ActiveTripScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
@@ -26,43 +33,135 @@ export default function ActiveTripScreen() {
   const [driverLocation, setDriverLocation] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
-  // Switch de PIN Opcional
+  // Switch de PIN Opcional (a elección del conductor)
   const [requirePin, setRequirePin] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
   const [inputPin, setInputPin] = useState('');
 
+  // Chat en Vivo con el Pasajero (habilitado tras aceptar el viaje)
+  const [showChatModal, setShowChatModal] = useState(false);
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'trips', tripId), snap => {
+      if (!snap.exists()) return;
       const data: any = { id: snap.id, ...snap.data() };
       setTrip(data);
-      if (data.status === 'completed' || data.status === 'cancelled') {
-        Alert.alert('Viaje finalizado', `Ganancia: $${data.estimatedPrice} ARS`, [
-          { text: 'Ver resumen', onPress: () => navigation.navigate('Dashboard') },
+      // Si recién fue aceptado, pasarlo automáticamente a on_way sin pisar arrived o in_progress
+      if (data.status === 'accepted') {
+        updateDoc(doc(db, 'trips', tripId), { status: 'on_way', updatedAt: Timestamp.now() }).catch(() => {});
+      }
+      if (data.status === 'cancelled' && data.cancelledBy !== 'driver') {
+        Alert.alert('Viaje cancelado', 'El pasajero o la central canceló el viaje.', [
+          { text: 'Volver al Panel', onPress: () => navigation.navigate('Dashboard') },
         ]);
       }
     });
 
-    // Si el viaje acaba de ser aceptado, iniciar en estado on_way
-    updateDoc(doc(db, 'trips', tripId), { status: 'on_way' });
+    // Suscripción en tiempo real a los mensajes del viaje
+    const qMsgs = query(collection(db, 'trips', tripId, 'messages'), orderBy('createdAt', 'asc'));
+    const unsubMsgs = onSnapshot(qMsgs, snap => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setChatMessages(list);
+      const passengerMsgs = list.filter((m: any) => m.senderRole === 'passenger' && !m.readByDriver);
+      setUnreadCount(passengerMsgs.length);
+    });
 
     // Tracking de ubicación
     const trackLocation = async () => {
-      const loc = await Location.getCurrentPositionAsync({});
-      const coords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
-      setDriverLocation(coords);
-      await updateDoc(doc(db, 'trips', tripId), { driverLocation: coords });
+      try {
+        const loc = await Location.getCurrentPositionAsync({});
+        const coords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+        setDriverLocation(coords);
+        await updateDoc(doc(db, 'trips', tripId), { driverLocation: coords });
+      } catch {}
     };
     trackLocation();
     const interval = setInterval(trackLocation, 8000);
 
-    return () => { unsub(); clearInterval(interval); };
+    return () => { unsub(); unsubMsgs(); clearInterval(interval); };
   }, [tripId]);
+
+  const isChatAllowed = ['accepted', 'on_way', 'arrived', 'in_progress'].includes(trip?.status);
+
+  const handleOpenChat = async () => {
+    if (!isChatAllowed) {
+      Alert.alert('Chat no disponible', 'El chat solo está habilitado una vez que aceptaste el viaje.');
+      return;
+    }
+    setShowChatModal(true);
+    setUnreadCount(0);
+    // Marcar mensajes del pasajero como leídos por el conductor
+    chatMessages.forEach((m: any) => {
+      if (m.senderRole === 'passenger' && !m.readByDriver) {
+        updateDoc(doc(db, 'trips', tripId, 'messages', m.id), { readByDriver: true }).catch(() => {});
+      }
+    });
+  };
+
+  const handleSendDriverMessage = async (presetText?: string) => {
+    const textToSend = (presetText !== undefined ? presetText : chatInput).trim();
+    if (!textToSend || !isChatAllowed) return;
+    try {
+      if (editingMessageId) {
+        await updateDoc(doc(db, 'trips', tripId, 'messages', editingMessageId), {
+          text: textToSend,
+          edited: true,
+          editedAt: Timestamp.now(),
+        });
+        setEditingMessageId(null);
+        setChatInput('');
+        return;
+      }
+      if (presetText === undefined) setChatInput('');
+      await addDoc(collection(db, 'trips', tripId, 'messages'), {
+        text: textToSend,
+        senderId: auth.currentUser?.uid || 'driver',
+        senderName: trip?.driverName || 'Conductor',
+        senderRole: 'driver',
+        readByDriver: true,
+        readByPassenger: false,
+        createdAt: Timestamp.now(),
+      });
+    } catch (e) {
+      Alert.alert('Error', 'No se pudo enviar el mensaje.');
+    }
+  };
+
+  const handleEditDriverMessage = (msg: any) => {
+    setEditingMessageId(msg.id);
+    setChatInput(msg.text || '');
+  };
+
+  const handleDeleteDriverMessage = (msgId: string) => {
+    Alert.alert('Eliminar mensaje', '¿Querés eliminar este mensaje del chat con el pasajero?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Eliminar',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteDoc(doc(db, 'trips', tripId, 'messages', msgId));
+            if (editingMessageId === msgId) {
+              setEditingMessageId(null);
+              setChatInput('');
+            }
+          } catch {
+            Alert.alert('Error', 'No se pudo eliminar el mensaje.');
+          }
+        },
+      },
+    ]);
+  };
 
   const advanceStep = async () => {
     const currentStep = STEPS.find(s => s.status === trip?.status);
     if (!currentStep) return;
 
-    // Si estamos en punto de encuentro e ir a in_progress con PIN activado
+    // Si estamos en punto de encuentro e ir a in_progress con PIN activado por el conductor
     if (trip?.status === 'arrived' && requirePin && currentStep.next === 'in_progress') {
       setShowPinModal(true);
       return;
@@ -77,8 +176,8 @@ export default function ActiveTripScreen() {
   const [passengerTags, setPassengerTags] = useState<string[]>([]);
 
   const handleOpenWaze = () => {
-    const lat = trip?.destinationLat || -31.4167;
-    const lng = trip?.destinationLng || -64.1833;
+    const lat = trip?.destinationLat || trip?.destinationCoords?.latitude || -26.8326;
+    const lng = trip?.destinationLng || trip?.destinationCoords?.longitude || -65.2038;
     const url = `waze://?ll=${lat},${lng}&navigate=yes`;
     Linking.openURL(url).catch(() => {
       Alert.alert('Waze no instalado', 'Abriendo en navegador web...');
@@ -87,9 +186,8 @@ export default function ActiveTripScreen() {
   };
 
   const handleOpenGoogleMaps = () => {
-    const lat = trip?.destinationLat || -31.4167;
-    const lng = trip?.destinationLng || -64.1833;
-    const label = encodeURIComponent(trip?.destination || 'Destino');
+    const lat = trip?.destinationLat || trip?.destinationCoords?.latitude || -26.8326;
+    const lng = trip?.destinationLng || trip?.destinationCoords?.longitude || -65.2038;
     const url = `google.navigation:q=${lat},${lng}`;
     Linking.openURL(url).catch(() => {
       Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`);
@@ -99,11 +197,44 @@ export default function ActiveTripScreen() {
   const executeStepAdvance = async (nextStatus: string) => {
     setLoading(true);
     try {
-      const update: any = { status: nextStatus };
-      if (nextStatus === 'completed') {
+      const update: any = { status: nextStatus, updatedAt: Timestamp.now() };
+      if (nextStatus === 'arrived') {
+        update.arrivedAt = Timestamp.now();
+      } else if (nextStatus === 'in_progress') {
+        update.startedAt = Timestamp.now();
+      } else if (nextStatus === 'completed') {
+        const finalPrice = Number(trip.estimatedPrice || trip.price || 0);
         update.completedAt = Timestamp.now();
-        update.finalPrice = trip.estimatedPrice;
+        update.finalPrice = finalPrice;
         await updateDoc(doc(db, 'trips', tripId), update);
+
+        // Registrar movimiento contable en Billetera del Conductor y actualizar métricas
+        const driverUid = auth.currentUser?.uid || trip?.driverId;
+        if (driverUid) {
+          const isCash = !trip?.paymentMethod || trip?.paymentMethod === 'Efectivo';
+          const commissionFee = Math.round(finalPrice * 0.15);
+          try {
+            await addDoc(collection(db, 'drivers', driverUid, 'transactions'), {
+              tripId,
+              amount: finalPrice,
+              commissionFee,
+              netAmount: finalPrice - commissionFee,
+              type: isCash ? 'trip_cash' : 'trip_digital',
+              paymentMethod: trip?.paymentMethod || 'Efectivo',
+              description: `Viaje a ${trip?.destination || 'Destino'}`,
+              createdAt: Timestamp.now(),
+            });
+            await updateDoc(doc(db, 'drivers', driverUid), {
+              totalTrips: increment(1),
+              ...(isCash
+                ? { currentCommissionBalance: increment(-commissionFee) }
+                : { currentCommissionBalance: increment(finalPrice - commissionFee) }),
+            });
+          } catch (walletErr) {
+            console.warn('Error updating driver wallet/transactions:', walletErr);
+          }
+        }
+
         setShowPinModal(false);
         setInputPin('');
         setShowPassengerRatingModal(true); // Abrir modal de calificación
@@ -120,6 +251,36 @@ export default function ActiveTripScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDriverCancelTrip = () => {
+    Alert.alert(
+      'Cancelar Viaje',
+      '¿Estás seguro de que querés cancelar este viaje asignado?',
+      [
+        { text: 'No, continuar', style: 'cancel' },
+        {
+          text: 'Sí, cancelar viaje',
+          style: 'destructive',
+          onPress: async () => {
+            setLoading(true);
+            try {
+              await updateDoc(doc(db, 'trips', tripId), {
+                status: 'cancelled',
+                cancelledBy: 'driver',
+                cancelledAt: Timestamp.now(),
+                updatedAt: Timestamp.now(),
+              });
+              navigation.navigate('Dashboard');
+            } catch {
+              Alert.alert('Error', 'No se pudo cancelar el viaje.');
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleSubmitPassengerRating = async () => {
@@ -145,16 +306,14 @@ export default function ActiveTripScreen() {
     }
   };
 
-
   const handleVerifyPin = () => {
-    const expectedPin = trip?.securityPin || '1234';
-    if (inputPin.trim() === expectedPin || inputPin.trim() === '1234') {
+    const expectedPin = String(trip?.securityPin || trip?.pin || '').trim();
+    if (!expectedPin || inputPin.trim() === expectedPin) {
       executeStepAdvance('in_progress');
     } else {
-      Alert.alert('PIN Incorrecto', 'El PIN de seguridad no coincide. Pedile el PIN de 4 dígitos al pasajero.');
+      Alert.alert('PIN Incorrecto', 'El PIN de seguridad ingresado no coincide con el del pasajero. Verificalo o iniciá sin PIN si ya validaste su identidad.');
     }
   };
-
 
   if (!trip) return (
     <View style={styles.center}>
@@ -162,7 +321,9 @@ export default function ActiveTripScreen() {
     </View>
   );
 
-  const currentStep = STEPS.find(s => s.status === trip.status);
+  const currentStep = STEPS.find(s => s.status === trip.status) || (trip.status === 'accepted' ? STEPS[0] : undefined);
+  const passengerDisplayName = trip.passengerName || trip.userName || 'Pasajero';
+  const passengerPhone = trip.passengerPhone || trip.userPhone || '';
 
   return (
     <View style={styles.container}>
@@ -181,16 +342,35 @@ export default function ActiveTripScreen() {
 
       {/* Panel inferior */}
       <View style={styles.panel}>
-        {/* Pasajero y Navegación GPS */}
+        {/* Pasajero, Chat y Llamada */}
         <View style={styles.passengerRow}>
           <View style={styles.passengerAvatar}>
             <Ionicons name="person" size={22} color={Colors.white} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.passengerName}>{trip.userName || 'Pasajero'}</Text>
+            <Text style={styles.passengerName}>{passengerDisplayName}</Text>
             <Text style={styles.passengerDest} numberOfLines={1}>📍 {trip.destination}</Text>
           </View>
-          <TouchableOpacity style={styles.callBtn} onPress={() => Linking.openURL(`tel:${trip.userPhone || ''}`)}>
+          {isChatAllowed && (
+            <TouchableOpacity style={styles.chatBtn} onPress={handleOpenChat}>
+              <Ionicons name="chatbubble-ellipses" size={20} color={Colors.primary} />
+              {unreadCount > 0 && (
+                <View style={styles.unreadBadge}>
+                  <Text style={styles.unreadBadgeText}>{unreadCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={styles.callBtn}
+            onPress={() => {
+              if (!passengerPhone) {
+                Alert.alert('Teléfono no disponible', 'Podés escribirle al pasajero por el chat del viaje.');
+                return;
+              }
+              Linking.openURL(`tel:${passengerPhone}`);
+            }}
+          >
             <Ionicons name="call" size={20} color={Colors.primary} />
           </TouchableOpacity>
         </View>
@@ -211,8 +391,9 @@ export default function ActiveTripScreen() {
         {/* Progreso */}
         <View style={styles.stepsRow}>
           {STEPS.map((step, i) => {
-            const isDone = STEPS.indexOf(STEPS.find(s => s.status === trip.status)!) > i;
-            const isCurrent = step.status === trip.status;
+            const currentIdx = STEPS.indexOf(STEPS.find(s => s.status === trip.status)!);
+            const isDone = currentIdx > i;
+            const isCurrent = step.status === trip.status || (trip.status === 'accepted' && i === 0);
             return (
               <React.Fragment key={step.status}>
                 <View style={[styles.stepDot,
@@ -227,12 +408,12 @@ export default function ActiveTripScreen() {
           })}
         </View>
 
-        {/* Switch de PIN Opcional (Configurable por el chofer) */}
-        {trip.status === 'arrived' && (
+        {/* Switch de PIN Opcional (Configurable por el conductor antes de iniciar) */}
+        {(trip.status === 'arrived' || trip.status === 'on_way' || trip.status === 'accepted') && (
           <View style={styles.pinSwitchContainer}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.pinSwitchTitle}>🔒 Requerir PIN de abordaje (Opcional)</Text>
-              <Text style={styles.pinSwitchSub}>Exigir PIN de 4 dígitos al pasajero antes de iniciar</Text>
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <Text style={styles.pinSwitchTitle}>🔒 Solicitar PIN de seguridad (Opcional)</Text>
+              <Text style={styles.pinSwitchSub}>Activá esta opción si deseás pedirle el PIN de 4 dígitos al pasajero al abordar</Text>
             </View>
             <Switch
               value={requirePin}
@@ -242,10 +423,15 @@ export default function ActiveTripScreen() {
           </View>
         )}
 
-        {/* Ganancia */}
+        {/* Ganancia y Método de Pago */}
         <View style={styles.earningsRow}>
-          <Text style={styles.earningsLabel}>Ganancia del viaje</Text>
-          <Text style={styles.earnings}>${trip.estimatedPrice} ARS</Text>
+          <View>
+            <Text style={styles.earningsLabel}>Ganancia del viaje</Text>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: trip.paymentMethod === 'Rewards' ? '#D97706' : Colors.textSecondary }}>
+              Pago: {trip.paymentMethod === 'Rewards' ? '✨ Puntos Rewards' : (trip.paymentMethod || 'Efectivo')}
+            </Text>
+          </View>
+          <Text style={styles.earnings}>${trip.estimatedPrice || trip.price || 0} ARS</Text>
         </View>
 
         {/* Botón de avance */}
@@ -267,7 +453,20 @@ export default function ActiveTripScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Modal de Verificación de PIN */}
+        {/* Opción para que el conductor cancele antes de iniciar el viaje */}
+        {['accepted', 'on_way', 'arrived'].includes(trip.status) && (
+          <TouchableOpacity
+            style={{ marginTop: 10, paddingVertical: 10, alignItems: 'center' }}
+            onPress={handleDriverCancelTrip}
+            disabled={loading}
+          >
+            <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '700' }}>
+              Cancelar viaje asignado
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Modal de Verificación de PIN Opcional */}
         <Modal visible={showPinModal} transparent animationType="slide">
           <View style={styles.modalBackdrop}>
             <View style={styles.modalContent}>
@@ -279,7 +478,7 @@ export default function ActiveTripScreen() {
                 style={styles.pinInput}
                 keyboardType="number-pad"
                 maxLength={4}
-                placeholder="1234"
+                placeholder="••••"
                 placeholderTextColor={Colors.textMuted}
                 value={inputPin}
                 onChangeText={setInputPin}
@@ -293,8 +492,118 @@ export default function ActiveTripScreen() {
                   <Text style={styles.modalConfirmText}>Verificar & Iniciar</Text>
                 </TouchableOpacity>
               </View>
+
+              <TouchableOpacity
+                style={{ marginTop: 8, paddingVertical: 6 }}
+                onPress={() => executeStepAdvance('in_progress')}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '700', color: Colors.textSecondary, textDecorationLine: 'underline' }}>
+                  Iniciar viaje sin PIN (Opcional)
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
+        </Modal>
+
+        {/* Modal de Chat en Vivo (Gestionar, Editar y Eliminar Mensajes) */}
+        <Modal visible={showChatModal} transparent animationType="slide" onRequestClose={() => setShowChatModal(false)}>
+          <KeyboardAvoidingView
+            style={styles.modalBackdrop}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <View style={[styles.modalContent, { maxHeight: '85%', padding: 18, alignItems: 'stretch' }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: Colors.border, paddingBottom: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={styles.passengerAvatar}>
+                    <Ionicons name="person" size={18} color={Colors.white} />
+                  </View>
+                  <View>
+                    <Text style={{ fontSize: 16, fontWeight: '800', color: Colors.textPrimary }}>{passengerDisplayName}</Text>
+                    <Text style={{ fontSize: 11, color: Colors.success, fontWeight: '600' }}>● Chat del viaje activo • Podés editar o borrar tus mensajes</Text>
+                  </View>
+                </View>
+                <TouchableOpacity onPress={() => { setShowChatModal(false); setEditingMessageId(null); setChatInput(''); }}>
+                  <Ionicons name="close-circle" size={28} color={Colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Respuestas rápidas del conductor */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ maxHeight: 40, marginVertical: 6 }} contentContainerStyle={{ gap: 8, alignItems: 'center' }}>
+                {QUICK_REPLIES_DRIVER.map(reply => (
+                  <TouchableOpacity
+                    key={reply}
+                    style={styles.quickReplyChip}
+                    onPress={() => handleSendDriverMessage(reply)}
+                  >
+                    <Text style={styles.quickReplyText}>{reply}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Lista de mensajes */}
+              <ScrollView style={{ maxHeight: 300, marginVertical: 6 }} contentContainerStyle={{ gap: 10, paddingVertical: 8 }}>
+                {chatMessages.length === 0 ? (
+                  <Text style={{ textAlign: 'center', color: Colors.textMuted, fontSize: 13, marginVertical: 24 }}>
+                    Aún no hay mensajes. Usá una respuesta rápida o escribile a {passengerDisplayName}.
+                  </Text>
+                ) : (
+                  chatMessages.map((msg: any) => {
+                    const isMe = msg.senderRole === 'driver' || msg.senderId === auth.currentUser?.uid;
+                    return (
+                      <View
+                        key={msg.id}
+                        style={[
+                          styles.msgBubble,
+                          isMe ? styles.msgBubbleMe : styles.msgBubbleOther,
+                        ]}
+                      >
+                        <Text style={[styles.msgText, isMe && { color: Colors.white }]}>{msg.text}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
+                          {msg.edited && (
+                            <Text style={{ fontSize: 10, color: isMe ? 'rgba(255,255,255,0.75)' : Colors.textMuted }}>
+                              (editado)
+                            </Text>
+                          )}
+                          {isMe && (
+                            <>
+                              <TouchableOpacity onPress={() => handleEditDriverMessage(msg)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                                <Ionicons name="pencil" size={13} color="rgba(255,255,255,0.9)" />
+                              </TouchableOpacity>
+                              <TouchableOpacity onPress={() => handleDeleteDriverMessage(msg.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                                <Ionicons name="trash" size={13} color="rgba(255,255,255,0.9)" />
+                              </TouchableOpacity>
+                            </>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })
+                )}
+              </ScrollView>
+
+              {editingMessageId && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FEF3C7', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#92400E' }}>✏️ Editando mensaje...</Text>
+                  <TouchableOpacity onPress={() => { setEditingMessageId(null); setChatInput(''); }}>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: '#B45309' }}>Cancelar</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                <TextInput
+                  style={styles.chatInputBox}
+                  placeholder={editingMessageId ? 'Editar tu mensaje...' : 'Escribir mensaje al pasajero...'}
+                  placeholderTextColor={Colors.textMuted}
+                  value={chatInput}
+                  onChangeText={setChatInput}
+                />
+                <TouchableOpacity style={styles.chatSendBtn} onPress={() => handleSendDriverMessage()}>
+                  <Ionicons name={editingMessageId ? 'checkmark' : 'send'} size={18} color={Colors.white} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
         </Modal>
 
         {/* Modal de Calificación al Pasajero Post-Viaje */}
@@ -303,7 +612,7 @@ export default function ActiveTripScreen() {
             <View style={styles.modalContent}>
               <Ionicons name="star" size={54} color="#F59E0B" />
               <Text style={styles.modalTitle}>¿Qué tal fue el pasajero?</Text>
-              <Text style={styles.modalSub}>Calificá tu experiencia con {trip.userName || 'el pasajero'}:</Text>
+              <Text style={styles.modalSub}>Calificá tu experiencia con {passengerDisplayName}:</Text>
 
               {/* Estrellas */}
               <View style={styles.starsRow}>
@@ -369,16 +678,51 @@ const styles = StyleSheet.create({
     padding: 24, paddingBottom: 44, gap: 14,
     shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.1, elevation: 10,
   },
-  passengerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  passengerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   passengerAvatar: {
     width: 44, height: 44, borderRadius: 22,
     backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center',
   },
   passengerName: { fontSize: 15, fontWeight: '700', color: Colors.textPrimary },
   passengerDest: { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
+  chatBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: Colors.primary + '15', alignItems: 'center', justifyContent: 'center',
+    position: 'relative',
+  },
+  unreadBadge: {
+    position: 'absolute', top: -2, right: -2,
+    backgroundColor: '#EF4444', borderRadius: 10, minWidth: 18, height: 18,
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4,
+  },
+  unreadBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '800' },
   callBtn: {
     width: 40, height: 40, borderRadius: 20,
     backgroundColor: Colors.primary + '15', alignItems: 'center', justifyContent: 'center',
+  },
+  quickReplyChip: {
+    backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE',
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
+  },
+  quickReplyText: { fontSize: 12, fontWeight: '600', color: '#1D4ED8' },
+  msgBubble: {
+    maxWidth: '82%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16,
+  },
+  msgBubbleMe: {
+    alignSelf: 'flex-end', backgroundColor: Colors.primary, borderBottomRightRadius: 4,
+  },
+  msgBubbleOther: {
+    alignSelf: 'flex-start', backgroundColor: '#F1F5F9', borderBottomLeftRadius: 4,
+  },
+  msgText: { fontSize: 14, color: Colors.textPrimary },
+  chatInputBox: {
+    flex: 1, backgroundColor: Colors.background, borderRadius: 14,
+    paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: Colors.textPrimary,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  chatSendBtn: {
+    width: 44, height: 44, borderRadius: 14, backgroundColor: Colors.primary,
+    alignItems: 'center', justifyContent: 'center',
   },
   
   gpsRow: { flexDirection: 'row', gap: 10 },

@@ -7,17 +7,18 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
-import { doc, setDoc, onSnapshot, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, Timestamp, orderBy, limit } from 'firebase/firestore';
+import { doc, setDoc, onSnapshot, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, Timestamp, orderBy, limit, increment } from 'firebase/firestore';
 import * as Location from 'expo-location';
+import * as ImagePicker from 'expo-image-picker';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useNavigation } from '@react-navigation/native';
 import { signOut } from 'firebase/auth';
 import { db, auth } from '../lib/firebase';
-import { Colors } from '../lib/constants';
+import { Colors, API_BASE_URL } from '../lib/constants';
 import { TravelCabLogo } from '../components/BrandLogos';
 import { InteractiveMapView } from '../components/InteractiveMapView';
-import { playTripRequestAlertSound, playSeatbeltSafetyPrompt, playCustomVoiceNotification } from '../lib/audioService';
+import { playTripRequestAlertSound, stopTripRequestAlertSound, playSeatbeltSafetyPrompt, playCustomVoiceNotification } from '../lib/audioService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -27,6 +28,7 @@ interface Vehicle {
   plate: string;
   color: string;
   category: string;
+  photoUrl?: string;
   active: boolean;
 }
 
@@ -36,7 +38,10 @@ export default function DashboardScreen() {
   const [isOnline, setIsOnline] = useState(false);
   const [todayTrips, setTodayTrips] = useState(0);
   const [todayEarnings, setTodayEarnings] = useState(0);
+  const [driverRating, setDriverRating] = useState(5.0);
+  const [totalCompletedTrips, setTotalCompletedTrips] = useState(0);
   const [activeTrip, setActiveTrip] = useState<any>(null);
+  const activeTripRef = useRef<any>(null);
 
   // Inactividad y Validación Biométrica
   const [lastActiveTime, setLastActiveTime] = useState(Date.now());
@@ -298,20 +303,33 @@ export default function DashboardScreen() {
           return;
         }
       } else {
-        // Fallback en simulador o sin sensor
         setIsBiometricScanning(false);
-        setBiometricSuccess(true);
-        setTimeout(() => {
-          setBiometricSuccess(false);
-          setShowBiometricModal(false);
-          setLastActiveTime(Date.now());
-        }, 800);
+        Alert.alert(
+          'Verificación de Seguridad Requerida',
+          'Tu dispositivo no cuenta con bloqueo biométrico o PIN configurado. Por seguridad debés volver a iniciar sesión.',
+          [
+            {
+              text: 'Reintentar',
+              onPress: () => handleTriggerBiometric(),
+            },
+            {
+              text: 'Cerrar Sesión',
+              style: 'destructive',
+              onPress: () => {
+                setShowBiometricModal(false);
+                signOut(auth).catch(() => {});
+              },
+            },
+          ]
+        );
       }
     } catch (e) {
       console.log('Biometric inactivity prompt error:', e);
       setIsBiometricScanning(false);
-      setShowBiometricModal(false);
-      setLastActiveTime(Date.now());
+      Alert.alert(
+        'Error de Verificación',
+        'No se pudo validar tu identidad. Tocá el botón en pantalla para reintentar.'
+      );
     }
   };
   
@@ -328,7 +346,29 @@ export default function DashboardScreen() {
   const [newPlate, setNewPlate] = useState('');
   const [newColor, setNewColor] = useState('');
   const [newCategory, setNewCategory] = useState('Standard');
+  const [newVehiclePhoto, setNewVehiclePhoto] = useState<string | null>(null);
   const [savingVehicle, setSavingVehicle] = useState(false);
+
+  const handlePickVehiclePhoto = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permiso requerido', 'Necesitamos acceso a tus fotos para subir la imagen real del vehículo.');
+        return;
+      }
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [16, 10],
+        quality: 0.7,
+      });
+      if (!res.canceled && res.assets?.[0]?.uri) {
+        setNewVehiclePhoto(res.assets[0].uri);
+      }
+    } catch {
+      Alert.alert('Error', 'No se pudo seleccionar la imagen del vehículo.');
+    }
+  };
 
   // Ubicación del conductor
   const [currentLocation, setCurrentLocation] = useState<any>(null);
@@ -471,7 +511,33 @@ export default function DashboardScreen() {
       });
       setTodayTrips(count);
       setTodayEarnings(earnings);
+      setTotalCompletedTrips(snap.size);
     }, (err) => console.log("Completed trips listener:", err));
+
+    // Escuchar perfil real del conductor (rating y vehículo activo de registro)
+    const unsubDriverDoc = onSnapshot(doc(db, 'drivers', user.uid), (snap) => {
+      if (snap.exists()) {
+        const dData = snap.data();
+        if (dData.rating !== undefined) setDriverRating(Number(dData.rating) || 5.0);
+        if (dData.totalTrips !== undefined && Number(dData.totalTrips) > 0) {
+          setTotalCompletedTrips(prev => Math.max(prev, Number(dData.totalTrips)));
+        }
+        if (dData.activeVehicle && dData.activeVehicle.plate) {
+          setVehicles(prev => {
+            if (prev.length > 0) return prev;
+            return [{
+              id: dData.activeVehicle.id || 'primary',
+              brand: dData.activeVehicle.brand || 'Vehículo Registrado',
+              plate: dData.activeVehicle.plate,
+              color: dData.activeVehicle.color || '',
+              category: dData.activeVehicle.category || 'Standard',
+              photoUrl: dData.activeVehicle.photoUrl || dData.vehiclePhotoUrl || '',
+              active: true,
+            }];
+          });
+        }
+      }
+    });
 
     // Escuchar si hay un viaje activo asignado a este chofer
     const qActive = query(
@@ -482,8 +548,11 @@ export default function DashboardScreen() {
     const unsubActive = onSnapshot(qActive, (snap) => {
       if (!snap.empty) {
         const d = snap.docs[0];
-        setActiveTrip({ id: d.id, ...d.data() });
+        const activeObj = { id: d.id, ...d.data() };
+        activeTripRef.current = activeObj;
+        setActiveTrip(activeObj);
       } else {
+        activeTripRef.current = null;
         setActiveTrip(null);
       }
     }, (err) => console.log('Active trip listener err:', err));
@@ -492,7 +561,7 @@ export default function DashboardScreen() {
     const qPending = query(collection(db, 'trips'), where('status', '==', 'searching'));
     const unsubPending = onSnapshot(qPending, (snap) => {
       try {
-        if (isOnline && !snap.empty && user?.uid && !activeTrip) {
+        if (isOnline && !snap.empty && user?.uid && !activeTripRef.current) {
           const validDoc = snap.docs.find(docSnap => {
             const data = docSnap.data();
             const rejectedList = data.rejectedBy || [];
@@ -508,23 +577,10 @@ export default function DashboardScreen() {
       }
     }, (err) => console.warn("Pending trips error:", err));
 
-    // Escuchar vehículos en Firestore
+    // Escuchar vehículos reales en Firestore (sin inventar vehículos mock)
     const unsubVehicles = onSnapshot(collection(db, 'drivers', user.uid, 'vehicles'), async (snap) => {
       try {
-        if (snap.empty) {
-          const defaultVehicle = {
-            brand: 'Chevrolet Prisma',
-            plate: 'AB 123 CD',
-            color: 'Blanco',
-            category: 'Standard',
-            active: true,
-            createdAt: Timestamp.now()
-          };
-          const docRef = await addDoc(collection(db, 'drivers', user.uid, 'vehicles'), defaultVehicle);
-          await setDoc(doc(db, 'drivers', user.uid), {
-            activeVehicle: { id: docRef.id, ...defaultVehicle }
-          }, { merge: true });
-        } else {
+        if (!snap.empty) {
           const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Vehicle));
           setVehicles(list);
         }
@@ -546,6 +602,11 @@ export default function DashboardScreen() {
           if (notif.audience === 'all' || notif.audience === 'drivers' || notif.targetUserId === user.uid) {
             if (notif.soundAlert === 'driver_alert') {
               playTripRequestAlertSound();
+              Alert.alert(
+                notif.title || '🔔 Alerta de Central',
+                notif.message || 'Tenés un aviso prioritario de la central.',
+                [{ text: 'Entendido', onPress: () => stopTripRequestAlertSound() }]
+              );
             } else if (notif.soundAlert === 'seatbelt_safety') {
               playSeatbeltSafetyPrompt();
             } else if (notif.soundAlert !== 'none' && notif.message) {
@@ -558,6 +619,7 @@ export default function DashboardScreen() {
 
     return () => {
       unsub();
+      unsubDriverDoc();
       unsubActive();
       unsubPending();
       unsubVehicles();
@@ -674,7 +736,7 @@ export default function DashboardScreen() {
       for (const v of vehicles) {
         await updateDoc(doc(db, 'drivers', user.uid, 'vehicles', v.id), {
           active: v.id === vehicleId
-        });
+        }).catch(() => {});
       }
 
       // Actualizar el vehículo activo en el perfil principal del conductor
@@ -685,8 +747,10 @@ export default function DashboardScreen() {
           plate: targetVehicle.plate,
           color: targetVehicle.color,
           category: targetVehicle.category,
+          photoUrl: targetVehicle.photoUrl || '',
           active: true
-        }
+        },
+        ...(targetVehicle.photoUrl ? { vehiclePhotoUrl: targetVehicle.photoUrl } : {})
       }, { merge: true });
 
       Alert.alert('Vehículo activado', `Ahora estás manejando el ${targetVehicle.brand}.`);
@@ -706,11 +770,12 @@ export default function DashboardScreen() {
     setSavingVehicle(true);
     try {
       const isFirst = vehicles.length === 0;
-      const vehicleData = {
-        brand: newBrand,
-        plate: newPlate.toUpperCase(),
-        color: newColor,
+      const vehicleData: any = {
+        brand: newBrand.trim(),
+        plate: newPlate.trim().toUpperCase(),
+        color: newColor.trim(),
         category: newCategory,
+        photoUrl: newVehiclePhoto || '',
         active: isFirst,
         createdAt: Timestamp.now()
       };
@@ -719,7 +784,8 @@ export default function DashboardScreen() {
 
       if (isFirst) {
         await setDoc(doc(db, 'drivers', user.uid), {
-          activeVehicle: { id: docRef.id, ...vehicleData }
+          activeVehicle: { id: docRef.id, ...vehicleData },
+          ...(newVehiclePhoto ? { vehiclePhotoUrl: newVehiclePhoto } : {})
         }, { merge: true });
       }
 
@@ -728,6 +794,7 @@ export default function DashboardScreen() {
       setNewPlate('');
       setNewColor('');
       setNewCategory('Standard');
+      setNewVehiclePhoto(null);
       setShowAddVehicleForm(false);
       Alert.alert('Éxito', 'Vehículo registrado correctamente.');
     } catch {
@@ -885,14 +952,14 @@ export default function DashboardScreen() {
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <Ionicons name="star" size={20} color={Colors.accent} />
-            <Text style={styles.statVal}>4.9</Text>
+            <Text style={styles.statVal}>{driverRating.toFixed(1)}</Text>
             <Text style={styles.statLabel}>Calificación</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Ionicons name="time" size={20} color="#8B5CF6" />
-            <Text style={styles.statVal}>6.5h</Text>
-            <Text style={styles.statLabel}>Activo</Text>
+            <Ionicons name="checkmark-done-circle" size={20} color="#8B5CF6" />
+            <Text style={styles.statVal}>{totalCompletedTrips}</Text>
+            <Text style={styles.statLabel}>Histórico</Text>
           </View>
         </View>
 
@@ -1154,7 +1221,7 @@ export default function DashboardScreen() {
                           `📍 *Servicio:* Viaje Libre / SUTRAPPA\n` +
                           `📅 *Fecha:* ${new Date().toLocaleDateString('es-AR')}\n\n` +
                           `📲 *Descargá TravelApp en tu celular para pedir tu próximo viaje:* \n` +
-                          `👉 https://travelapp.ar/descargar`;
+                          `👉 https://travelapp.ar/descargas/usuario`;
 
                         if (freeTripPassengerPhone) {
                           const cleanPhone = freeTripPassengerPhone.replace(/\D/g, '');
@@ -1179,7 +1246,7 @@ export default function DashboardScreen() {
                         onPress={async () => {
                           setSendingReceipt(true);
                           try {
-                            await fetch('https://travelapp-five-nu.vercel.app/api/receipt/send', {
+                            await fetch(`${API_BASE_URL}/api/receipt/send`, {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({
@@ -1193,7 +1260,7 @@ export default function DashboardScreen() {
                                 distanceKm: Number(taxiDistance.toFixed(2)),
                                 durationMinutes: Math.round(taxiSeconds / 60),
                                 paymentMethod: 'Efectivo',
-                                appDownloadUrl: 'https://travelapp.ar/descargar',
+                                appDownloadUrl: 'https://travelapp.ar/descargas/usuario',
                                 breakdown: { 
                                   baseFare: freeTripTariff.baseFare, 
                                   distanceCost: Math.round(taxiDistance * freeTripTariff.pricePerKm), 
@@ -1241,6 +1308,8 @@ export default function DashboardScreen() {
                             estimatedDistanceKm: Number(taxiDistance.toFixed(2)),
                             durationMinutes: Math.max(1, Math.round(taxiSeconds / 60)),
                             estimatedDurationMins: Math.max(1, Math.round(taxiSeconds / 60)),
+                            passengerId: user?.uid || '',
+                            userId: user?.uid || '',
                             driverId: user?.uid || '',
                             driverName: user?.displayName || 'Conductor TravelCab',
                             driverPhone: user?.phoneNumber || '',
@@ -1262,7 +1331,24 @@ export default function DashboardScreen() {
                             }
                           };
 
-                          await addDoc(collection(db, 'trips'), tripRecord);
+                          const createdTrip = await addDoc(collection(db, 'trips'), tripRecord);
+                          if (user?.uid) {
+                            const commissionFee = Math.round(taxiFare * 0.15);
+                            await addDoc(collection(db, 'drivers', user.uid, 'transactions'), {
+                              tripId: createdTrip.id,
+                              amount: taxiFare,
+                              commissionFee,
+                              netAmount: taxiFare - commissionFee,
+                              type: 'trip_cash',
+                              paymentMethod: 'Efectivo',
+                              description: 'Viaje Libre (Taxímetro Digital)',
+                              createdAt: Timestamp.now(),
+                            });
+                            await updateDoc(doc(db, 'drivers', user.uid), {
+                              totalTrips: increment(1),
+                              currentCommissionBalance: increment(-commissionFee),
+                            });
+                          }
                         } catch (err) {
                           console.warn('Error guardando viaje de taxímetro en Firestore:', err);
                         }
@@ -1493,6 +1579,23 @@ export default function DashboardScreen() {
                       </TouchableOpacity>
                     ))}
                   </View>
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Foto Real del Vehículo (Exterior con Patente)</Text>
+                  <TouchableOpacity
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 10,
+                      backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: newVehiclePhoto ? Colors.success : '#CBD5E1',
+                      borderRadius: 12, padding: 12,
+                    }}
+                    onPress={handlePickVehiclePhoto}
+                  >
+                    <Ionicons name={newVehiclePhoto ? 'checkmark-circle' : 'camera'} size={22} color={newVehiclePhoto ? Colors.success : Colors.primary} />
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.textDark, flex: 1 }}>
+                      {newVehiclePhoto ? 'Foto del auto cargada ✅ (Tocar para cambiar)' : 'Subir foto real del auto'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
 
                 <View style={styles.formButtons}>

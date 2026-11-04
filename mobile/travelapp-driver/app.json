@@ -3,6 +3,7 @@
     "name": "TravelApp Conductor",
     "owner": "fer-travelapp",
     "slug": "travelapp-driver",
+    "scheme": "travelapp-driver",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -17,7 +18,14 @@
       "bundleIdentifier": "ar.travelapp.driver",
       "infoPlist": {
         "NSCameraUsageDescription": "TravelApp Conductor necesita acceso a la cámara para capturar fotos de tu vehículo y documentación oficial.",
-        "NSPhotoLibraryUsageDescription": "TravelApp Conductor necesita acceso a la galería para adjuntar fotos de tu registro, cédula y póliza."
+        "NSPhotoLibraryUsageDescription": "TravelApp Conductor necesita acceso a la galería para adjuntar fotos de tu registro, cédula y póliza.",
+        "NSLocationWhenInUseUsageDescription": "TravelApp Conductor necesita tu ubicación en tiempo real para asignarte pasajeros cercanos y calcular el recorrido del viaje.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "TravelApp Conductor necesita tu ubicación en segundo plano mientras estás conectado para recibir solicitudes y compartir el seguimiento del viaje con el pasajero.",
+        "NSFaceIDUsageDescription": "TravelApp Conductor utiliza Face ID para verificar tu identidad y proteger tu cuenta de conductor.",
+        "UIBackgroundModes": [
+          "location",
+          "audio"
+        ]
       },
       "config": {
         "googleMapsApiKey": "AIzaSyD4XIT5MNfECRy6wQe8BNgBb9pWC6lsr9U"
@@ -42,9 +50,15 @@
         "WRITE_EXTERNAL_STORAGE",
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
         "VIBRATE",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
       ]
     },
     "web": {

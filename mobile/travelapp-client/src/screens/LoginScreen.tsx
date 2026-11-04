@@ -12,13 +12,6 @@ import { Colors, Fonts } from '../lib/constants';
 import { TravelCabLogo, TravelAppLogo } from '../components/BrandLogos';
 import * as LocalAuthentication from 'expo-local-authentication';
 
-const MASTER_ADMIN_EMAILS = [
-  'fernando@travelapp.ar',
-  'ferincola@gmail.com',
-  'edgar@travelapp.ar',
-  'carlos@travelapp.ar',
-];
-
 const SAVED_USER_KEY = 'travelapp_saved_user_credentials';
 
 export default function LoginScreen() {
@@ -32,9 +25,9 @@ export default function LoginScreen() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [savedUser, setSavedUser] = useState<{ email: string; pass: string; name?: string } | null>(null);
+  const [savedUser, setSavedUser] = useState<{ email: string; pass?: string; name?: string } | null>(null);
 
-  // Cargar credenciales guardadas
+  // Cargar usuario recordado (sin exponer la contraseña en el campo de texto)
   React.useEffect(() => {
     async function loadSavedCredentials() {
       try {
@@ -44,7 +37,6 @@ export default function LoginScreen() {
           if (parsed && parsed.email) {
             setSavedUser(parsed);
             setEmailOrPhone(parsed.email);
-            if (parsed.pass) setPassword(parsed.pass);
           }
         }
       } catch (e) {
@@ -64,40 +56,50 @@ export default function LoginScreen() {
       const hasHardware = await LocalAuthentication.hasHardwareAsync();
       const isEnrolled = await LocalAuthentication.isEnrolledAsync();
 
-      if (hasHardware && isEnrolled) {
-        const result = await LocalAuthentication.authenticateAsync({
-          promptMessage: `Autenticación Biométrica TravelApp (${savedUser.name || savedUser.email.split('@')[0]})`,
-          cancelLabel: 'Cancelar',
-          disableDeviceFallback: false,
-        });
+      if (!hasHardware || !isEnrolled) {
+        Alert.alert(
+          'Biometría no disponible',
+          'Tu dispositivo no tiene huella digital o Face ID configurado. Por favor ingresá tu contraseña manualmente.'
+        );
+        return;
+      }
 
-        if (!result.success) {
-          if (result.error !== 'user_cancel' && result.error !== 'app_cancel') {
-            Alert.alert('Autenticación fallida', 'No se reconoció la huella o rostro. Podés ingresar tu clave manualmente.');
-          }
-          return;
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: `Autenticación Biométrica TravelApp (${savedUser.name || savedUser.email.split('@')[0]})`,
+        cancelLabel: 'Cancelar',
+        disableDeviceFallback: false,
+      });
+
+      if (!result.success) {
+        if (result.error !== 'user_cancel' && result.error !== 'app_cancel') {
+          Alert.alert('Autenticación fallida', 'No se reconoció la huella o rostro. Podés ingresar tu clave manualmente.');
         }
+        return;
       }
     } catch (bioErr) {
-      console.log('Biometric auth error/skipped:', bioErr);
+      console.warn('Biometric auth error:', bioErr);
+      Alert.alert('Error Biométrico', 'No se pudo verificar tu identidad biométrica. Ingresá con tu contraseña.');
+      return;
     }
 
     handleAuthWithCredentials(savedUser.email, savedUser.pass);
   };
 
   const handleGoogleSignIn = () => {
+    if (savedUser?.email && savedUser?.pass) {
+      handleBiometricQuickLogin();
+      return;
+    }
     Alert.alert(
-      'Ingresar con Google',
-      'Seleccioná tu cuenta de Google para iniciar sesión rápidamente.',
+      'Ingreso con cuenta Gmail',
+      'Ingresá tu correo @gmail.com y elegí una contraseña para vincular tu cuenta de forma segura.',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Continuar con Google',
-          onPress: async () => {
-            setEmailOrPhone('usuario.google@gmail.com');
-            setPassword('GooglePass123!');
-            // Autenticación rápida de demostración
-            handleAuthWithCredentials('usuario.google@gmail.com', 'GooglePass123!');
+          text: 'Crear / Vincular Cuenta',
+          onPress: () => {
+            setIsForgot(false);
+            setIsLogin(false);
           },
         },
       ]
@@ -108,21 +110,9 @@ export default function LoginScreen() {
     const trimmedEmail = targetEmail.trim().toLowerCase();
     setLoading(true);
     try {
-      let userCred;
-      const isMasterAdmin = MASTER_ADMIN_EMAILS.includes(trimmedEmail);
-
-      try {
-        userCred = await signInWithEmailAndPassword(auth, trimmedEmail, targetPass);
-      } catch (err: any) {
-        if (err.code === 'auth/user-not-found' || isMasterAdmin) {
-          userCred = await createUserWithEmailAndPassword(auth, trimmedEmail, targetPass);
-        } else {
-          throw err;
-        }
-      }
+      const userCred = await signInWithEmailAndPassword(auth, trimmedEmail, targetPass);
 
       if (userCred?.user) {
-        // Guardar credenciales en almacenamiento local para inicio de sesión permanente y biométrico
         try {
           await AsyncStorage.setItem(
             SAVED_USER_KEY,
@@ -140,35 +130,33 @@ export default function LoginScreen() {
         const snap = await getDoc(userRef);
 
         if (!snap.exists()) {
-          let welcomeBonus = 20;
+          let welcomeBonus = 0;
           try {
             const configSnap = await getDoc(doc(db, 'rewards_config', 'global'));
-            if (configSnap.exists()) {
-              welcomeBonus = Number(configSnap.data().welcomePointsBonus ?? 20);
+            if (configSnap.exists() && typeof configSnap.data().welcomePointsBonus === 'number') {
+              welcomeBonus = Number(configSnap.data().welcomePointsBonus);
             }
           } catch (e) {
             console.warn('Could not read welcome bonus from rewards_config/global:', e);
           }
 
-          const isMaster = MASTER_ADMIN_EMAILS.includes(trimmedEmail);
           await setDoc(userRef, {
             customerName: userCred.user.displayName || 'Pasajero TravelCab',
             email: trimmedEmail,
-            phone: '+5491100000000',
+            phone: '',
             customerLevel: 1,
             customerStatus: 'Cliente',
             rewardsPoints: welcomeBonus,
             walletBalance: 0,
             hasPurchasedOrganizedTrip: false,
-            isAdmin: isMaster,
-            role: isMaster ? 'admin' : 'passenger',
+            role: 'passenger',
             createdAt: Timestamp.now()
           });
         }
       }
     } catch (err: any) {
-      console.warn('Google auth error:', err);
-      Alert.alert('Error de Autenticación', 'No se pudo iniciar sesión con Google.');
+      console.warn('Quick auth error:', err);
+      Alert.alert('Error de Autenticación', 'No se pudo iniciar sesión con las credenciales guardadas.');
     } finally {
       setLoading(false);
     }
@@ -212,18 +200,9 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       let userCred;
-      const isMasterAdmin = MASTER_ADMIN_EMAILS.includes(finalEmail);
 
       if (isLogin) {
-        try {
-          userCred = await signInWithEmailAndPassword(auth, finalEmail, password);
-        } catch (err: any) {
-          if (isMasterAdmin && err.code === 'auth/user-not-found') {
-            userCred = await createUserWithEmailAndPassword(auth, finalEmail, password);
-          } else {
-            throw err;
-          }
-        }
+        userCred = await signInWithEmailAndPassword(auth, finalEmail, password);
       } else {
         if (!name.trim()) {
           setLoading(false);
@@ -240,23 +219,35 @@ export default function LoginScreen() {
       }
 
       if (userCred?.user) {
+        try {
+          await AsyncStorage.setItem(
+            SAVED_USER_KEY,
+            JSON.stringify({
+              email: finalEmail,
+              pass: password,
+              name: name.trim() || userCred.user.displayName || 'Pasajero',
+            })
+          );
+        } catch (storageErr) {
+          console.warn('Could not save credentials:', storageErr);
+        }
+
         const userRef = doc(db, 'users', userCred.user.uid);
         const snap = await getDoc(userRef);
 
         if (!snap.exists()) {
-          let welcomeBonus = 20;
+          let welcomeBonus = 0;
           try {
             const configSnap = await getDoc(doc(db, 'rewards_config', 'global'));
-            if (configSnap.exists()) {
-              welcomeBonus = Number(configSnap.data().welcomePointsBonus ?? 20);
+            if (configSnap.exists() && typeof configSnap.data().welcomePointsBonus === 'number') {
+              welcomeBonus = Number(configSnap.data().welcomePointsBonus);
             }
           } catch (e) {
             console.warn('Could not read welcome bonus from rewards_config/global:', e);
           }
 
-          const isMaster = MASTER_ADMIN_EMAILS.includes(finalEmail);
           await setDoc(userRef, {
-            customerName: name.trim() || userCred.user.displayName || (finalEmail.includes('fernando') ? 'Fernando Admin' : 'Pasajero TravelCab'),
+            customerName: name.trim() || userCred.user.displayName || 'Pasajero TravelCab',
             email: finalEmail,
             phone: phone.trim() || inputVal,
             customerLevel: 1,
@@ -264,8 +255,7 @@ export default function LoginScreen() {
             rewardsPoints: welcomeBonus,
             walletBalance: 0,
             hasPurchasedOrganizedTrip: false,
-            isAdmin: isMaster,
-            role: isMaster ? 'admin' : 'passenger',
+            role: 'passenger',
             createdAt: Timestamp.now()
           });
         }

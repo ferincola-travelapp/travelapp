@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../lib/firebase';
 import { subscribeToRealFleet, DriverItem } from '../lib/supervisorService';
@@ -93,10 +93,28 @@ export default function DriversListScreen({ route, navigation }: any) {
               activeOpacity={0.85}
             >
               <View style={styles.cardHeader}>
+                {item.vehiclePhotoUrl ? (
+                  <Image
+                    source={{ uri: item.vehiclePhotoUrl }}
+                    style={{ width: 48, height: 48, borderRadius: 12, marginRight: 12, borderWidth: 1, borderColor: '#334155' }}
+                    resizeMode="cover"
+                  />
+                ) : null}
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.driverName}>{item.name}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <Text style={styles.driverName}>{item.name}</Text>
+                    <Text style={{ color: '#F59E0B', fontSize: 11, fontWeight: '800' }}>
+                      ⭐ {(item.rating || 5.0).toFixed(1)}
+                    </Text>
+                  </View>
                   <Text style={styles.driverId}>
                     {item.id.slice(0, 8)} · {item.vehicle}
+                  </Text>
+                  <Text style={{ color: item.registrationType === 'direct' ? '#38BDF8' : '#A855F7', fontSize: 10, fontWeight: '800', marginTop: 3 }}>
+                    {item.registrationType === 'direct'
+                      ? '● Alta Directa'
+                      : `● Vinculado (${item.supervisorCode || 'Supervisor'})`}
+                    {item.isSuspended ? ' · 🔴 SUSPENDIDO' : ''}
                   </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 6 }}>
