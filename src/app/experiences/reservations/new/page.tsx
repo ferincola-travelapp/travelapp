@@ -220,13 +220,47 @@ function NewReservationForm() {
 
   // 1. Sync Tours, Quotes, Customers, Staff (RRHH) & Affiliates
   useEffect(() => {
-    // A. Sync experiences catalog
-    const unsubTours = onSnapshot(collection(db, 'experiences'), (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Tour));
-      setTours(list);
-      if (!selectedTourId && list.length > 0 && !paramQuoteId) {
-        setSelectedTourId(list[0].id);
+    // A. Sync experiences catalog (Receptivo) + ota_packages (Emisivo) en memoria para el ERP sin mezclar colecciones en Firestore
+    let receptivoTours: Tour[] = [];
+    let emisivoTours: Tour[] = [];
+    const mergeErpTours = () => {
+      const combined = [...receptivoTours, ...emisivoTours];
+      setTours(combined);
+      if (!selectedTourId && combined.length > 0 && !paramQuoteId) {
+        setSelectedTourId(combined[0].id);
       }
+    };
+
+    const unsubTours = onSnapshot(collection(db, 'experiences'), (snap) => {
+      receptivoTours = snap.docs.map(d => ({ id: d.id, ...d.data() } as Tour));
+      mergeErpTours();
+    });
+
+    const unsubOtaTours = onSnapshot(collection(db, 'ota_packages'), (snap) => {
+      emisivoTours = snap.docs.map(d => {
+        const pkg = d.data();
+        return {
+          id: d.id,
+          title: pkg.title || d.id,
+          location: `${pkg.destination || ''}, ${pkg.country || ''}`.replace(/^,\s*|,\s*$/g, ''),
+          price: Number(pkg.price || 0),
+          currency: pkg.currency || 'USD',
+          priceRewards: Number(pkg.memberPrice || Math.round((pkg.price || 0) * 0.9)),
+          pointsEarned: Number(pkg.rewardsPointsEarned || 500),
+          tripType: pkg.modality === 'Salida Grupal Acompañada' ? 'Grupal' : 'Individual',
+          scope: pkg.region === 'Nacional' ? 'Nacional' : 'Internacional',
+          tourismVertical: 'emisivo',
+          productType: pkg.type === 'crucero' ? 'crucero' : pkg.providerCategory === 'propio' ? 'salida_propia' : 'operador_mayorista',
+          transportation: `${pkg.transportType || ''} ${pkg.airline || ''}`.trim(),
+          departureDate: pkg.departureDates?.[0] || '2026-11-12',
+          departureOrigin: pkg.departureOrigin || 'Buenos Aires',
+          services: pkg.includedServices || [],
+          imageUrl: pkg.imageUrl || '',
+          description: pkg.description || '',
+          availability: 'Disponible',
+        } as Tour;
+      });
+      mergeErpTours();
     });
 
     // B. Sync experience_quotes
@@ -337,6 +371,7 @@ function NewReservationForm() {
 
     return () => {
       unsubTours();
+      unsubOtaTours();
       unsubQuotes();
       unsubCrm();
       unsubUsers();

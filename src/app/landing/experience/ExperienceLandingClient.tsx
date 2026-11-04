@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { doc, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { ExperienceHeader } from "@/components/experience/ExperienceHeader";
 import { ExperienceHeroSlider } from "@/components/experience/ExperienceHeroSlider";
 import {
@@ -20,6 +22,23 @@ interface ExperienceLandingClientProps {
 export default function ExperienceLandingClient({
   initialCms,
 }: ExperienceLandingClientProps) {
+  const [cms, setCms] = useState<any>(initialCms || {});
+
+  useEffect(() => {
+    const unsub = onSnapshot(
+      doc(db, "cms", "landing_experience"),
+      (snap) => {
+        if (snap.exists()) {
+          setCms(snap.data());
+        }
+      },
+      () => {
+        // Mantiene initialCms si Firestore está restringido
+      }
+    );
+    return () => unsub();
+  }, []);
+
   const [searchMode, setSearchMode] = useState<"excursiones" | "traslados">(
     "excursiones"
   );
@@ -82,8 +101,8 @@ export default function ExperienceLandingClient({
 
       {/* 2. HERO SLIDER 4K / ULTRA HD (Hasta 20 tarjetas) */}
       <ExperienceHeroSlider
-        slides={initialCms?.heroSlides || initialCms?.slides}
-        cmsHero={initialCms?.marketplaceHero || initialCms?.hero}
+        slides={cms?.heroSlides || cms?.slides || initialCms?.heroSlides || initialCms?.slides}
+        cmsHero={cms?.marketplaceHero || cms?.hero || initialCms?.marketplaceHero || initialCms?.hero}
       />
 
       {/* 3. BARRA BUSCADORA DE EXCURSIONES Y TRASLADOS */}

@@ -38,7 +38,7 @@ import {
   Users,
   Compass
 } from "lucide-react";
-import { collection, onSnapshot, addDoc, query, orderBy } from "firebase/firestore";
+import { collection, onSnapshot, addDoc, query, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { OtaPackage, OtaPackageType, OtaProviderCategory, OtaModality, OtaActionType } from "@/types/ota";
 import { DEFAULT_OTA_PACKAGES } from "@/lib/mockOtaPackages";
@@ -74,15 +74,20 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
   // Escuchar paquetes desde Firestore (colección ota_packages), con fallback a DEFAULT_OTA_PACKAGES
   useEffect(() => {
     try {
-      const q = query(collection(db, "ota_packages"), orderBy("createdAt", "desc"));
+      const q = query(collection(db, "ota_packages"), limit(50));
       const unsub = onSnapshot(
         q,
         (snapshot) => {
           if (!snapshot.empty) {
-            const list = snapshot.docs.map((doc) => ({
-              id: doc.id,
-              ...doc.data(),
+            const list = snapshot.docs.map((docSnap) => ({
+              id: docSnap.id,
+              ...docSnap.data(),
             })) as OtaPackage[];
+            list.sort((a: any, b: any) =>
+              String(b.updatedAt || b.createdAt || "").localeCompare(
+                String(a.updatedAt || a.createdAt || "")
+              )
+            );
             setPackages(list);
           } else {
             setPackages(DEFAULT_OTA_PACKAGES);

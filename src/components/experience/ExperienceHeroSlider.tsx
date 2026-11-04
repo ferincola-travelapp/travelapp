@@ -6,13 +6,17 @@ import { ChevronLeft, ChevronRight, Play, Pause } from "lucide-react";
 export interface HeroSlideItem {
   id?: string;
   mediaType?: "image" | "video";
-  imageUrl: string;
+  imageUrl?: string;
+  bgImage?: string;
   videoUrl?: string;
   badge?: string;
   title: string;
   subtitle?: string;
+  text?: string;
   ctaText?: string;
   ctaHref?: string;
+  ctaUrl?: string;
+  overlayOpacity?: number;
 }
 
 export const MAX_HERO_SLIDES = 20;
@@ -82,8 +86,9 @@ interface ExperienceHeroSliderProps {
 }
 
 function isVideoAsset(slide: HeroSlideItem): boolean {
-  if (slide.mediaType === "video" || Boolean(slide.videoUrl)) return true;
-  return Boolean(slide.imageUrl?.match(/\.(mp4|webm|ogg|mov)(\?.*)?$/i));
+  if (slide.mediaType === "video" || Boolean(slide.videoUrl?.trim())) return true;
+  const img = slide.imageUrl || slide.bgImage || "";
+  return Boolean(img.match(/\.(mp4|webm|ogg|mov)(\?.*)?$/i));
 }
 
 export function ExperienceHeroSlider({
@@ -94,8 +99,21 @@ export function ExperienceHeroSlider({
   const activeSlides: HeroSlideItem[] = React.useMemo(() => {
     let rawList: HeroSlideItem[] = [];
     if (Array.isArray(slides) && slides.length > 0) {
-      rawList = slides.filter((s) => s && (s.imageUrl || s.videoUrl));
-    } else if (cmsHero?.heroImageUrl || cmsHero?.heroVideoUrl) {
+      rawList = slides
+        .filter((s) => s && (s.imageUrl || s.bgImage || s.videoUrl))
+        .map((s, idx) => ({
+          ...s,
+          id: s.id || `cms-slide-${idx}`,
+          imageUrl: s.imageUrl || s.bgImage || DEFAULT_SLIDES[idx % DEFAULT_SLIDES.length].imageUrl,
+          videoUrl: s.videoUrl?.trim() || "",
+          title: s.title || DEFAULT_SLIDES[idx % DEFAULT_SLIDES.length].title,
+          subtitle: s.subtitle || s.text || "",
+          ctaText: s.ctaText || "Más información",
+          ctaHref: s.ctaHref || s.ctaUrl || "#catalogo-excursiones",
+        }));
+    }
+
+    if (rawList.length === 0 && (cmsHero?.heroImageUrl || cmsHero?.heroVideoUrl)) {
       rawList = [
         {
           id: "cms-primary",
@@ -109,9 +127,12 @@ export function ExperienceHeroSlider({
         },
         ...DEFAULT_SLIDES.slice(1),
       ];
-    } else {
+    }
+
+    if (rawList.length === 0) {
       rawList = DEFAULT_SLIDES;
     }
+
     return rawList.slice(0, MAX_HERO_SLIDES);
   }, [slides, cmsHero]);
 
@@ -144,7 +165,13 @@ export function ExperienceHeroSlider({
       {activeSlides.map((slide, index) => {
         const isCurrent = index === currentIndex;
         const showVideo = isVideoAsset(slide);
-        const videoSource = slide.videoUrl || slide.imageUrl;
+        const resolvedImage =
+          slide.imageUrl || slide.bgImage || DEFAULT_SLIDES[0].imageUrl;
+        const videoSource = slide.videoUrl || resolvedImage;
+        const customOpacity =
+          typeof slide.overlayOpacity === "number"
+            ? Math.min(0.85, Math.max(0.1, slide.overlayOpacity / 100))
+            : null;
 
         return (
           <div
@@ -153,28 +180,37 @@ export function ExperienceHeroSlider({
               isCurrent ? "opacity-100 z-10" : "opacity-0 z-0 pointer-events-none"
             }`}
           >
-            {showVideo ? (
+            {/* Imagen de respaldo siempre presente detrás por si el video tarda o falla */}
+            <div
+              className="absolute inset-0 w-full h-full bg-cover bg-center transition-transform duration-[8000ms] ease-out"
+              style={{
+                backgroundImage: `url('${resolvedImage}')`,
+                transform: isCurrent ? "scale(1.03)" : "scale(1)",
+              }}
+            />
+
+            {showVideo && videoSource && (
               <video
+                key={videoSource}
                 src={videoSource}
-                poster={slide.imageUrl}
+                poster={resolvedImage}
                 autoPlay
                 loop
                 muted
                 playsInline
-                className="w-full h-full object-cover object-center"
-              />
-            ) : (
-              <div
-                className="w-full h-full bg-cover bg-center transition-transform duration-[8000ms] ease-out"
-                style={{
-                  backgroundImage: `url('${slide.imageUrl}')`,
-                  transform: isCurrent ? "scale(1.03)" : "scale(1)",
-                }}
+                className="relative z-[1] w-full h-full object-cover object-center"
               />
             )}
 
             {/* Degradado sutil estilo Apple (oscurece suavemente arriba para dar contraste limpio al texto) */}
-            <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/20 to-black/50" />
+            <div
+              className="absolute inset-0 z-[2] bg-gradient-to-b from-black/60 via-black/20 to-black/50"
+              style={
+                customOpacity !== null
+                  ? { backgroundColor: `rgba(0,0,0,${customOpacity * 0.65})` }
+                  : undefined
+              }
+            />
           </div>
         );
       })}

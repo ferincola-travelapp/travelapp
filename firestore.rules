@@ -42,6 +42,18 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAdmin();
     }
+    match /ota_packages/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /pickup_hotels/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /discount_codes/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
     match /experience_reservations/{document=**} {
       allow read: if true;
       allow create: if true;
@@ -133,10 +145,11 @@ service cloud.firestore {
 
     // --- EXPERIENCIAS Y SALIDAS PROPIAS / MI VIAJE (CONTRACTED TRIPS) ---
     match /contracted_trips/{tripId} {
-      // Lectura permitida para pasajeros con reserva, usuarios autenticados y admin
+      // Lectura y creación de reservas desde las landings públicas permitidas
       allow read: if true;
-      // Escritura permitida para administradores, operadores y coordinadores asignados
-      allow write: if isAdmin() || (isAuthenticated() && (
+      allow create: if true;
+      // Actualización y borrado permitidos para administradores, operadores y coordinadores asignados
+      allow update, delete: if isAdmin() || (isAuthenticated() && (
         resource.data.coordinator.phone == request.auth.token.phone_number ||
         request.resource.data.coordinator.phone == request.auth.token.phone_number
       ));

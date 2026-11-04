@@ -7,6 +7,8 @@ import {
   onSnapshot,
   addDoc,
   serverTimestamp,
+  query,
+  limit,
 } from "firebase/firestore";
 import {
   calculateTimeToPayDeadline,
@@ -318,10 +320,28 @@ export function ExperienceCatalogCarousel({
   // Sincronización con el panel TravelApp Experience Receptivo y CMS Web (Concorde 360)
   useEffect(() => {
     const unsubExp = onSnapshot(
-      collection(db, "experiences"),
+      query(collection(db, "experiences"), limit(40)),
       (snapshot) => {
         if (!snapshot.empty) {
-          const loaded = snapshot.docs.map((docSnap, idx) => {
+          const receptivoDocs = snapshot.docs.filter((docSnap) => {
+            const d = docSnap.data();
+            const isEmisivoOrInternational =
+              docSnap.id.startsWith("OTA-PKG-") ||
+              d.tourismVertical === "emisivo" ||
+              d.scope === "Internacional" ||
+              d.region === "Internacional" ||
+              ["operador_mayorista", "crucero", "salida_propia", "paquete_viaje"].includes(
+                d.productType || ""
+              );
+            return !isEmisivoOrInternational;
+          });
+
+          if (receptivoDocs.length === 0) {
+            setExperiences(DEFAULT_EXPERIENCES);
+            return;
+          }
+
+          const loaded = receptivoDocs.map((docSnap, idx) => {
             const d = docSnap.data();
             const fallback =
               DEFAULT_EXPERIENCES[idx % DEFAULT_EXPERIENCES.length];
@@ -364,6 +384,8 @@ export function ExperienceCatalogCarousel({
             } as ExperienceItem;
           });
           setExperiences(loaded);
+        } else {
+          setExperiences(DEFAULT_EXPERIENCES);
         }
       },
       () => {}
@@ -371,7 +393,7 @@ export function ExperienceCatalogCarousel({
 
     // Listado de hoteles cargados desde Firestore (si existen en pickup_hotels)
     const unsubHotels = onSnapshot(
-      collection(db, "pickup_hotels"),
+      query(collection(db, "pickup_hotels"), limit(50)),
       (snapshot) => {
         if (!snapshot.empty) {
           const loadedHotels = snapshot.docs
@@ -396,7 +418,7 @@ export function ExperienceCatalogCarousel({
 
     // Códigos de descuento desde Firestore (si existen en discount_codes)
     const unsubDiscounts = onSnapshot(
-      collection(db, "discount_codes"),
+      query(collection(db, "discount_codes"), limit(30)),
       (snapshot) => {
         if (!snapshot.empty) {
           const map: Record<string, { percent: number; label: string }> = {};
@@ -526,7 +548,7 @@ export function ExperienceCatalogCarousel({
   // Acción 1: Botón "Reservar" (bloquea cupo manteniendo el tiempo de reserva configurado)
   const handleReserveOnly = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!bookingExp) return;
+    if (!bookingExp || submittingMode) return;
     setSubmittingMode("reservar");
 
     const paymentDeadline = calculateTimeToPayDeadline(
@@ -560,21 +582,25 @@ export function ExperienceCatalogCarousel({
         createdAt: serverTimestamp(),
       });
 
-      await addDoc(collection(db, "contracted_trips"), {
-        type: "EXCURSION_RECEPTIVA",
-        title: bookingExp.title,
-        region: bookingExp.region,
-        clientName: leadPassenger,
-        passengerList: passengerNames.map((n) => n.trim()).filter(Boolean),
-        clientPhone: passengerPhone,
-        hotelPickup: resolvedOrigin,
-        serviceDate: bookingDate || null,
-        passengers: paxCount,
-        totalPrice: finalAmount,
-        paymentDeadline: paymentDeadline.deadlineIso,
-        status: "PENDING",
-        createdAt: serverTimestamp(),
-      });
+      try {
+        await addDoc(collection(db, "contracted_trips"), {
+          type: "EXCURSION_RECEPTIVA",
+          title: bookingExp.title,
+          region: bookingExp.region,
+          clientName: leadPassenger,
+          passengerList: passengerNames.map((n) => n.trim()).filter(Boolean),
+          clientPhone: passengerPhone,
+          hotelPickup: resolvedOrigin,
+          serviceDate: bookingDate || null,
+          passengers: paxCount,
+          totalPrice: finalAmount,
+          paymentDeadline: paymentDeadline.deadlineIso,
+          status: "PENDING",
+          createdAt: serverTimestamp(),
+        });
+      } catch {
+        // Ignora error de permisos en contracted_trips para visitante público
+      }
 
       setBookingSuccess(true);
     } catch {
@@ -596,7 +622,7 @@ export function ExperienceCatalogCarousel({
 
   // Acción 2: Botón "Comprar" (aplica descuento si existe y enlaza con NAVE)
   const handleBuyWithNave = async () => {
-    if (!bookingExp) return;
+    if (!bookingExp || submittingMode) return;
 
     const leadPassenger = passengerNames[0]?.trim();
     if (!leadPassenger || !passengerPhone.trim() || !selectedHotel) {
@@ -617,31 +643,36 @@ export function ExperienceCatalogCarousel({
     const resolvedOrigin = resolveOriginString();
     const externalPaymentId = `EXP-${Date.now()}`;
 
+    const reservationPayload = {
+      experienceId: bookingExp.id,
+      experienceTitle: bookingExp.title,
+      region: bookingExp.region,
+      passengerName: leadPassenger,
+      passengerNames: passengerNames.map((n) => n.trim()).filter(Boolean),
+      passengerPhone,
+      passengerHotel: resolvedOrigin,
+      originType: selectedHotel === "OTRO" ? "CUSTOM_ADDRESS" : "HOTEL",
+      bookingDate: bookingDate || null,
+      paxCount,
+      unitPrice: bookingExp.price,
+      subtotalAmount,
+      discountCode: appliedDiscount?.code || null,
+      discountPercent: appliedDiscount?.percent || 0,
+      discountAmount,
+      totalAmount: finalAmount,
+      currency: bookingExp.currency,
+      paymentGateway: "NAVE",
+      externalPaymentId,
+      status: "INITIATED_NAVE_CHECKOUT",
+      timeToPayDeadline: paymentDeadline.deadlineIso,
+      source: "WEB_EXPERIENCE_LANDING",
+      createdAt: new Date().toISOString(),
+    };
+
     let reservationDocId = "";
     try {
       const docRef = await addDoc(collection(db, "experience_reservations"), {
-        experienceId: bookingExp.id,
-        experienceTitle: bookingExp.title,
-        region: bookingExp.region,
-        passengerName: leadPassenger,
-        passengerNames: passengerNames.map((n) => n.trim()).filter(Boolean),
-        passengerPhone,
-        passengerHotel: resolvedOrigin,
-        originType: selectedHotel === "OTRO" ? "CUSTOM_ADDRESS" : "HOTEL",
-        bookingDate: bookingDate || null,
-        paxCount,
-        unitPrice: bookingExp.price,
-        subtotalAmount,
-        discountCode: appliedDiscount?.code || null,
-        discountPercent: appliedDiscount?.percent || 0,
-        discountAmount,
-        totalAmount: finalAmount,
-        currency: bookingExp.currency,
-        paymentGateway: "NAVE",
-        externalPaymentId,
-        status: "INITIATED_NAVE_CHECKOUT",
-        timeToPayDeadline: paymentDeadline.deadlineIso,
-        source: "WEB_EXPERIENCE_LANDING",
+        ...reservationPayload,
         createdAt: serverTimestamp(),
       });
       reservationDocId = docRef.id;
@@ -650,6 +681,8 @@ export function ExperienceCatalogCarousel({
     }
 
     try {
+      const appOrigin =
+        typeof window !== "undefined" ? window.location.origin : "";
       const response = await fetch("/api/checkout/nave-intent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -667,17 +700,31 @@ export function ExperienceCatalogCarousel({
             name: leadPassenger,
             phone: passengerPhone,
           },
-          reservationId: reservationDocId || externalPaymentId,
+          reservationId: reservationDocId || undefined,
+          reservationPayload: !reservationDocId ? reservationPayload : undefined,
+          callbackUrl: `${appOrigin}/checkout/success?file=${externalPaymentId}&type=experience&amount=${finalAmount}`,
         }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 429) {
+        alert(
+          data.error ||
+            "Demasiados intentos seguidos. Por favor aguardá unos segundos."
+        );
+        return;
+      }
       if (data?.checkoutUrl) {
         window.location.href = data.checkoutUrl;
         return;
       }
+      alert(
+        data?.error ||
+          "No se pudo iniciar la pasarela NAVE en este momento. Intentá nuevamente."
+      );
     } catch (err) {
       console.error("Error conectando con NAVE:", err);
+      alert("Error de conexión al iniciar el pago con NAVE.");
     } finally {
       setSubmittingMode(null);
     }

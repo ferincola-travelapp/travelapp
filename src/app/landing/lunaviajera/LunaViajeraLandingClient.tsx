@@ -42,7 +42,7 @@ import {
   Camera,
   Maximize2
 } from "lucide-react";
-import { doc, onSnapshot, collection } from "firebase/firestore";
+import { doc, onSnapshot, collection, query, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { TravisOmnichannelWidget } from "@/components/shared/TravisOmnichannelWidget";
 
@@ -278,36 +278,108 @@ export default function LunaViajeraLandingClient({ initialCms }: LunaViajeraLand
       : DEFAULT_EXCURSIONES
   );
 
-  // Escuchar cambios del documento 'landing_lunaviajera' en tiempo real
+  // Escuchar cambios del documento 'landing_lunaviajera' y catálogo receptivo 'experiences' en tiempo real
   useEffect(() => {
+    let cmsExcursionesList: any[] =
+      initialCms?.excursiones && Array.isArray(initialCms.excursiones) && initialCms.excursiones.length > 0
+        ? initialCms.excursiones
+        : DEFAULT_EXCURSIONES;
+    let receptivoDbList: any[] = [];
+
+    const isReceptivoDoc = (id: string, item: any) => {
+      if (!item) return false;
+      const isEmisivoOrInternational =
+        id.startsWith("OTA-PKG-") ||
+        item.tourismVertical === "emisivo" ||
+        item.scope === "Internacional" ||
+        item.region === "Internacional" ||
+        ["operador_mayorista", "crucero", "salida_propia", "paquete_viaje"].includes(
+          item.productType || ""
+        );
+      return !isEmisivoOrInternational;
+    };
+
+    const mergeReceptivoCatalog = () => {
+      const mergedMap = new Map<string, any>();
+      // Primero las excursiones receptivas sincronizadas desde la colección 'experiences'
+      receptivoDbList.forEach((item) => {
+        mergedMap.set(item.id, item);
+      });
+      // Luego las excursiones propias del CMS de Luna Viajera (solo receptivas)
+      cmsExcursionesList
+        .filter((item) => isReceptivoDoc(String(item.id || ""), item))
+        .forEach((item) => {
+          if (!mergedMap.has(item.id)) {
+            mergedMap.set(item.id, item);
+          }
+        });
+      const finalCatalog = Array.from(mergedMap.values());
+      setExcursiones(finalCatalog.length > 0 ? finalCatalog : DEFAULT_EXCURSIONES);
+    };
+
     const unsubCms = onSnapshot(doc(db, "cms", "landing_lunaviajera"), (snap) => {
       if (snap.exists()) {
         const loaded = snap.data();
         setCms({ ...DEFAULT_LUNA_CMS, ...loaded });
         if (loaded.excursiones && Array.isArray(loaded.excursiones) && loaded.excursiones.length > 0) {
-          setExcursiones(loaded.excursiones);
+          cmsExcursionesList = loaded.excursiones;
+          mergeReceptivoCatalog();
         }
       }
     });
 
-    // Escuchar catálogo de excursiones en Firestore si existen productos 'excursion_local'
-    const unsubExp = onSnapshot(collection(db, "experiences"), (snapshot) => {
-      const dbList: any[] = [];
-      snapshot.forEach((d) => {
-        const item = d.data();
-        if (item.productType === "excursion_local" || item.businessUnit === "lunaviajera" || item.tag?.includes("lunaviajera")) {
-          dbList.push({ id: d.id, ...item });
-        }
-      });
-      if (dbList.length > 0) {
-        setExcursiones((prev) => {
-          // Unir evitando duplicados por ID
-          const ids = new Set(dbList.map((x) => x.id));
-          const filteredPrev = prev.filter((x) => !ids.has(x.id));
-          return [...filteredPrev, ...dbList];
+    // Escuchar catálogo de Turismo Receptivo en Firestore (colección 'experiences', acotado con limit)
+    const unsubExp = onSnapshot(
+      query(collection(db, "experiences"), limit(40)),
+      (snapshot) => {
+        const dbList: any[] = [];
+        snapshot.forEach((d) => {
+          const item = d.data();
+          if (!isReceptivoDoc(d.id, item)) return;
+
+          const rawCat = String(item.category || item.tripType || "tradicional")
+            .toLowerCase()
+            .trim();
+          dbList.push({
+            id: d.id,
+            category: rawCat,
+            categoryLabel: item.categoryLabel || `🏔️ ${item.category || "Receptivo NOA"}`,
+            title: item.title || item.name || "Excursión Receptiva",
+            tagline: item.tagline || item.location || item.region || "Norte Argentino",
+            detail:
+              item.detail ||
+              item.description ||
+              item.observations ||
+              "Excursión receptiva con traslados y guía habilitado.",
+            badge: item.badge || "Turismo Receptivo",
+            duration: item.duration || "Día Completo",
+            departureTime: item.departureTime || "08:00 hs — Regreso 18:00 hs",
+            departurePoint: item.departureOrigin || item.departurePoint || "San Miguel de Tucumán / Yerba Buena",
+            difficulty: item.difficulty || "Baja · Para toda la familia",
+            price: Number(item.price || item.basePrice || 45000),
+            imageUrl:
+              (Array.isArray(item.images) && item.images[0]) ||
+              item.imageUrl ||
+              DEFAULT_EXCURSIONES[0].imageUrl,
+            stops:
+              Array.isArray(item.stops) && item.stops.length > 0
+                ? item.stops
+                : Array.isArray(item.itinerary) && item.itinerary.length > 0
+                ? item.itinerary.map((it: any) => (typeof it === "string" ? it : `${it.time || ""} ${it.activity || ""}`.trim()))
+                : ["Recorrido panorámico guiado", "Paradas fotográficas en miradores", "Tiempo libre para almuerzo regional"],
+            includes:
+              Array.isArray(item.services) && item.services.length > 0
+                ? item.services
+                : Array.isArray(item.includes) && item.includes.length > 0
+                ? item.includes
+                : DEFAULT_EXCURSIONES[0].includes,
+          });
         });
-      }
-    });
+        receptivoDbList = dbList;
+        mergeReceptivoCatalog();
+      },
+      () => {}
+    );
 
     return () => {
       unsubCms();
@@ -417,7 +489,7 @@ export default function LunaViajeraLandingClient({ initialCms }: LunaViajeraLand
 
   const handleProcessBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedExcursion) return;
+    if (!selectedExcursion || resStatus === "loading") return;
     setResStatus("loading");
 
     try {
@@ -425,6 +497,35 @@ export default function LunaViajeraLandingClient({ initialCms }: LunaViajeraLand
       const totalAmount = selectedExcursion.price * passengerCount;
       const amountToPay = bookingMode === "deposit" ? Math.round(totalAmount * 0.3) : totalAmount;
       const appOrigin = typeof window !== "undefined" ? window.location.origin : "";
+
+      const reservationPayload = {
+        reservationCode: resCode,
+        tourId: selectedExcursion.id,
+        tourTitle: selectedExcursion.title,
+        destination: selectedExcursion.tagline || "Norte Argentino",
+        productType: "excursion_local",
+        businessUnit: "lunaviajera",
+        bookingMode: bookingMode === "deposit" ? "sena_30_nave" : "total_nave",
+        nombrePasajero: passengerName,
+        passengerName,
+        telefonoPasajero: passengerPhone,
+        passengerPhone,
+        emailPasajero: passengerEmail,
+        dniPasajero: passengerDni,
+        cantidadPersonas: passengerCount,
+        quantity: passengerCount,
+        estado: "Pendiente_Pago_Nave",
+        financials: {
+          currency: "ARS",
+          unitPrice: selectedExcursion.price,
+          totalPrice: totalAmount,
+          paidAmount: 0,
+          pendingAmount: totalAmount,
+          requestedAdvance: amountToPay,
+        },
+        source: "WEB_LUNA_VIAJERA",
+        createdAt: new Date().toISOString(),
+      };
 
       const res = await fetch("/api/checkout/nave-intent", {
         method: "POST",
@@ -441,15 +542,20 @@ export default function LunaViajeraLandingClient({ initialCms }: LunaViajeraLand
             docNumber: passengerDni,
             phone: passengerPhone
           },
+          reservationPayload,
           callbackUrl: `${appOrigin}/checkout/success?file=${resCode}&type=lunaviajera&amount=${amountToPay}`
         })
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.checkoutUrl) {
-          setCheckoutUrl(data.checkoutUrl);
-        }
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 429) {
+        alert(data.error || "Demasiados intentos seguidos. Por favor aguardá unos segundos.");
+        setResStatus("idle");
+        return;
+      }
+
+      if (res.ok && data.checkoutUrl) {
+        setCheckoutUrl(data.checkoutUrl);
       }
 
       setCreatedFile(resCode);
@@ -570,9 +676,13 @@ export default function LunaViajeraLandingClient({ initialCms }: LunaViajeraLand
         onMouseEnter={() => setIsPaused(true)}
         onMouseLeave={() => setIsPaused(false)}
       >
-        {/* Slides de Fondo en Rotación Suave - Foto Limpia sin velo verde */}
+        {/* Slides de Fondo en Rotación Suave - Soporta Imagen HD y Video MP4/WebM */}
         {slides.map((slide: any, idx: number) => {
           const isActive = idx === currentSlideIdx;
+          const imgSrc = slide.mediaUrl || slide.bgImage || slide.imageUrl || DEFAULT_LUNA_CMS.hero.slides[0].mediaUrl;
+          const videoSrc =
+            slide.videoUrl ||
+            (slide.mediaType === "video" || /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(imgSrc) ? imgSrc : "");
           return (
             <div
               key={slide.id || idx}
@@ -582,10 +692,22 @@ export default function LunaViajeraLandingClient({ initialCms }: LunaViajeraLand
             >
               {/* Imagen de Fondo HD Limpia */}
               <img
-                src={slide.mediaUrl}
-                alt={slide.title}
+                src={imgSrc}
+                alt={slide.title || "Luna Viajera"}
                 className="w-full h-full object-cover object-center filter brightness-100 contrast-105"
               />
+              {videoSrc && (
+                <video
+                  key={videoSrc}
+                  src={videoSrc}
+                  poster={imgSrc}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  className="absolute inset-0 w-full h-full object-cover object-center"
+                />
+              )}
               
               {/* Sutil difuminado únicamente al pie del Hero para conectar con las tarjetas superpuestas */}
               <div className="absolute bottom-0 inset-x-0 h-36 bg-gradient-to-t from-[#072118] via-[#072118]/60 to-transparent pointer-events-none" />

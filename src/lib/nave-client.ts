@@ -32,6 +32,67 @@ interface PaymentIntentResponse {
   qr_data: string;
 }
 
+export interface NaveEnvironmentInfo {
+  mode: 'production' | 'sandbox' | 'simulated';
+  isProduction: boolean;
+  hasCredentials: boolean;
+  label: string;
+  authUrl: string;
+  paymentUrl: string;
+}
+
+export function getNaveEnvironmentInfo(): NaveEnvironmentInfo {
+  const envRaw = (process.env.NAVE_ENVIRONMENT || '').toLowerCase().trim();
+  const isProd = envRaw === 'production' || envRaw === 'prod';
+  const clientId = process.env.NAVE_CLIENT_ID || '';
+  const clientSecret = process.env.NAVE_CLIENT_SECRET || '';
+  const hasCredentials = Boolean(
+    clientId &&
+    clientSecret &&
+    clientId !== 'demo_client_id' &&
+    !clientId.includes('TU_CLIENT_ID')
+  );
+
+  const authUrl = isProd
+    ? 'https://services.apinaranja.com/security-ms/api/security/auth0/b2b/m2msPrivate'
+    : 'https://homoservices.apinaranja.com/security-ms/api/security/auth0/b2b/m2msPrivate';
+
+  const paymentUrl = isProd
+    ? 'https://api.ranty.io/api/payment_request/ecommerce'
+    : 'https://api-sandbox.ranty.io/api/payment_request/ecommerce';
+
+  if (!hasCredentials) {
+    return {
+      mode: 'simulated',
+      isProduction: false,
+      hasCredentials: false,
+      label: 'Entorno de Pruebas Simulado (Sin credenciales NAVE_CLIENT_ID configuradas)',
+      authUrl: 'local-simulated',
+      paymentUrl: '/checkout/nave-simulated-pay'
+    };
+  }
+
+  if (isProd) {
+    return {
+      mode: 'production',
+      isProduction: true,
+      hasCredentials: true,
+      label: 'Entorno REAL de Producción (NAVE Banco Galicia / Naranja X)',
+      authUrl,
+      paymentUrl
+    };
+  }
+
+  return {
+    mode: 'sandbox',
+    isProduction: false,
+    hasCredentials: true,
+    label: 'Entorno Oficial de Pruebas / Homologación (NAVE Sandbox)',
+    authUrl,
+    paymentUrl
+  };
+}
+
 let cachedNaveToken: string | null = null;
 let naveTokenExpiry: number = 0;
 
@@ -91,7 +152,21 @@ export async function getNaveAccessToken(): Promise<string> {
 export async function createNavePaymentIntent(params: CreatePaymentIntentParams): Promise<PaymentIntentResponse> {
   const token = await getNaveAccessToken();
   const isProd = process.env.NAVE_ENVIRONMENT === 'production';
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
+  let detectedOrigin = '';
+  if (params.callbackUrl && params.callbackUrl.startsWith('http')) {
+    try {
+      detectedOrigin = new URL(params.callbackUrl).origin;
+    } catch {
+      detectedOrigin = '';
+    }
+  }
+  const envAppUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+  const appUrl =
+    (detectedOrigin && (!envAppUrl || envAppUrl.includes('localhost')))
+      ? detectedOrigin
+      : (envAppUrl || detectedOrigin || 'https://experience.travelapp.ar');
+
   const formattedAmount = params.amount.toFixed(2);
   const currency = params.currency || 'ARS';
 

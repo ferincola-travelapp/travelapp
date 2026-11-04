@@ -405,7 +405,7 @@ export default function ExperienceCatalogPage() {
     });
   }, [allTours, searchQuery]);
 
-  // Inyectar paquetes oficiales de Turismo Emisivo a Firestore
+  // Inyectar paquetes oficiales de Turismo Emisivo a Firestore (Colección exclusiva: ota_packages)
   const handleSeedEmisivo = async () => {
     setIsSeeding(true);
     try {
@@ -414,31 +414,14 @@ export default function ExperienceCatalogPage() {
           ...pkg,
           updatedAt: new Date().toISOString()
         });
-
-        const tourSync: Tour = {
-          id: pkg.id,
-          title: pkg.title,
-          location: `${pkg.destination}, ${pkg.country}`,
-          price: pkg.currency === 'USD' ? pkg.price : Math.round(pkg.price / 1300),
-          currency: pkg.currency,
-          priceRewards: pkg.memberPrice || Math.round(pkg.price * 0.9),
-          pointsEarned: pkg.rewardsPointsEarned || 500,
-          tripType: pkg.modality === 'Salida Grupal Acompañada' ? 'Grupal' : 'Individual',
-          scope: pkg.region === 'Nacional' ? 'Nacional' : 'Internacional',
-          tourismVertical: 'emisivo',
-          productType: pkg.type === 'crucero' ? 'crucero' : pkg.providerCategory === 'propio' ? 'salida_propia' : 'operador_mayorista',
-          transportation: `${pkg.transportType} ${pkg.airline || ''}`.trim(),
-          departureDate: pkg.departureDates?.[0] || '2026-11-12',
-          departureOrigin: pkg.departureOrigin,
-          services: pkg.includedServices,
-          imageUrl: pkg.imageUrl,
-          description: pkg.description,
-          observations: `Operador: ${pkg.operatorName || 'TravelApp'} · Régimen: ${pkg.foodPlan} · ${pkg.durationDays}D / ${pkg.durationNights}N`,
-          availability: 'Disponible',
-        };
-        await setDoc(doc(db, 'experiences', pkg.id), tourSync);
+        // Limpiar cualquier copia histórica de paquetes emisivos dentro de 'experiences' para que no se mezclen las bases de datos
+        try {
+          await deleteDoc(doc(db, 'experiences', pkg.id));
+        } catch {
+          // Ignorar si no existía en experiences
+        }
       }
-      alert('¡6 Paquetes Emisivos oficiales inyectados en TravelMarket y sincronizados con el ERP de Expedientes!');
+      alert('¡Paquetes Emisivos inyectados exclusivamente en la base de datos de Emisivo (ota_packages) sin mezclarse con Receptivo!');
     } catch (err: any) {
       console.error("Error al inyectar paquetes emisivos:", err);
       alert(`Error al inyectar paquetes emisivos: ${err.message}`);
@@ -447,14 +430,32 @@ export default function ExperienceCatalogPage() {
     }
   };
 
-  // Inyectar excursiones de Turismo Receptivo a Firestore
+  // Inyectar excursiones de Turismo Receptivo a Firestore (Colección exclusiva: experiences)
   const handleSeedReceptivo = async () => {
     setIsSeeding(true);
     try {
-      for (const tour of SEED_RECEPTIVO_TOURS) {
-        await setDoc(doc(db, 'experiences', tour.id), tour);
+      // Limpiar de 'experiences' cualquier paquete emisivo/internacional residual
+      for (const t of allTours) {
+        if (
+          t.id.startsWith('OTA-PKG-') ||
+          t.tourismVertical === 'emisivo' ||
+          t.scope === 'Internacional'
+        ) {
+          try {
+            await deleteDoc(doc(db, 'experiences', t.id));
+          } catch {
+            // Ignorar
+          }
+        }
       }
-      alert('¡Excursiones receptivas oficiales inyectadas con éxito en el catálogo de experiencias!');
+      for (const tour of SEED_RECEPTIVO_TOURS) {
+        await setDoc(doc(db, 'experiences', tour.id), {
+          ...tour,
+          tourismVertical: 'receptivo',
+          scope: 'Nacional'
+        });
+      }
+      alert('¡Excursiones receptivas oficiales sincronizadas en la base exclusiva de Receptivo (experiences) para Luna Viajera y TravelApp Experience!');
     } catch (err: any) {
       console.error("Error al inyectar excursiones receptivas:", err);
       alert(`Error al inyectar receptivo: ${err.message}`);
@@ -556,38 +557,22 @@ export default function ExperienceCatalogPage() {
         priceArs: editingOtaPkg.currency === 'ARS' ? Number(editingOtaPkg.price) : Math.round((Number(editingOtaPkg.price) || 0) * 1300),
       };
 
-      // 1. Guardar en ota_packages
+      // Guardar exclusivamente en ota_packages (Base de datos de Turismo Emisivo)
       await setDoc(doc(db, 'ota_packages', completePkg.id), {
         ...completePkg,
+        createdAt: (editingOtaPkg as any)?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
 
-      // 2. Sincronizar en experiences para el cotizador y selector de reservas
-      const tourSync: Tour = {
-        id: completePkg.id,
-        title: completePkg.title,
-        location: `${completePkg.destination}, ${completePkg.country}`,
-        price: completePkg.price,
-        currency: completePkg.currency,
-        priceRewards: completePkg.memberPrice || Math.round(completePkg.price * 0.9),
-        pointsEarned: completePkg.rewardsPointsEarned || 500,
-        tripType: completePkg.modality === 'Salida Grupal Acompañada' ? 'Grupal' : 'Individual',
-        scope: completePkg.region === 'Nacional' ? 'Nacional' : 'Internacional',
-        tourismVertical: 'emisivo',
-        productType: completePkg.type === 'crucero' ? 'crucero' : completePkg.providerCategory === 'propio' ? 'salida_propia' : 'operador_mayorista',
-        transportation: `${completePkg.transportType} ${completePkg.airline || ''}`.trim(),
-        departureDate: completePkg.departureDates?.[0] || '2026-11-12',
-        departureOrigin: completePkg.departureOrigin,
-        services: completePkg.includedServices,
-        imageUrl: completePkg.imageUrl,
-        description: completePkg.description,
-        observations: `Operador: ${completePkg.operatorName || 'TravelApp'} · Régimen: ${completePkg.foodPlan} · ${completePkg.durationDays}D / ${completePkg.durationNights}N`,
-        availability: 'Disponible',
-      };
-      await setDoc(doc(db, 'experiences', completePkg.id), tourSync);
+      // Asegurar que no exista copia en 'experiences' (Receptivo) para evitar mezcla de catálogos
+      try {
+        await deleteDoc(doc(db, 'experiences', completePkg.id));
+      } catch {
+        // Ignorar si no existía
+      }
 
       setIsEmisivoModalOpen(false);
-      alert('¡Paquete Emisivo guardado y sincronizado con éxito!');
+      alert('¡Paquete Emisivo guardado en la base exclusiva de Turismo Emisivo (ota_packages)!');
     } catch (err: any) {
       console.error("Error al guardar paquete:", err);
       alert(`Error al guardar: ${err.message}`);

@@ -33,7 +33,7 @@ import {
   Mail,
   SlidersHorizontal
 } from "lucide-react";
-import { collection, onSnapshot, addDoc } from "firebase/firestore";
+import { collection, doc, onSnapshot, addDoc, query, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Tour, calculateTimeToPayDeadline } from "@/types/experiences";
 import { ExperienceHeader } from "@/components/experience/ExperienceHeader";
@@ -276,10 +276,23 @@ const DEFAULT_MARKETPLACE_TOURS: Tour[] = [
 ];
 
 export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMarketplaceClientProps) {
-  const cmsData = initialCms || {};
+  const [cmsData, setCmsData] = useState<any>(initialCms || {});
   const [tours, setTours] = useState<Tour[]>(DEFAULT_MARKETPLACE_TOURS);
   const [loadingTours, setLoadingTours] = useState(true);
   const [hotelsList, setHotelsList] = useState<string[]>(DEFAULT_HOTELS);
+
+  useEffect(() => {
+    const unsubCms = onSnapshot(
+      doc(db, "cms", "landing_experience"),
+      (snap) => {
+        if (snap.exists()) {
+          setCmsData((prev: any) => ({ ...prev, ...snap.data() }));
+        }
+      },
+      () => {}
+    );
+    return () => unsubCms();
+  }, []);
 
   // Tracking de Afiliados / Promotores
   const [affiliateRef, setAffiliateRef] = useState<string>("");
@@ -354,13 +367,22 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
   // Sincronización en tiempo real con el módulo Receptivo del Dashboard (colección 'experiences')
   useEffect(() => {
     const unsubExp = onSnapshot(
-      collection(db, "experiences"),
+      query(collection(db, "experiences"), limit(40)),
       (snapshot) => {
         if (!snapshot.empty) {
           const list: Tour[] = [];
           snapshot.forEach((docSnap) => {
             const data = docSnap.data() as Tour;
-            if (data.tourismVertical === "emisivo") return;
+            const isEmisivoOrInternational =
+              docSnap.id.startsWith("OTA-PKG-") ||
+              data.tourismVertical === "emisivo" ||
+              data.scope === "Internacional" ||
+              (data as any).region === "Internacional" ||
+              ["operador_mayorista", "crucero", "salida_propia", "paquete_viaje"].includes(
+                data.productType || ""
+              );
+            if (isEmisivoOrInternational) return;
+
             const fallback =
               DEFAULT_MARKETPLACE_TOURS.find((d) => d.id === docSnap.id) || DEFAULT_MARKETPLACE_TOURS[0];
             list.push({
@@ -395,7 +417,7 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
 
     // Escuchar hoteles de pick-up configurados en el Dashboard
     const unsubHotels = onSnapshot(
-      collection(db, "pickup_hotels"),
+      query(collection(db, "pickup_hotels"), limit(50)),
       (snapshot) => {
         if (!snapshot.empty) {
           const loaded = snapshot.docs.map((d) => d.data().name).filter(Boolean);
@@ -410,7 +432,7 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
 
     // Escuchar cupones de descuento desde Firestore
     const unsubCoupons = onSnapshot(
-      collection(db, "discount_codes"),
+      query(collection(db, "discount_codes"), limit(30)),
       (snapshot) => {
         if (!snapshot.empty) {
           const map: Record<string, number> = {
@@ -590,7 +612,7 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
 
   // Procesar Reserva (Time-to-Pay) o Compra directa con NAVE
   const handleProcessAction = async (mode: "reserva" | "compra") => {
-    if (!bookingTour) return;
+    if (!bookingTour || isSubmittingBooking) return;
 
     const filledNames = passengerNames.map((n) => n.trim()).filter(Boolean);
     if (filledNames.length < paxCount) {
@@ -614,8 +636,7 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
       const resCode = `EXP-${Math.floor(100000 + Math.random() * 900000)}`;
       const leadName = filledNames[0];
 
-      // 1. Guardar en experience_reservations
-      const resRef = await addDoc(collection(db, "experience_reservations"), {
+      const reservationPayload = {
         reservationCode: resCode,
         tourId: bookingTour.id,
         tourTitle: bookingTour.title,
@@ -650,29 +671,42 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
         },
         affiliateRef: affiliateRef || null,
         createdAt: new Date().toISOString()
-      });
+      };
 
-      // 2. Sincronizar en contracted_trips
-      await addDoc(collection(db, "contracted_trips"), {
-        reservationId: resRef.id,
-        reservationCode: resCode,
-        tripTitle: bookingTour.title,
-        destination: bookingTour.location,
-        passengerName: leadName,
-        passengersList: filledNames,
-        passengerPhone: passengerPhone.trim(),
-        departureDate: bookingDate,
-        pickupOrigin: originFinal,
-        status: mode === "compra" ? "En Proceso de Pago (NAVE)" : "Reservada",
-        paxCount,
-        payment: {
-          totalAmount: finalTotal,
-          paidAmount: 0,
-          currency: bookingTour.currency || "ARS"
-        },
-        affiliateRef: affiliateRef || null,
-        createdAt: new Date().toISOString()
-      });
+      // 1. Guardar en experience_reservations (con fallback en servidor si las reglas bloquean escritura cliente)
+      let createdResId = resCode;
+      try {
+        const resRef = await addDoc(collection(db, "experience_reservations"), reservationPayload);
+        createdResId = resRef.id;
+      } catch (fsErr) {
+        console.warn("[Marketplace] Escritura cliente en experience_reservations delegada a API:", fsErr);
+      }
+
+      // 2. Sincronizar en contracted_trips (tolerante a permisos de visitante público)
+      try {
+        await addDoc(collection(db, "contracted_trips"), {
+          reservationId: createdResId,
+          reservationCode: resCode,
+          tripTitle: bookingTour.title,
+          destination: bookingTour.location,
+          passengerName: leadName,
+          passengersList: filledNames,
+          passengerPhone: passengerPhone.trim(),
+          departureDate: bookingDate,
+          pickupOrigin: originFinal,
+          status: mode === "compra" ? "En Proceso de Pago (NAVE)" : "Reservada",
+          paxCount,
+          payment: {
+            totalAmount: finalTotal,
+            paidAmount: 0,
+            currency: bookingTour.currency || "ARS"
+          },
+          affiliateRef: affiliateRef || null,
+          createdAt: new Date().toISOString()
+        });
+      } catch (ctErr) {
+        console.warn("[Marketplace] Escritura en contracted_trips omitida para visitante público:", ctErr);
+      }
 
       // 3. Si eligió "Comprar con NAVE", crear intención de pago y redirigir
       if (mode === "compra") {
@@ -691,23 +725,27 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
               email: passengerEmail.trim() || "cliente@travelapp.ar",
               phone: passengerPhone.trim()
             },
-            reservationId: resRef.id,
+            reservationId: createdResId !== resCode ? createdResId : undefined,
+            reservationPayload: createdResId === resCode ? reservationPayload : undefined,
             callbackUrl: `${appOrigin}/checkout/success?file=${resCode}&type=experience&amount=${finalTotal}`
           })
         });
 
-        if (naveRes.ok) {
-          const naveData = await naveRes.json();
-          if (naveData.checkoutUrl) {
-            setBookingSuccess({
-              code: resCode,
-              deadlineLabel: ttl.label,
-              mode: "compra",
-              checkoutUrl: naveData.checkoutUrl
-            });
-            window.location.href = naveData.checkoutUrl;
-            return;
-          }
+        const naveData = await naveRes.json().catch(() => ({}));
+        if (naveRes.status === 429) {
+          alert(naveData.error || "Demasiados intentos seguidos. Por favor aguardá unos segundos.");
+          return;
+        }
+
+        if (naveRes.ok && naveData.checkoutUrl) {
+          setBookingSuccess({
+            code: resCode,
+            deadlineLabel: ttl.label,
+            mode: "compra",
+            checkoutUrl: naveData.checkoutUrl
+          });
+          window.location.href = naveData.checkoutUrl;
+          return;
         }
       }
 
@@ -751,7 +789,6 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
     >
       {/* 1. HEADER OFICIAL AZUL TECH (#0a2a5b) */}
       <ExperienceHeader
-        phone={cmsData.headerPhone || "0810-220-0018"}
         onOpenContacto={() => openConsultarModal()}
       />
 
@@ -1963,15 +2000,14 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
 
       {/* 8. FOOTER OFICIAL AZUL TECH (#0a2a5b) */}
       <ExperienceFooter
-        email={cmsData.footerEmail || "hola@travelapp.ar"}
-        phone={cmsData.headerPhone || "0810-220-0018"}
-        whatsapp={cmsData.travisWhatsapp || "+5493812000712"}
-        arvaCode={cmsData.arvaCode || "Legajo EVT / Inscripción Oficial ARVA"}
-        atavytText={cmsData.atavytText || "Socio Activo ATAVyT · Registro Nacional de Base de Datos"}
+        onOpenContacto={() => openConsultarModal()}
       />
 
       {/* 9. WIDGET FLOTANTE OMNICANAL TRAVIS */}
-      <TravisOmnichannelWidget whatsappNumber={cmsData.travisWhatsapp || "5493812000712"} />
+      <TravisOmnichannelWidget
+        businessUnit="Experiences"
+        whatsappUrl={`https://wa.me/${String(cmsData.travisWhatsapp || "5493812000712").replace(/\D/g, "")}`}
+      />
     </div>
   );
 }
