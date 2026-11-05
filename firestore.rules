@@ -282,6 +282,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // --- ALERTAS DE TRÁNSITO Y CORTES EN TIEMPO REAL ---
+    match /traffic_alerts/{alertId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isSupervisor() || isAdmin() || (isAuthenticated() && resource.data.reportedBy == request.auth.uid);
+    }
+
     // --- NOTIFICACIONES PUSH & IN-APP ---
     match /notifications/{notifId} {
       allow read: if isAuthenticated() && (

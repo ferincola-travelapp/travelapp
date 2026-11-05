@@ -1,6 +1,8 @@
-import React, { useMemo, useRef, useEffect } from 'react';
+import React, { useMemo, useRef, useEffect, useState } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { CAR_MARKER_BASE64 } from '../assets/carMarkerBase64';
 
 export interface FleetVehicle {
@@ -38,6 +40,8 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
   style,
 }) => {
   const webViewRef = useRef<WebView>(null);
+  const [trafficAlerts, setTrafficAlerts] = useState<any[]>([]);
+
   const initialCenterRef = useRef(
     centerCoords ||
       (drivers.length > 0 && drivers[0].location
@@ -45,30 +49,65 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
         : { latitude: -26.82414, longitude: -65.2226 })
   );
 
+  // Escuchar alertas de tránsito en tiempo real para el radar del supervisor
+  useEffect(() => {
+    const q = query(collection(db, 'traffic_alerts'), orderBy('createdAt', 'desc'), limit(40));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const nowMs = Date.now();
+        const threeHoursMs = 3 * 60 * 60 * 1000;
+        const active = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as any))
+          .filter((a) => {
+            if (a.active === false) return false;
+            const createdMs = a.createdAt?.toMillis ? a.createdAt.toMillis() : nowMs;
+            return nowMs - createdMs <= threeHoursMs;
+          })
+          .map((a) => ({
+            id: a.id,
+            lat: Number(a.latitude ?? a.lat),
+            lng: Number(a.longitude ?? a.lng),
+            icon: a.icon || '⚠️',
+            label: a.label || 'Alerta Vial',
+            color: a.color || '#EF4444',
+            reporterName: a.reporterName || 'Flota',
+          }))
+          .filter((a) => !isNaN(a.lat) && !isNaN(a.lng));
+        setTrafficAlerts(active);
+      },
+      () => {}
+    );
+    return () => unsub();
+  }, []);
+
   const serializeDrivers = (list: FleetVehicle[], selId?: string | null) =>
-    list.map((d) => ({
-      id: d.id,
-      name: d.name,
-      vehicle: d.vehicle,
-      plate: d.plate || '',
-      status: d.status,
-      speed: d.speed ?? 0,
-      lat: d.location.latitude,
-      lng: d.location.longitude,
-      heading: d.heading ?? 0,
-      isSelected: selId === d.id,
-    }));
+    list
+      .filter((d) => d.location && typeof d.location.latitude === 'number' && typeof d.location.longitude === 'number')
+      .map((d) => ({
+        id: d.id,
+        name: d.name,
+        vehicle: d.vehicle,
+        plate: d.plate || '',
+        status: d.status,
+        speed: d.speed ?? 0,
+        lat: d.location.latitude,
+        lng: d.location.longitude,
+        heading: d.heading ?? 0,
+        isSelected: selId === d.id,
+      }));
 
   useEffect(() => {
     if (Platform.OS === 'web' || !webViewRef.current) return;
     const payload = JSON.stringify({
       drivers: serializeDrivers(drivers, selectedDriverId),
       centerCoords: centerCoords || null,
+      trafficAlerts,
     });
     webViewRef.current.injectJavaScript(
       `if (window.updateFleetState) { window.updateFleetState(${payload}); } true;`
     );
-  }, [drivers, selectedDriverId, centerCoords]);
+  }, [drivers, selectedDriverId, centerCoords, trafficAlerts]);
 
   const htmlContent = useMemo(() => {
     const lat = initialCenterRef.current.latitude;
@@ -135,6 +174,45 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
       filter: drop-shadow(0px 0px 10px #38BDF8) drop-shadow(0px 4px 6px rgba(0,0,0,0.6));
       transform: scale(1.2);
     }
+    .traffic-alert-pin {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: #0F172A;
+      border: 2.5px solid #EF4444;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+      font-size: 18px;
+    }
+    .map-layer-controls {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      z-index: 999;
+      display: flex;
+      gap: 8px;
+    }
+    .layer-btn {
+      background: rgba(15, 23, 42, 0.92);
+      color: #FFFFFF;
+      border: 1.5px solid rgba(56, 189, 248, 0.4);
+      border-radius: 18px;
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: 800;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      user-select: none;
+    }
+    .layer-btn.active {
+      border-color: #10B981;
+      color: #34D399;
+    }
     .leaflet-popup-content-wrapper {
       background: #1E293B !important;
       color: #FFFFFF !important;
@@ -181,6 +259,14 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
 </head>
 <body>
   <div id="map"></div>
+  <div class="map-layer-controls">
+    <div id="btnTraffic" class="layer-btn active" onclick="toggleTrafficLayer()">
+      <span>🚦</span><span>Tránsito Vivo</span>
+    </div>
+    <div id="btnSat" class="layer-btn" onclick="toggleSatelliteLayer()">
+      <span>🛰️</span><span>Satélite</span>
+    </div>
+  </div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     var map = L.map('map', {
@@ -188,13 +274,53 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
       attributionControl: false
     }).setView([${lat}, ${lng}], 14);
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      maxZoom: 20,
-      subdomains: 'abcd'
-    }).addTo(map);
+    var trafficEnabled = true;
+    var satelliteEnabled = false;
+
+    var googleTrafficLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=m,traffic&hl=es&x={x}&y={y}&z={z}', {
+      maxZoom: 20
+    });
+    var googleRoadLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=m&hl=es&x={x}&y={y}&z={z}', {
+      maxZoom: 20
+    });
+    var googleSatTrafficLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=y,traffic&hl=es&x={x}&y={y}&z={z}', {
+      maxZoom: 20
+    });
+
+    var currentBaseLayer = googleTrafficLayer;
+    currentBaseLayer.addTo(map);
+
+    function refreshLayer() {
+      map.removeLayer(currentBaseLayer);
+      if (satelliteEnabled) {
+        currentBaseLayer = googleSatTrafficLayer;
+      } else if (trafficEnabled) {
+        currentBaseLayer = googleTrafficLayer;
+      } else {
+        currentBaseLayer = googleRoadLayer;
+      }
+      currentBaseLayer.addTo(map);
+    }
+
+    window.toggleTrafficLayer = function() {
+      trafficEnabled = !trafficEnabled;
+      var btn = document.getElementById('btnTraffic');
+      if (trafficEnabled) btn.classList.add('active');
+      else btn.classList.remove('active');
+      refreshLayer();
+    };
+
+    window.toggleSatelliteLayer = function() {
+      satelliteEnabled = !satelliteEnabled;
+      var btn = document.getElementById('btnSat');
+      if (satelliteEnabled) btn.classList.add('active');
+      else btn.classList.remove('active');
+      refreshLayer();
+    };
 
     var carImg = "${CAR_MARKER_BASE64}";
     var markers = {};
+    var alertMarkers = [];
     var hasAutoFitted = false;
 
     window.notifySelect = function(id) {
@@ -271,6 +397,22 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
         }
       });
 
+      alertMarkers.forEach(function(m) { map.removeLayer(m); });
+      alertMarkers = [];
+      (state.trafficAlerts || []).forEach(function(a) {
+        if (a && a.lat && a.lng) {
+          var alertIcon = L.divIcon({
+            className: '',
+            html: '<div class="traffic-alert-pin" style="border-color:' + (a.color || '#EF4444') + ';">' + (a.icon || '⚠️') + '</div>',
+            iconSize: [34, 34],
+            iconAnchor: [17, 17]
+          });
+          var am = L.marker([a.lat, a.lng], { icon: alertIcon }).addTo(map);
+          am.bindPopup('<div><p class="popup-title">' + (a.icon || '⚠️') + ' ' + (a.label || 'Alerta Vial') + '</p><p class="popup-sub">Reportado por ' + (a.reporterName || 'Flota') + '</p></div>');
+          alertMarkers.push(am);
+        }
+      });
+
       if (state.centerCoords && state.centerCoords.latitude && state.centerCoords.longitude) {
         map.panTo([state.centerCoords.latitude, state.centerCoords.longitude]);
       } else if (!hasAutoFitted && Object.keys(markers).length > 1) {
@@ -280,7 +422,7 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
       }
     };
 
-    window.updateFleetState({ drivers: ${driversJson} });
+    window.updateFleetState({ drivers: ${driversJson}, trafficAlerts: [] });
   </script>
 </body>
 </html>
@@ -323,6 +465,16 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
         startInLoadingState={false}
         scalesPageToFit={true}
         onMessage={handleMessage}
+        onLoadEnd={() => {
+          const payload = JSON.stringify({
+            drivers: serializeDrivers(drivers, selectedDriverId),
+            centerCoords: centerCoords || null,
+            trafficAlerts,
+          });
+          webViewRef.current?.injectJavaScript(
+            `if (window.updateFleetState) { window.updateFleetState(${payload}); } true;`
+          );
+        }}
       />
     </View>
   );

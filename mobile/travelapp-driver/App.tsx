@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ActivityIndicator, View, StyleSheet, Text, Animated, ImageBackground } from 'react-native';
+import * as Updates from 'expo-updates';
 import { useFonts, Quicksand_400Regular, Quicksand_500Medium, Quicksand_600SemiBold, Quicksand_700Bold } from '@expo-google-fonts/quicksand';
 import { Ionicons } from '@expo/vector-icons';
 import RootNavigator from './src/navigation/RootNavigator';
@@ -16,6 +17,23 @@ export default function App() {
     'Quicksand-SemiBold': Quicksand_600SemiBold,
     'Quicksand-Bold': Quicksand_700Bold,
   });
+
+  useEffect(() => {
+    async function checkOTA() {
+      try {
+        if (!__DEV__) {
+          const update = await Updates.checkForUpdateAsync();
+          if (update.isAvailable) {
+            await Updates.fetchUpdateAsync();
+            await Updates.reloadAsync();
+          }
+        }
+      } catch (e) {
+        // Silencioso en caso de red inestable
+      }
+    }
+    checkOTA();
+  }, []);
 
   const [showSplash, setShowSplash] = useState(true);
   const splashOpacity = useRef(new Animated.Value(1)).current;

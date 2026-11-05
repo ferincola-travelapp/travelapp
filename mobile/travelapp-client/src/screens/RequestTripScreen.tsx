@@ -1,15 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
   ScrollView, Alert, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { collection, addDoc, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, Timestamp, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { Colors } from '../lib/constants';
 
-const SERVICES = [
+const DEFAULT_SERVICES = [
   { 
     id: 'travelcab', 
     label: 'TravelCab Standard', 
@@ -48,6 +48,25 @@ export default function RequestTripScreen() {
   const [destination, setDestination] = useState('');
   const [selectedService, setSelectedService] = useState('travelcab');
   const [loading, setLoading] = useState(false);
+  const [services, setServices] = useState(DEFAULT_SERVICES);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'tariffs'), (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as any)).filter(t => t.isActive !== false && !t.isFreeTripOnly);
+      if (list.length > 0) {
+        const std = list.find(t => t.category?.toLowerCase().includes('standard') || t.name?.toLowerCase().includes('standard')) || list[0];
+        const plus = list.find(t => t.category?.toLowerCase().includes('plus') || t.name?.toLowerCase().includes('plus') || t.category?.toLowerCase().includes('ejecutivo'));
+        const xl = list.find(t => t.category?.toLowerCase().includes('xl') || t.name?.toLowerCase().includes('xl') || t.category?.toLowerCase().includes('combi'));
+        setServices(prev => prev.map(s => {
+          if (s.id === 'travelcab' && std?.baseFare) return { ...s, basePrice: Number(std.baseFare) };
+          if (s.id === 'travelcab_plus' && plus?.baseFare) return { ...s, basePrice: Number(plus.baseFare) };
+          if (s.id === 'travelcab_xl' && xl?.baseFare) return { ...s, basePrice: Number(xl.baseFare) };
+          return s;
+        }));
+      }
+    }, () => {});
+    return () => unsub();
+  }, []);
 
   // Preferencias del viaje
   const [petFriendly, setPetFriendly] = useState(false);
@@ -55,7 +74,7 @@ export default function RequestTripScreen() {
   const [quietTrip, setQuietTrip] = useState(false);
   const [ac, setAc] = useState(true);
 
-  const selected = SERVICES.find(s => s.id === selectedService)!;
+  const selected = services.find(s => s.id === selectedService) || services[0];
 
   const handleRequest = async () => {
     if (!origin || !destination) {
@@ -134,7 +153,7 @@ export default function RequestTripScreen() {
           <Text style={styles.sectionSub}>Precios transparentes con ETA estimado</Text>
         </View>
 
-        {SERVICES.map(service => {
+        {services.map(service => {
           const isSelected = selectedService === service.id;
           return (
             <TouchableOpacity

@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { auth } from '../lib/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
 import { Colors } from '../lib/constants';
 
 const TIERS = [
@@ -21,8 +22,20 @@ const BENEFITS = [
 
 export default function RewardsScreen() {
   const navigation = useNavigation<any>();
-  // Puntos simulados — en producción vendrían de Firestore
-  const userPoints = 850;
+  const [userPoints, setUserPoints] = useState<number>(0);
+
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    const unsub = onSnapshot(doc(db, 'users', uid), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        const pts = Number(data.rewardsPoints ?? data.points ?? 0);
+        if (!isNaN(pts)) setUserPoints(pts);
+      }
+    });
+    return () => unsub();
+  }, []);
   const currentTier = TIERS.find(t => userPoints >= t.minPoints && userPoints <= t.maxPoints) || TIERS[0];
   const nextTier = TIERS[TIERS.indexOf(currentTier) + 1];
   const progress = nextTier

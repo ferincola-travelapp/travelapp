@@ -32,7 +32,7 @@
       }
     },
     "android": {
-      "versionCode": 5,
+      "versionCode": 6,
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundColor": "#FFFFFF"
@@ -76,6 +76,12 @@
         {
           "photosPermission": "TravelApp Conductor necesita acceso a la galería para adjuntar documentación.",
           "cameraPermission": "TravelApp Conductor necesita acceso a la cámara para tomar fotos de tu vehículo y documentación."
+        }
+      ],
+      [
+        "react-native-maps",
+        {
+          "androidGoogleMapsApiKey": "AIzaSyD4XIT5MNfECRy6wQe8BNgBb9pWC6lsr9U"
         }
       ],
       "expo-font"

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
 import { db, auth } from '../lib/firebase';
 import { Colors } from '../lib/constants';
@@ -9,6 +9,7 @@ import { Colors } from '../lib/constants';
 export default function HistoryScreen() {
   const navigation = useNavigation<any>();
   const [trips, setTrips] = useState<any[]>([]);
+  const [driverRating, setDriverRating] = useState<number>(5.0);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'today' | 'week'>('today');
 
@@ -17,6 +18,10 @@ export default function HistoryScreen() {
       setLoading(true);
       try {
         const user = auth.currentUser!;
+        const driverDoc = await getDoc(doc(db, 'drivers', user.uid));
+        if (driverDoc.exists() && typeof driverDoc.data().rating === 'number') {
+          setDriverRating(driverDoc.data().rating);
+        }
         const q = query(
           collection(db, 'trips'),
           where('driverId', '==', user.uid)
@@ -71,7 +76,7 @@ export default function HistoryScreen() {
         </View>
         <View style={styles.summaryDivider} />
         <View style={styles.summaryItem}>
-          <Text style={styles.summaryValue}>4.9 ⭐</Text>
+          <Text style={styles.summaryValue}>{driverRating.toFixed(1)} ⭐</Text>
           <Text style={styles.summaryLabel}>Rating</Text>
         </View>
       </View>

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { GoogleMap, useJsApiLoader, Marker, DirectionsRenderer, Polyline, InfoWindow } from "@react-google-maps/api";
+import { GoogleMap, useJsApiLoader, Marker, DirectionsRenderer, Polyline, InfoWindow, TrafficLayer } from "@react-google-maps/api";
 import { Trip, TripStatus } from "@/types/travelcab";
 import { Car, Compass, Play, CheckCircle, Navigation, User, Phone, AlertTriangle, ShieldAlert } from "lucide-react";
 import { collection, onSnapshot } from "firebase/firestore";
@@ -155,14 +155,17 @@ export const GoogleInteractiveMap: React.FC<GoogleInteractiveMapProps> = ({
   // Escuchar en tiempo real la colección de choferes en Firestore `drivers`
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'drivers'), (snapshot) => {
-      const list: RealDriver[] = snapshot.docs.map((docSnap, index) => {
+      const list: RealDriver[] = [];
+      snapshot.docs.forEach((docSnap) => {
         const data = docSnap.data();
         const fullName = data.name || `${data.firstName || ''} ${data.lastName || ''}`.trim() || 'Socio Conductor';
         
-        // Coordenadas reales GPS (o dispersión sutil si recién inicia)
-        const lat = data.location?.latitude || data.location?.lat || data.currentLocation?.latitude || (-26.82414 + (index * 0.003));
-        const lng = data.location?.longitude || data.location?.lng || data.currentLocation?.longitude || (-65.22260 + (index * 0.004));
-        const heading = data.location?.heading || data.currentLocation?.heading || data.heading || (index * 75) % 360;
+        // Coordenadas reales GPS únicamente (sin dispersión simulada)
+        const lat = data.location?.latitude ?? data.location?.lat ?? data.currentLocation?.latitude;
+        const lng = data.location?.longitude ?? data.location?.lng ?? data.currentLocation?.longitude;
+        if (typeof lat !== 'number' || typeof lng !== 'number') return;
+
+        const heading = data.location?.heading || data.currentLocation?.heading || data.heading || 0;
 
         // Detección inteligente de alertas (Vencimiento de VTV/Seguro o Botón de Auxilio/Evento)
         const hasAlert = !!(
@@ -179,21 +182,21 @@ export const GoogleInteractiveMap: React.FC<GoogleInteractiveMapProps> = ({
           (data.documents?.vtvExpired ? 'VTV Vencida' : data.documents?.insuranceExpired ? 'Póliza de Seguro Vencida' : undefined)
         );
 
-        return {
+        list.push({
           id: docSnap.id,
           name: fullName,
-          phone: data.phone || '+54 381 000-0000',
+          phone: data.phone || 'Sin teléfono',
           lat,
           lng,
           heading,
           status: data.status || 'Activo',
           isOnline: data.isOnline !== false,
           vehicle: data.activeVehicle?.brand || data.activeVehicle?.make || 'Vehículo Habilitado',
-          plate: data.activeVehicle?.plate || 'AB 123 CD',
+          plate: data.activeVehicle?.plate || 'S/D',
           color: data.activeVehicle?.color || 'Gris',
           hasAlert,
           alertReason,
-        };
+        });
       });
 
       setRealDrivers(list);
@@ -394,6 +397,9 @@ export const GoogleInteractiveMap: React.FC<GoogleInteractiveMapProps> = ({
         onLoad={(m) => setMap(m)}
         onUnmount={() => setMap(null)}
       >
+        {/* Capa de Tránsito en Vivo de Google Maps */}
+        <TrafficLayer />
+
         {/* Renderizador de Rutas de Google */}
         {directions && (
           <DirectionsRenderer

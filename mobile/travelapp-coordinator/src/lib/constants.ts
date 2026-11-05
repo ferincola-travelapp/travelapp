@@ -14,6 +14,6 @@ export const Colors = {
   overlay: 'rgba(0,0,0,0.5)',
 };
 
-export const GOOGLE_MAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+export const GOOGLE_MAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyD4XIT5MNfECRy6wQe8BNgBb9pWC6lsr9U';
 
 export const TRAVIS_WEBHOOK_URL = 'https://us-central1-mvp-travelapp.cloudfunctions.net/travis-webhook';

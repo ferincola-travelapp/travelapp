@@ -6,9 +6,9 @@ import { doc, onSnapshot, updateDoc, Timestamp, collection, query, orderBy, addD
 import * as Location from 'expo-location';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { db, auth } from '../lib/firebase';
-import { Colors } from '../lib/constants';
+import { Colors, GOOGLE_MAPS_KEY } from '../lib/constants';
 import { InteractiveMapView } from '../components/InteractiveMapView';
-import { playSeatbeltSafetyPrompt } from '../lib/audioService';
+import { playSeatbeltSafetyPrompt, playCustomVoiceNotification } from '../lib/audioService';
 import { decodePolyline } from '../lib/geoUtils';
 
 const STEPS = [
@@ -44,6 +44,9 @@ export default function ActiveTripScreen() {
   const [chatInput, setChatInput] = useState('');
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [liveRouteCoords, setLiveRouteCoords] = useState<any[] | null>(null);
+  const [trafficAlertBanner, setTrafficAlertBanner] = useState<string | null>(null);
+  const [hasSpokenTrafficAlert, setHasSpokenTrafficAlert] = useState(false);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'trips', tripId), snap => {
@@ -84,6 +87,53 @@ export default function ActiveTripScreen() {
 
     return () => { unsub(); unsubMsgs(); clearInterval(interval); };
   }, [tripId]);
+
+  // Cálculo de ruta y alerta de tránsito en tiempo real con Google Directions API
+  useEffect(() => {
+    const fetchTrafficRoute = async () => {
+      if (!trip) return;
+      const fromCoords = driverLocation || trip?.originCoords;
+      const toCoords =
+        trip.status === 'on_way' || trip.status === 'accepted'
+          ? trip?.originCoords
+          : trip?.destinationCoords;
+
+      const oLat = fromCoords?.latitude ?? fromCoords?.lat;
+      const oLng = fromCoords?.longitude ?? fromCoords?.lng;
+      const dLat = toCoords?.latitude ?? toCoords?.lat;
+      const dLng = toCoords?.longitude ?? toCoords?.lng;
+      if (!oLat || !oLng || !dLat || !dLng) return;
+
+      try {
+        const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${oLat},${oLng}&destination=${dLat},${dLng}&departure_time=now&traffic_model=best_guess&language=es&key=${GOOGLE_MAPS_KEY}`;
+        const res = await fetch(url);
+        const json = await res.json();
+        if (json.routes && json.routes.length > 0) {
+          const routeObj = json.routes[0];
+          if (routeObj.overview_polyline?.points) {
+            setLiveRouteCoords(decodePolyline(routeObj.overview_polyline.points));
+          }
+          const leg = routeObj.legs?.[0];
+          if (leg?.duration?.value && leg?.duration_in_traffic?.value) {
+            const normalSec = leg.duration.value;
+            const trafficSec = leg.duration_in_traffic.value;
+            const extraMin = Math.round((trafficSec - normalSec) / 60);
+            if (extraMin >= 3 || trafficSec > normalSec * 1.25) {
+              const msg = `Congestión en ruta (${routeObj.summary || 'vía principal'}): +${Math.max(extraMin, 2)} min de demora por tránsito.`;
+              setTrafficAlertBanner(msg);
+              if (!hasSpokenTrafficAlert) {
+                setHasSpokenTrafficAlert(true);
+                playCustomVoiceNotification('Atención conductor', msg);
+              }
+            } else {
+              setTrafficAlertBanner(null);
+            }
+          }
+        }
+      } catch {}
+    };
+    fetchTrafficRoute();
+  }, [trip?.status, driverLocation?.latitude, driverLocation?.longitude]);
 
   const isChatAllowed = ['accepted', 'on_way', 'arrived', 'in_progress'].includes(trip?.status);
 
@@ -330,8 +380,12 @@ export default function ActiveTripScreen() {
       <InteractiveMapView
         style={styles.map}
         originCoords={driverLocation || trip?.originCoords || { latitude: -26.8326, longitude: -65.2038 }}
-        destinationCoords={trip?.destinationCoords || null}
-        routeCoordinates={trip?.routePolyline ? decodePolyline(trip.routePolyline) : null}
+        destinationCoords={
+          (trip?.status === 'on_way' || trip?.status === 'accepted'
+            ? trip?.originCoords
+            : trip?.destinationCoords) || null
+        }
+        routeCoordinates={liveRouteCoords || (trip?.routePolyline ? decodePolyline(trip.routePolyline) : null)}
       />
 
       {/* Header */}
@@ -339,6 +393,28 @@ export default function ActiveTripScreen() {
         <View style={[styles.statusDot, { backgroundColor: Colors.success }]} />
         <Text style={styles.headerTitle}>{currentStep?.label || 'Viaje activo'}</Text>
       </View>
+
+      {trafficAlertBanner && (
+        <View style={{
+          position: 'absolute',
+          top: insets.top > 0 ? insets.top + 56 : 86,
+          left: 16,
+          right: 16,
+          backgroundColor: '#DC2626',
+          borderRadius: 14,
+          paddingVertical: 10,
+          paddingHorizontal: 14,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+          elevation: 6,
+        }}>
+          <Ionicons name="warning" size={20} color="#FEF08A" />
+          <Text style={{ flex: 1, color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>
+            🚦 {trafficAlertBanner}
+          </Text>
+        </View>
+      )}
 
       {/* Panel inferior */}
       <View style={styles.panel}>

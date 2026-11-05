@@ -6,7 +6,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { doc, setDoc, onSnapshot, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, Timestamp, orderBy, limit, increment } from 'firebase/firestore';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
@@ -1010,7 +1009,7 @@ export default function DashboardScreen() {
               <Image
                 source={{
                   uri: `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=10&data=${encodeURIComponent(
-                    `travelapp:driver:${user?.uid || 'demo'}:${(activeVehicle?.plate || 'TAXI').replace(/\s+/g, '')}`
+                    `travelapp:driver:${user?.uid || ''}:${(activeVehicle?.plate || 'TAXI').replace(/\s+/g, '')}`
                   )}`
                 }}
                 style={styles.qrCodeImage}

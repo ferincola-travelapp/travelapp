@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, Alert, Linking, Modal } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, onSnapshot, updateDoc, addDoc, collection, Timestamp } from 'firebase/firestore';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -8,6 +7,8 @@ import { db, auth } from '../lib/firebase';
 import { Colors } from '../lib/constants';
 import { formatDriverName, formatPlate } from './HomeScreen';
 import { playSeatbeltSafetyPrompt } from '../lib/audioService';
+import { InteractiveMapView } from '../components/InteractiveMapView';
+import { decodePolyline } from '../lib/geoUtils';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
   searching: { label: 'Buscando conductor cercano...', color: Colors.accent || '#F59E0B', icon: 'search' },
@@ -245,22 +246,17 @@ export default function TripTrackingScreen() {
 
   return (
     <View style={styles.container}>
-      <MapView
+      <InteractiveMapView
         style={styles.map}
-        provider={PROVIDER_GOOGLE}
-        initialRegion={{
-          latitude: -31.4167, longitude: -64.1833,
-          latitudeDelta: 0.05, longitudeDelta: 0.05,
-        }}
-        showsUserLocation>
-        {trip.driverLocation && (
-          <Marker coordinate={trip.driverLocation} title="Tu conductor">
-            <View style={styles.driverMarker}>
-              <Ionicons name="car" size={18} color={Colors.white} />
-            </View>
-          </Marker>
-        )}
-      </MapView>
+        originCoords={trip.originCoords || trip.driverLocation || { latitude: -26.8326, longitude: -65.2038 }}
+        destinationCoords={trip.destinationCoords || null}
+        routeCoordinates={trip.routePolyline ? decodePolyline(trip.routePolyline) : null}
+        onlineDrivers={
+          trip.driverLocation
+            ? [{ id: trip.driverId || 'driver', name: trip.driverName || 'Tu conductor', location: trip.driverLocation }]
+            : []
+        }
+      />
 
       {/* Header */}
       <View style={styles.header}>
@@ -420,7 +416,7 @@ export default function TripTrackingScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.driverName}>{formatDriverName(trip.driverName)}</Text>
-              <Text style={styles.driverSub}>{trip.driverVehicle || 'Vehículo'} • {formatPlate(trip.vehiclePlate)} • ⭐ {trip.driverRating || '4.9'} ({trip.totalTrips || 142} viajes)</Text>
+              <Text style={styles.driverSub}>{trip.driverVehicle || 'Vehículo'} • {formatPlate(trip.vehiclePlate)} • ⭐ {trip.driverRating || '5.0'}{trip.totalTrips ? ` (${trip.totalTrips} viajes)` : ''}</Text>
             </View>
             <TouchableOpacity style={styles.callBtn} onPress={() => Linking.openURL(`tel:${trip.driverPhone || ''}`)}>
               <Ionicons name="call" size={20} color={Colors.primary} />

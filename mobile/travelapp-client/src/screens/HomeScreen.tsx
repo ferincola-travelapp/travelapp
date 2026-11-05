@@ -4,7 +4,6 @@ import {
   TextInput, ActivityIndicator, Animated, ScrollView, Dimensions, Alert, Modal, Image, Linking, Platform, Vibration,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import MapView, { Marker, PROVIDER_GOOGLE, Polyline, UrlTile } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -714,88 +713,6 @@ export default function HomeScreen() {
     }
   }, [hasPurchasedOrganizedTrip]);
 
-  // Manejar simulación de compra/cancelación de viaje grupal (Modo Tester)
-  const handleSimulateTrip = async (enable: boolean) => {
-    if (!user?.uid) return;
-    try {
-      const userRef = doc(db, 'users', user.uid);
-      if (enable) {
-        await setDoc(userRef, { hasPurchasedOrganizedTrip: true }, { merge: true });
-        
-        const tripId = `trip_humahuaca_${user.uid}`;
-        const tripRef = doc(db, 'contracted_trips', tripId);
-        const tripData = {
-          id: tripId,
-          userId: user.uid,
-          destination: "Quebrada de Humahuaca & Salinas Grandes",
-          dates: "12 Oct - 19 Oct, 2026",
-          imageUrl: "https://images.unsplash.com/photo-1583037189850-1921ae7c6c22?q=80&w=800&auto=format&fit=crop",
-          coordinator: {
-            name: "Marcos Vignola",
-            phone: "+5493815556667",
-            avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop"
-          },
-          services: [
-            "Aéreos ida y vuelta (Aerolíneas Argentinas)",
-            "Traslados privados en minibus (TravelCab ACI)",
-            "7 noches en Posada del Silencio (Purmamarca)",
-            "Régimen de media pensión (Desayuno y Cena)",
-            "Excursiones terrestres con guías locales autorizados",
-            "Cobertura Assist Card Premium (Asistencia Médica Completa)"
-          ],
-          itinerary: [
-            { day: 1, title: "Vuelo a Salta & Transfer a Purmamarca", description: "Arribo al aeropuerto de Salta. Recepción por Marcos Vignola y traslado privado a Purmamarca recorriendo el espectacular camino de cornisa. Check-in en el hotel y cena grupal de bienvenida." },
-            { day: 2, title: "Cerro de Siete Colores & Paseo de los Colorados", description: "Trekking matutino suave por el Paseo de los Colorados para apreciar las distintas tonalidades geológicas del Cerro de Siete Colores. Tarde libre para recorrer la feria de artesanos locales de Purmamarca." },
-            { day: 3, title: "Salinas Grandes & Cuesta de Lipán", description: "Ascenso por la impactante Cuesta de Lipán hasta alcanzar los 4.170 msnm. Descenso a las imponentes Salinas Grandes. Almuerzo campestre en el salar y sesión fotográfica interactiva." },
-            { day: 4, title: "Pucará de Tilcara & Garganta del Diablo", description: "Traslado a Tilcara. Visita guiada al sitio arqueológico Pucará de Tilcara. Trekking opcional a la Garganta del Diablo para ver las cascadas naturales en el lecho del río." },
-            { day: 5, title: "Hornocal (Serranía de los 14 Colores) & Humahuaca", description: "Viaje al norte hacia Humahuaca. Almuerzo tradicional con peña folclórica en vivo. Por la tarde, ascenso en camionetas 4x4 al mirador del Hornocal (4.350 msnm) para ver el atardecer sobre los 14 colores." },
-            { day: 6, title: "Día Libre en Purmamarca o Excursión Opcional a Iruya", description: "Día libre para descansar y disfrutar del hotel. Recomendamos la excursión opcional de día entero al mágico pueblo colgado de la montaña: Iruya." },
-            { day: 7, title: "Caminata entre Cardones & Regreso a Salta Capital", description: "Check-out del hotel. Viaje de regreso visitando el Parque Nacional Los Cardones. Tarde libre en Salta Capital para últimas compras y cena de despedida grupal en la Peña de Balderrama." },
-            { day: 8, title: "Despedida & Vuelo de Retorno", description: "Transfer al aeropuerto de Salta para abordar el vuelo de regreso a Buenos Aires. Fin de la experiencia." }
-          ],
-          payment: {
-            totalAmount: 1450,
-            paidAmount: 950,
-            currency: "USD"
-          },
-          assistancePdfUrl: "https://www.assistcard.com/content/dam/assistcard/global/pdf/condiciones-generales.pdf",
-          recommendations: "Llevar ropa de abrigo en capas (amplitud térmica), protector solar factor 50+, anteojos de sol, calzado de trekking cómodo y abundante agua para evitar el mal de altura (apunamiento).",
-          optionalExcursions: [
-            { id: "exc-iruya", title: "Excursión Especial de Día Entero a Iruya (4x4)", description: "Aventura todo terreno cruzando el Abra del Cóndor a 4000 msnm para descender al histórico pueblo colgado de Iruya. Incluye almuerzo.", price: 120, paid: false },
-            { id: "exc-bodega", title: "Degustación de Vinos de Altura & Almuerzo en Cafayate", description: "Visita a una prestigiosa bodega boutique con degustación dirigida por enólogo y almuerzo de pasos maridado.", price: 85, paid: false }
-          ],
-          photos: [
-            "https://images.unsplash.com/photo-1583037189850-1921ae7c6c22?q=80&w=600&auto=format&fit=crop",
-            "https://images.unsplash.com/photo-1619542402915-dcaf30e4e2a1?q=80&w=600&auto=format&fit=crop",
-            "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=600&auto=format&fit=crop"
-          ]
-        };
-        await setDoc(tripRef, tripData);
-        
-        // Crear un par de mensajes de grupo de bienvenida
-        const welcomeRef1 = doc(collection(db, 'contracted_trips', tripId, 'group_messages'), 'msg_welcome_1');
-        const welcomeRef2 = doc(collection(db, 'contracted_trips', tripId, 'group_messages'), 'msg_welcome_2');
-        await setDoc(welcomeRef1, {
-          sender: "Marcos Vignola",
-          senderRole: "coordinador",
-          text: "¡Hola a todos! Bienvenidos al grupo de la expedición a Humahuaca y Salinas Grandes. Acá voy a ir subiendo novedades y vamos a estar en contacto durante todo el viaje.",
-          timestamp: Date.now() - 3600000 * 2
-        });
-        await setDoc(welcomeRef2, {
-          sender: "Sofía (BsAs)",
-          senderRole: "pasajero",
-          text: "¡Hola Marcos! Qué bueno, estoy re entusiasmada con este viaje. Ya tengo todo listo para arrancar.",
-          timestamp: Date.now() - 3600000
-        });
-      } else {
-        await setDoc(userRef, { hasPurchasedOrganizedTrip: false }, { merge: true });
-        await deleteDoc(doc(db, 'contracted_trips', `trip_humahuaca_${user.uid}`));
-      }
-    } catch (err) {
-      console.log("Error in simulator trip toggle:", err);
-    }
-  };
-
   // Preguntar a Travis AI sobre el destino
   const handleAskTravisAboutDestination = async () => {
     const text = travisQuery.trim();
@@ -1220,22 +1137,12 @@ export default function HomeScreen() {
           if (field === 'origin') setOriginSuggestions(data.predictions);
           else setDestSuggestions(data.predictions);
         } else {
-          const mockSuggestions = [
-            { place_id: `mock-1-${field}`, description: `${text}, San Miguel de Tucumán` },
-            { place_id: `mock-2-${field}`, description: `${text}, Yerba Buena, Tucumán` },
-            { place_id: `mock-3-${field}`, description: `${text}, Tafí Viejo, Tucumán` },
-          ];
-          if (field === 'origin') setOriginSuggestions(mockSuggestions);
-          else setDestSuggestions(mockSuggestions);
+          if (field === 'origin') setOriginSuggestions([]);
+          else setDestSuggestions([]);
         }
       } catch (e) {
-        const mockSuggestions = [
-          { place_id: `mock-1-${field}`, description: `${text}, San Miguel de Tucumán` },
-          { place_id: `mock-2-${field}`, description: `${text}, Yerba Buena, Tucumán` },
-          { place_id: `mock-3-${field}`, description: `${text}, Tafí Viejo, Tucumán` },
-        ];
-        if (field === 'origin') setOriginSuggestions(mockSuggestions);
-        else setDestSuggestions(mockSuggestions);
+        if (field === 'origin') setOriginSuggestions([]);
+        else setDestSuggestions([]);
       }
     }, 350);
   };
@@ -1401,16 +1308,17 @@ export default function HomeScreen() {
     const lat2 = dCoords.latitude ?? dCoords.lat;
     const lon2 = dCoords.longitude ?? dCoords.lng;
 
-    // 1. Google Directions API
+    // 1. Google Directions API con Tránsito en Tiempo Real
     try {
-      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${lat1},${lon1}&destination=${lat2},${lon2}&key=${GOOGLE_MAPS_KEY}`;
+      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${lat1},${lon1}&destination=${lat2},${lon2}&departure_time=now&traffic_model=best_guess&language=es&key=${GOOGLE_MAPS_KEY}`;
       const res = await fetch(url);
       const data = await res.json();
       if (data.routes && data.routes.length > 0) {
         const route = data.routes[0];
         const leg = route.legs[0];
+        const durationSec = leg.duration_in_traffic?.value || leg.duration.value;
         setRouteDistance(Math.round((leg.distance.value / 1000) * 10) / 10);
-        setRouteDuration(Math.round(leg.duration.value / 60));
+        setRouteDuration(Math.round(durationSec / 60));
         setRoutePolyline(route.overview_polyline.points);
         return;
       }
@@ -2567,96 +2475,14 @@ export default function HomeScreen() {
         <View style={styles.mapContainer}>
           {loadingLocation ? (
             <ActivityIndicator size="large" color={Colors.primary} style={StyleSheet.absoluteFill} />
-          ) : Platform.OS === 'web' ? (
-            <View style={styles.webMapPlaceholder}>
-              <View style={styles.webMapGrid}>
-                <View style={[styles.gridLine, { top: '30%', left: 0, right: 0 }]} />
-                <View style={[styles.gridLine, { top: '60%', left: 0, right: 0 }]} />
-                <View style={[styles.gridLine, { left: '33%', top: 0, bottom: 0 }]} />
-                <View style={[styles.gridLine, { left: '66%', top: 0, bottom: 0 }]} />
-                
-                {/* Choferes reales desde Firestore (simulados en web en posiciones relativas) */}
-                {onlineDrivers.map((d: any, index: number) => {
-                  const topVal = 30 + (index * 17) % 50;
-                  const leftVal = 20 + (index * 23) % 65;
-                  return (
-                    <View key={d.id} style={[styles.simulatedCar, { top: `${topVal}%`, left: `${leftVal}%` }]}>
-                      <Ionicons name="car" size={18} color={index === 0 ? Colors.accent : Colors.white} />
-                      <Text style={{ color: Colors.white, fontSize: 8, fontFamily: 'Quicksand-Bold', marginTop: 2 }}>
-                        {d.name || d.driverName || 'Chofer'}
-                      </Text>
-                    </View>
-                  );
-                })}
-
-                {/* Ruta simulada en Web */}
-                {originCoords && destinationCoords && (
-                  <View style={styles.webSimulatedRouteContainer}>
-                    <View style={[styles.simulatedMarker, { backgroundColor: Colors.success }]}>
-                      <Text style={styles.simulatedMarkerText}>O</Text>
-                    </View>
-                    <View style={styles.simulatedRouteLine} />
-                    <View style={[styles.simulatedMarker, { backgroundColor: Colors.danger }]}>
-                      <Text style={styles.simulatedMarkerText}>D</Text>
-                    </View>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.webMapText}>
-                {originCoords && destinationCoords 
-                  ? `Ruta: ${origin.split(',')[0]} ➔ ${destination.split(',')[0]}` 
-                  : "Mapa en Vivo (Simulación Ecosistema)"}
-              </Text>
-            </View>
           ) : (
-            <MapView
-              ref={mapRef}
+            <InteractiveMapView
               style={styles.map}
-              initialRegion={DEFAULT_REGION}
-              showsUserLocation
-            >
-              <UrlTile
-                urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-                maximumZ={19}
-                flipY={false}
-              />
-              {/* Choferes online */}
-              {onlineDrivers.map((d: any) => d.location && (
-                <Marker
-                  key={d.id}
-                  coordinate={d.location}
-                  title={d.name}
-                  description="Chofer de TravelCab cercano"
-                >
-                  <View style={styles.driverCarMarker}>
-                    <Ionicons name="car" size={16} color={Colors.white} />
-                  </View>
-                </Marker>
-              ))}
-
-              {/* Ruta activa y marcadores de origen/destino */}
-              {originCoords && (
-                <Marker coordinate={originCoords} title="Origen">
-                  <View style={[styles.markerPin, { backgroundColor: Colors.success }]}>
-                    <Ionicons name="pin" size={16} color={Colors.white} />
-                  </View>
-                </Marker>
-              )}
-              {destinationCoords && (
-                <Marker coordinate={destinationCoords} title="Destino">
-                  <View style={[styles.markerPin, { backgroundColor: Colors.danger }]}>
-                    <Ionicons name="flag" size={16} color={Colors.white} />
-                  </View>
-                </Marker>
-              )}
-              {routePolyline ? (
-                <Polyline
-                  coordinates={decodePolyline(routePolyline)}
-                  strokeColor={Colors.accent}
-                  strokeWidth={4}
-                />
-              ) : null}
-            </MapView>
+              originCoords={originCoords}
+              destinationCoords={destinationCoords}
+              routeCoordinates={routePolyline ? decodePolyline(routePolyline) : null}
+              onlineDrivers={onlineDrivers}
+            />
           )}
         </View>
       )}
