@@ -18,7 +18,7 @@ const APKS = [
     iconColor: 'text-emerald-400',
     iconBg: 'bg-emerald-500/10 border-emerald-500/20',
     btnGradient: 'from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-950/50',
-    url: 'https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-usuario.apk?alt=media&token=f4664ee8-e1f4-4e61-97df-8effa1b8d0c8',
+    url: 'https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-usuario.apk?alt=media&token=37935279-e972-46f4-96ad-efc841a1c7ee',
     badge: 'Pasajeros'
   },
   {
@@ -31,7 +31,7 @@ const APKS = [
     iconColor: 'text-amber-400',
     iconBg: 'bg-amber-500/10 border-amber-500/20',
     btnGradient: 'from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 shadow-amber-950/50',
-    url: 'https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-conductor.apk?alt=media&token=3136322a-771f-4ac0-909e-e47703685dda',
+    url: 'https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-conductor.apk?alt=media&token=de915007-552a-4f06-88a4-a3ae6bcaea90',
     badge: 'Conductores'
   },
   {
@@ -44,7 +44,7 @@ const APKS = [
     iconColor: 'text-blue-400',
     iconBg: 'bg-blue-500/10 border-blue-500/20',
     btnGradient: 'from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-blue-950/50',
-    url: 'https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-supervisor.apk?alt=media&token=6c9548ca-06f0-45eb-89c3-78a69f8f5069',
+    url: 'https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-supervisor.apk?alt=media&token=82a48a99-ee4e-4693-bbe3-9848c99d36cd',
     badge: 'Supervisión'
   }
 ];
