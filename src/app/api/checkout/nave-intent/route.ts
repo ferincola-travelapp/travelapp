@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createNavePaymentIntent, getNaveEnvironmentInfo } from '@/lib/nave-client';
+import { createNavePaymentIntent, getNaveEnvironmentInfo, resolveNaveBrandChannel } from '@/lib/nave-client';
 import { serverUpdateDoc, serverSetDoc } from '@/lib/firestore-server';
 
 // =============================================================================
@@ -71,6 +71,7 @@ export async function POST(req: NextRequest) {
       currency = 'ARS',
       productName,
       productDescription,
+      brand,
       buyer,
       reservationId,
       reservationPayload,
@@ -89,9 +90,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'El monto ingresado es inválido' }, { status: 400 });
     }
 
+    const hostHeader = req.headers.get('host') || '';
+    const resolvedChannel = resolveNaveBrandChannel({
+      brand,
+      externalPaymentId,
+      callbackUrl,
+      host: hostHeader
+    });
+
     // 0. Verificar Caché de Idempotencia para evitar llamadas duplicadas y costos extra
     const now = Date.now();
-    const cacheKey = `${externalPaymentId}_${numAmount.toFixed(2)}_${currency}`;
+    const cacheKey = `${resolvedChannel}_${externalPaymentId}_${numAmount.toFixed(2)}_${currency}`;
     const cached = idempotencyCache.get(cacheKey);
     if (cached && now < cached.expiresAt) {
       return NextResponse.json(cached.payload);
@@ -101,13 +110,14 @@ export async function POST(req: NextRequest) {
     const resolvedCallbackUrl =
       callbackUrl || `${requestOrigin}/checkout/success?file=${externalPaymentId}&amount=${numAmount.toFixed(2)}`;
 
-    // 1. Invocar SDK oficial de Nave Banco Galicia
+    // 1. Invocar SDK oficial de Nave Banco Galicia (con ruteo multi-tienda TravelApp+Experience vs Luna Viajera)
     const paymentIntent = await createNavePaymentIntent({
       externalPaymentId,
       amount: numAmount,
       currency: currency as 'ARS' | 'USD',
       productName,
       productDescription: productDescription || `Expediente ${externalPaymentId} - ${productName}`,
+      brand: resolvedChannel,
       buyer: buyer ? {
         name: buyer.name,
         email: buyer.email,
@@ -124,6 +134,7 @@ export async function POST(req: NextRequest) {
       try {
         await serverSetDoc('experience_reservations', externalPaymentId, {
           ...reservationPayload,
+          naveChannel: resolvedChannel,
           navePaymentRequestId: paymentIntent.id,
           naveCheckoutUrl: paymentIntent.checkout_url,
           naveQrData: paymentIntent.qr_data,
@@ -136,6 +147,7 @@ export async function POST(req: NextRequest) {
     } else if (reservationId) {
       try {
         await serverUpdateDoc('experience_reservations', reservationId, {
+          naveChannel: resolvedChannel,
           navePaymentRequestId: paymentIntent.id,
           naveCheckoutUrl: paymentIntent.checkout_url,
           naveQrData: paymentIntent.qr_data,
@@ -153,7 +165,8 @@ export async function POST(req: NextRequest) {
       checkoutUrl: paymentIntent.checkout_url,
       qrData: paymentIntent.qr_data,
       externalPaymentId: paymentIntent.external_payment_id,
-      naveMode: envInfo.mode
+      naveMode: envInfo.mode,
+      naveChannel: resolvedChannel
     };
 
     idempotencyCache.set(cacheKey, {

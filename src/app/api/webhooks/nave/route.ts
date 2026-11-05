@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { serverAddDoc, serverGetDocs, serverUpdateDoc } from '@/lib/firestore-server';
 
-import { checkNavePaymentStatus } from '@/lib/nave-client';
+import { checkNavePaymentStatus, resolveNaveBrandChannel } from '@/lib/nave-client';
 
 const NAVE_STORE_CODE = process.env.NAVE_STORE_CODE || 'S-6A60-0761-P';
 
@@ -12,28 +12,35 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
 
     const timestamp = Date.now();
-
-    // Log raw incoming telemetry for Nave
-    await serverAddDoc('payment_webhooks_log', {
-      provider: 'nave_galicia',
-      storeCode: NAVE_STORE_CODE,
-      receivedAt: timestamp,
-      queryParams: Object.fromEntries(searchParams.entries()),
-      payload: body
-    });
+    const hostHeader = req.headers.get('host') || '';
 
     let transactionId = body.payment_id || body.transaction_id || body.id || searchParams.get('id');
     let externalRef = body.external_payment_id || body.external_reference || body.merchant_order_id || searchParams.get('file_number');
     let status = (body.status || body.state || 'APPROVED').toUpperCase();
     let amount = Number(body.amount || body.total_amount || 0);
 
+    const channel = resolveNaveBrandChannel({
+      externalPaymentId: externalRef || '',
+      host: hostHeader
+    });
+
+    // Log raw incoming telemetry for Nave
+    await serverAddDoc('payment_webhooks_log', {
+      provider: 'nave_galicia',
+      channel,
+      storeCode: channel === 'lunaviajera' ? (process.env.NAVE_LUNA_STORE_CODE || 'H-6AD8-1058-D') : NAVE_STORE_CODE,
+      receivedAt: timestamp,
+      queryParams: Object.fromEntries(searchParams.entries()),
+      payload: body
+    });
+
     // If payment_check_url is provided, query Nave payment check API per official specification
     if (body.payment_check_url) {
-      const liveCheck = await checkNavePaymentStatus(body.payment_check_url);
+      const liveCheck = await checkNavePaymentStatus(body.payment_check_url, channel);
       if (liveCheck) {
         status = (liveCheck.status?.name || status).toUpperCase();
         externalRef = liveCheck.external_payment_id || externalRef;
-        amount = Number(liveCheck.available_balance?.value || liveCheck.transactions?.[0]?.amount?.value || amount);
+        amount = Number(liveCheck.available_balance?.total_amount?.value || liveCheck.available_balance?.amount?.value || liveCheck.available_balance?.value || liveCheck.transactions?.[0]?.amount?.value || amount);
       }
     }
 
