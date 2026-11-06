@@ -267,6 +267,12 @@ export function ExperienceSearchEngine({
             >
               Traslados
             </button>
+            <a
+              href="/buses?brand=experience"
+              className="px-5 py-1.5 rounded-full text-[13px] font-medium tracking-[-0.01em] text-[#86868b] hover:text-[#1d1d1f] transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <span>Pasajes en Bus</span>
+            </a>
           </div>
         </div>
 

@@ -194,10 +194,10 @@ export default function RewardsAnalyticsPage() {
       </div>
 
       {/* Analytics Chart */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm min-w-0">
         <h3 className="text-sm font-bold text-slate-800 mb-4 uppercase tracking-wide">Tráfico de Fidelidad: Emisión vs Canjes</h3>
-        <div className="h-72">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="h-72 w-full min-w-0">
+          <ResponsiveContainer width="100%" height={280} minWidth={0}>
             <AreaChart data={mockChartData}>
               <defs>
                 <linearGradient id="colorEmitidos" x1="0" y1="0" x2="0" y2="1">

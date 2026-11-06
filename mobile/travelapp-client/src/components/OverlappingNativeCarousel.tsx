@@ -42,6 +42,19 @@ export interface NativeCardItem {
 
 const FALLBACK_CARDS: NativeCardItem[] = [
     {
+        id: 'mp-buses',
+        title: 'Pasajes en Micro a todo el País',
+        subtitle: 'Boletería Oficial Central de Pasajes • Sumá Puntos Rewards con tu boleto',
+        badge: 'BOLETERÍA OFICIAL',
+        badgeColor: '#FF5A19',
+        imageUrl: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=900&auto=format&fit=crop&q=80',
+        actionType: 'tab',
+        actionTarget: 'Buses',
+        ctaText: 'Buscar Pasajes',
+        order: 0,
+        active: true,
+    },
+    {
         id: 'mp-1',
         title: 'Escapadas Luna Viajera',
         subtitle: 'Salidas confirmadas este fin de semana • Reservá con seña mínima',
@@ -156,8 +169,11 @@ export const OverlappingNativeCarousel: React.FC<Props> = ({
     }, [propCards, firestoreCards, badgeColor]);
 
     const handleCardPress = (card: NativeCardItem) => {
-        if (card.actionType === 'tab' && card.actionTarget && onNavigateTab) {
-            onNavigateTab(card.actionTarget);
+        if (
+            (card.actionType === 'tab' && card.actionTarget && onNavigateTab) ||
+            (card.actionTarget === 'Buses' && onNavigateTab)
+        ) {
+            onNavigateTab(card.actionTarget!);
             return;
         }
         if (card.actionType === 'whatsapp' && card.actionTarget) {

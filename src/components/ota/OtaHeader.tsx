@@ -12,6 +12,7 @@ import {
   Sparkles,
   LogOut,
   Plane,
+  Bus,
   Building2,
   Compass,
   Gift,
@@ -341,9 +342,32 @@ export function OtaHeader({
                       <span className="text-[10px] text-slate-400 font-normal">Excursiones, Bodegas & Traslados</span>
                     </div>
                   </Link>
+
+                  <Link
+                    href="/buses?brand=ecosistema"
+                    onClick={() => setMarketplaceOpen(false)}
+                    className="flex items-center gap-3 px-4 py-2.5 text-xs font-bold hover:bg-slate-50 transition-colors group"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-orange-50 text-[#FF5A19] flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Bus className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="block text-slate-800">Pasajes en Bus</span>
+                      <span className="text-[10px] text-slate-400 font-normal">Boletería Oficial Central de Pasajes</span>
+                    </div>
+                  </Link>
                 </div>
               )}
             </div>
+
+            {/* BOTÓN DIRECTO PASajes EN BUS */}
+            <Link
+              href="/buses?brand=ecosistema"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-white/10 transition-all"
+            >
+              <Bus className="w-3.5 h-3.5 text-[#FF5A19]" />
+              <span>Pasajes en Bus</span>
+            </Link>
 
             {/* BOTÓN CONTACTO */}
             <a

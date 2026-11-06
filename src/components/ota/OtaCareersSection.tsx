@@ -95,9 +95,9 @@ export function OtaCareersSection({ positions = DEFAULT_POSITIONS }: OtaCareersS
 
             {/* Chips de Puestos Disponibles */}
             <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2 pt-1">
-              {positions.map((pos) => (
+              {positions.map((pos, idx) => (
                 <span
-                  key={pos.id}
+                  key={pos.id || idx}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700"
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
@@ -200,8 +200,8 @@ export function OtaCareersSection({ positions = DEFAULT_POSITIONS }: OtaCareersS
                     onChange={(e) => setFormData({ ...formData, area: e.target.value })}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-tech-blue cursor-pointer"
                   >
-                    {positions.map((p) => (
-                      <option key={p.id} value={p.title}>{p.title}</option>
+                    {positions.map((p, idx) => (
+                      <option key={p.id || idx} value={p.title}>{p.title}</option>
                     ))}
                     <option value="Otra Postulación Espontánea">Otra Postulación Espontánea</option>
                   </select>

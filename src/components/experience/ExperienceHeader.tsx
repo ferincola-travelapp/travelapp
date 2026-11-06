@@ -150,6 +150,13 @@ export function ExperienceHeader({
                     >
                       Traslados Punto a Punto
                     </button>
+                    <Link
+                      href="/buses?brand=experience"
+                      onClick={() => setServiciosDropdownOpen(false)}
+                      className="block w-full px-4 py-2 text-left hover:bg-white/10 hover:text-white transition-colors"
+                    >
+                      Pasajes en Bus (NOA & Nacional)
+                    </Link>
                   </div>
                 </div>
               )}
@@ -164,12 +171,18 @@ export function ExperienceHeader({
               Contacto
             </button>
 
-            {/* 5. TRAVEL MARKET */}
+            {/* 5. TRAVEL MARKET & PASAJES EN BUS */}
             <Link
               href="/landing/experience/marketplace"
               className="py-2 hover:text-white transition-colors"
             >
               Travel Market
+            </Link>
+            <Link
+              href="/buses?brand=experience"
+              className="py-2 hover:text-white transition-colors font-medium text-white"
+            >
+              Pasajes en Bus
             </Link>
 
             {/* 6. BOTÓN DE LOGIN / REGISTRO */}

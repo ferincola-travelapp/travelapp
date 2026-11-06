@@ -5,7 +5,7 @@ import type { NextRequest } from "next/server";
  * PUBLIC_ROUTES – paths that never require authentication.
  * Everything else in the ecosystem is considered protected.
  */
-const PUBLIC_ROUTES = ["/login", "/registro", "/landing", "/marketplace", "/canjes", "/rewards", "/afiliados", "/politica-de-cookies", "/checkout", "/lunaviajera", "/descargas", "/descargar", "/apk"];
+const PUBLIC_ROUTES = ["/login", "/registro", "/landing", "/marketplace", "/canjes", "/rewards", "/afiliados", "/politica-de-cookies", "/checkout", "/lunaviajera", "/descargas", "/descargar", "/apk", "/buses", "/pasajes"];
 
 /**
  * SESSION_COOKIE – lightweight presence signal set by AuthContext on login/logout.
@@ -54,6 +54,11 @@ export function proxy(request: NextRequest) {
     if (cleanPath === "/marketplace" || cleanPath === "/marketplaces") {
       return NextResponse.rewrite(new URL("/landing/experience/marketplace", request.url));
     }
+    if (cleanPath === "/buses" || cleanPath === "/pasajes") {
+      const url = new URL("/buses", request.url);
+      if (!url.searchParams.has("brand")) url.searchParams.set("brand", "experience");
+      return NextResponse.rewrite(url);
+    }
   }
 
   // C) rewards.travelapp.ar ➡️ Landing de Rewards directamente
@@ -78,9 +83,18 @@ export function proxy(request: NextRequest) {
     if (cleanPath === "/experiencias" || cleanPath === "/excursiones") {
       return NextResponse.rewrite(new URL("/landing/lunaviajera#experiencias", request.url));
     }
+    if (cleanPath === "/buses" || cleanPath === "/pasajes") {
+      const url = new URL("/buses", request.url);
+      if (!url.searchParams.has("brand")) url.searchParams.set("brand", "lunaviajera");
+      return NextResponse.rewrite(url);
+    }
   }
 
   // ─── 2. GLOBAL PUBLIC REWRITES ─────────────────────────────────────────────
+
+  if (cleanPath === "/pasajes") {
+    return NextResponse.rewrite(new URL("/buses", request.url));
+  }
 
   // La landing pública de Luna Viajera
   if (cleanPath === "/lunaviajera") {

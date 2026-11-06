@@ -330,7 +330,11 @@ export default function HomeScreen() {
   // Datos de TravelApp Experience - Viajes Contratados
   const [hasPurchasedOrganizedTrip, setHasPurchasedOrganizedTrip] = useState(false);
   const [contractedTrip, setContractedTrip] = useState<any | null>(null);
-  const [experienceMainTab, setExperienceMainTab] = useState<'catalog' | 'trip'>('catalog');
+  const [experienceMainTab, setExperienceMainTab] = useState<'catalog' | 'buses' | 'trip'>('catalog');
+  const [busTicketCode, setBusTicketCode] = useState('');
+  const [busTicketDest, setBusTicketDest] = useState('');
+  const [busTicketAmount, setBusTicketAmount] = useState('');
+  const [busTicketSubmitting, setBusTicketSubmitting] = useState(false);
   const [activeTripSubTab, setActiveTripSubTab] = useState<'itinerary' | 'payments' | 'group' | 'gallery'>('itinerary');
   const [expandedDay, setExpandedDay] = useState<number | null>(1); // Acordeón de itinerario
   const [travisQuery, setTravisQuery] = useState('');
@@ -2935,11 +2939,37 @@ export default function HomeScreen() {
               <View style={{ marginTop: 6 }}>
                 {/* CMS: Novedades del Ecosistema */}
                 <OverlappingNativeCarousel
-                  cards={cmsBlocks.flatMap(block => block.cards)}
+                  cards={[
+                    {
+                      id: 'home-card-buses-cdp',
+                      title: 'Pasajes en Micro a todo el País',
+                      subtitle: 'Boletería Oficial Central de Pasajes • Sumá Puntos Rewards',
+                      badge: 'BOLETERÍA BUSES',
+                      badgeColor: '#FF5A19',
+                      imageUrl: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=900&auto=format&fit=crop&q=80',
+                      actionType: 'tab',
+                      actionTarget: 'Buses',
+                      ctaText: 'Sacar Pasaje',
+                    },
+                    ...cmsBlocks.flatMap(block => block.cards),
+                  ]}
                   title="Novedades del Ecosistema"
                   subtitle="Deslizá para descubrir promociones exclusivas"
                   badgeColor="#FF6B00"
                   onSeeMore={() => setActiveTab('experience')}
+                  onNavigateTab={(target) => {
+                    if (target === 'Buses') {
+                      setActiveTab('experience');
+                      setExperienceMainTab('buses');
+                    } else if (target === 'Rewards') {
+                      setActiveTab('rewards');
+                    } else if (target === 'TravelCab') {
+                      setActiveTab('home');
+                    } else {
+                      setActiveTab('experience');
+                      setExperienceMainTab('catalog');
+                    }
+                  }}
                 />
 
                 {/* CMS: Beneficios Rewards */}
@@ -2975,6 +3005,13 @@ export default function HomeScreen() {
                 <Text style={[styles.segmentText, experienceMainTab === 'catalog' && styles.segmentTextActive]}>Catálogo</Text>
               </TouchableOpacity>
               <TouchableOpacity 
+                style={[styles.segmentBtn, experienceMainTab === 'buses' && styles.segmentBtnActive]}
+                onPress={() => setExperienceMainTab('buses')}
+              >
+                <Ionicons name="bus" size={16} color={experienceMainTab === 'buses' ? Colors.white : Colors.textSecondary} />
+                <Text style={[styles.segmentText, experienceMainTab === 'buses' && styles.segmentTextActive]}>Buses</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
                 style={[styles.segmentBtn, experienceMainTab === 'trip' && styles.segmentBtnActive]}
                 onPress={() => setExperienceMainTab('trip')}
               >
@@ -2985,6 +3022,256 @@ export default function HomeScreen() {
                 )}
               </TouchableOpacity>
             </View>
+
+            {/* SECCIÓN BUSES: BOLETERÍA OFICIAL CENTRAL DE PASAJES + TRAVELCAB + REWARDS */}
+            {experienceMainTab === 'buses' && (
+              <View style={{ width: '100%', paddingBottom: 24 }}>
+                {/* Card Superior Institucional Experience + Reserva TravelCab a Terminal */}
+                <View style={{ backgroundColor: Colors.primary, borderRadius: 20, padding: 18, marginBottom: 16 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                    <View style={{ backgroundColor: Colors.accent, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 }}>
+                      <Text style={{ color: Colors.white, fontSize: 10, fontFamily: Fonts.bold }}>
+                        ✦ BOLETERÍA OFICIAL HABILITADA
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={{ color: Colors.white, fontSize: 18, fontFamily: Fonts.bold, marginBottom: 6 }}>
+                    Pasajes Nacionales y Regionales (NOA)
+                  </Text>
+                  <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, fontFamily: Fonts.regular, lineHeight: 18, marginBottom: 14 }}>
+                    Cotizá y emití tus pasajes en micro en vivo con Central de Pasajes. Recibí tu E-Ticket en el celular y sumá puntos TravelApp Rewards.
+                  </Text>
+
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: Colors.accent,
+                      borderRadius: 12,
+                      paddingVertical: 12,
+                      paddingHorizontal: 14,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    onPress={() => {
+                      setDestination('Terminal de Ómnibus de Tucumán');
+                      setActiveTab('home');
+                      setRequestFlowStep('idle');
+                    }}
+                  >
+                    <Ionicons name="car-sport" size={18} color={Colors.white} style={{ marginRight: 8 }} />
+                    <Text style={{ color: Colors.white, fontSize: 13, fontFamily: Fonts.bold }}>
+                      Reservar mi TravelCab a la Terminal
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Contenedor del Buscador Oficial de Central de Pasajes (230x494 centrado) */}
+                <View
+                  style={{
+                    backgroundColor: Colors.white,
+                    borderRadius: 20,
+                    padding: 16,
+                    marginBottom: 16,
+                    alignItems: 'center',
+                    borderWidth: 1,
+                    borderColor: '#E2E8F0',
+                  }}
+                >
+                  <Text style={{ color: Colors.primary, fontSize: 15, fontFamily: Fonts.bold, marginBottom: 4 }}>
+                    Buscador Oficial Central de Pasajes
+                  </Text>
+                  <Text style={{ color: Colors.textSecondary, fontSize: 12, fontFamily: Fonts.regular, marginBottom: 12, textAlign: 'center' }}>
+                    Seleccioná origen, destino y fecha de viaje
+                  </Text>
+
+                  <View style={{ width: 246, height: 506, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#CBD5E1', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }}>
+                    {Platform.OS === 'web' ? (
+                      React.createElement('iframe', {
+                        src: 'https://ecommerce.centraldepasajes.com.ar/agenciaframe.aspx?Token=vRHEzGOK7U1J9jMzlp9Erv4izja%2bN5UJ4ttcpTvXwcc%3d&age=cag',
+                        style: { border: 'none', width: '230px', height: '494px', overflow: 'hidden' },
+                        title: 'Central de Pasajes TravelApp',
+                      })
+                    ) : (
+                      <WebView
+                        source={{
+                          uri: 'https://ecommerce.centraldepasajes.com.ar/agenciaframe.aspx?Token=vRHEzGOK7U1J9jMzlp9Erv4izja%2bN5UJ4ttcpTvXwcc%3d&age=cag',
+                        }}
+                        style={{ width: 230, height: 494 }}
+                        originWhitelist={['*']}
+                        javaScriptEnabled={true}
+                        domStorageEnabled={true}
+                      />
+                    )}
+                  </View>
+                </View>
+
+                {/* Validador de Boleto para Puntos TravelApp Rewards (con control Anti-Duplicados) */}
+                <View
+                  style={{
+                    backgroundColor: Colors.white,
+                    borderRadius: 20,
+                    padding: 18,
+                    borderWidth: 1,
+                    borderColor: '#E2E8F0',
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                    <Ionicons name="gift" size={20} color={Colors.accent} style={{ marginRight: 8 }} />
+                    <Text style={{ color: Colors.primary, fontSize: 15, fontFamily: Fonts.bold }}>
+                      ¿Ya emitiste tu pasaje? Sumá Puntos Rewards
+                    </Text>
+                  </View>
+                  <Text style={{ color: Colors.textSecondary, fontSize: 12, fontFamily: Fonts.regular, marginBottom: 12, lineHeight: 17 }}>
+                    Ingresá el N.º de Boleto o Voucher de tu compra en Central de Pasajes para acreditar tus puntos en tu billetera.
+                  </Text>
+
+                  <TextInput
+                    style={{
+                      backgroundColor: '#F8FAFC',
+                      borderWidth: 1,
+                      borderColor: '#CBD5E1',
+                      borderRadius: 12,
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                      fontSize: 13,
+                      fontFamily: Fonts.medium,
+                      color: Colors.textPrimary,
+                      marginBottom: 10,
+                    }}
+                    placeholder="N.º de Boleto / Voucher (ej. B-004928)"
+                    placeholderTextColor="#94A3B8"
+                    value={busTicketCode}
+                    onChangeText={setBusTicketCode}
+                  />
+
+                  <TextInput
+                    style={{
+                      backgroundColor: '#F8FAFC',
+                      borderWidth: 1,
+                      borderColor: '#CBD5E1',
+                      borderRadius: 12,
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                      fontSize: 13,
+                      fontFamily: Fonts.medium,
+                      color: Colors.textPrimary,
+                      marginBottom: 10,
+                    }}
+                    placeholder="Destino del viaje (ej. Salta, Córdoba, Bs As)"
+                    placeholderTextColor="#94A3B8"
+                    value={busTicketDest}
+                    onChangeText={setBusTicketDest}
+                  />
+
+                  <TextInput
+                    style={{
+                      backgroundColor: '#F8FAFC',
+                      borderWidth: 1,
+                      borderColor: '#CBD5E1',
+                      borderRadius: 12,
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                      fontSize: 13,
+                      fontFamily: Fonts.medium,
+                      color: Colors.textPrimary,
+                      marginBottom: 12,
+                    }}
+                    placeholder="Monto abonado en $ ARS (ej. 65000)"
+                    placeholderTextColor="#94A3B8"
+                    keyboardType="numeric"
+                    value={busTicketAmount}
+                    onChangeText={setBusTicketAmount}
+                  />
+
+                  <TouchableOpacity
+                    disabled={busTicketSubmitting}
+                    style={{
+                      backgroundColor: Colors.primary,
+                      borderRadius: 12,
+                      paddingVertical: 13,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      opacity: busTicketSubmitting ? 0.6 : 1,
+                    }}
+                    onPress={async () => {
+                      const normalized = (busTicketCode || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+                      if (normalized.length < 4) {
+                        Alert.alert('Código inválido', 'Por favor ingresá un N.º de Boleto o Voucher válido.');
+                        return;
+                      }
+                      setBusTicketSubmitting(true);
+                      try {
+                        const q = query(
+                          collection(db, 'bus_ticket_claims'),
+                          where('ticketNumberNormalized', '==', normalized)
+                        );
+                        const snap = await getDocs(q);
+                        if (!snap.empty) {
+                          let isApproved = false;
+                          snap.forEach(d => {
+                            const data = d.data();
+                            if (data.status === 'Aprobado' || data.estado === 'Aprobado') {
+                              isApproved = true;
+                            }
+                          });
+                          if (isApproved) {
+                            Alert.alert(
+                              '⚠️ Boleto Ya Acreditado',
+                              `El boleto N.º ${busTicketCode.toUpperCase()} ya fue validado anteriormente y sus puntos TravelApp Rewards ya fueron acreditados. No se puede cargar dos veces el mismo boleto.`
+                            );
+                          } else {
+                            Alert.alert(
+                              '⏳ Boleto en Revisión',
+                              `El boleto N.º ${busTicketCode.toUpperCase()} ya fue registrado y se encuentra pendiente de verificación por un operador.`
+                            );
+                          }
+                          setBusTicketSubmitting(false);
+                          return;
+                        }
+
+                        const amt = Number((busTicketAmount || '').replace(/[^0-9.]/g, '')) || 0;
+                        const estPts = amt > 0 ? Math.max(5, Math.round((amt * 0.05) / 175)) : 15;
+                        const currentUser = auth.currentUser;
+
+                        await addDoc(collection(db, 'bus_ticket_claims'), {
+                          ticketNumber: busTicketCode.trim().toUpperCase(),
+                          ticketNumberNormalized: normalized,
+                          passengerName: currentUser?.displayName || 'Usuario App Móvil',
+                          passengerDni: '',
+                          passengerPhone: userPhone || '',
+                          passengerEmail: (currentUser?.email || '').toLowerCase(),
+                          origin: 'App Móvil Experience',
+                          destination: busTicketDest.trim() || 'Nacional',
+                          busCompany: 'Central de Pasajes',
+                          amountPaid: amt,
+                          estimatedPoints: estPts,
+                          brandSource: 'mobile_app_experience',
+                          agencyCode: 'cag',
+                          status: 'Pendiente',
+                          createdAt: new Date().toISOString(),
+                        });
+
+                        setBusTicketCode('');
+                        setBusTicketDest('');
+                        setBusTicketAmount('');
+                        Alert.alert(
+                          '¡Boleto Registrado!',
+                          `Recibimos tu boleto N.º ${normalized}. Una vez verificado en nuestro panel de agencia Central de Pasajes se acreditarán +${estPts} Puntos Rewards en tu cuenta.`
+                        );
+                      } catch (err) {
+                        Alert.alert('Error', 'No se pudo enviar el boleto en este momento.');
+                      } finally {
+                        setBusTicketSubmitting(false);
+                      }
+                    }}
+                  >
+                    <Text style={{ color: Colors.white, fontSize: 13, fontFamily: Fonts.bold }}>
+                      {busTicketSubmitting ? 'Verificando Boleto...' : 'Validar Boleto y Sumar Puntos'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
 
             {/* SECCIÓN A: CATÁLOGO */}
             {experienceMainTab === 'catalog' && (

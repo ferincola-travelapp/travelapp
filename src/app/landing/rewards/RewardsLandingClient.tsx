@@ -171,11 +171,15 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
 
   // Sincronización en tiempo real con CMS Concorde 360
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, "cms", "landing_rewards"), (snap) => {
-      if (snap.exists()) {
-        setCmsData({ ...DEFAULT_REWARDS_CMS_DATA, ...snap.data() });
-      }
-    });
+    const unsub = onSnapshot(
+      doc(db, "cms", "landing_rewards"),
+      (snap) => {
+        if (snap.exists()) {
+          setCmsData({ ...DEFAULT_REWARDS_CMS_DATA, ...snap.data() });
+        }
+      },
+      () => {}
+    );
     return () => unsub();
   }, []);
 

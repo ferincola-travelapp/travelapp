@@ -121,7 +121,12 @@ export function OtaSearchEngine({ enabledTabs, onSearch }: OtaSearchEngineProps)
       return;
     }
 
-    if (activeTab === "vuelos" || activeTab === "hoteles" || activeTab === "buses") {
+    if (activeTab === "buses") {
+      router.push("/buses?brand=ecosistema");
+      return;
+    }
+
+    if (activeTab === "vuelos" || activeTab === "hoteles") {
       router.push(`/marketplace?destination=${encodeURIComponent(destination)}&tab=${activeTab}`);
       return;
     }
@@ -146,7 +151,13 @@ export function OtaSearchEngine({ enabledTabs, onSearch }: OtaSearchEngineProps)
             <button
               key={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => {
+                if (tab.id === "buses") {
+                  router.push("/buses?brand=ecosistema");
+                  return;
+                }
+                setActiveTab(tab.id);
+              }}
               className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all duration-200 cursor-pointer ${
                 isActive
                   ? "bg-[#0A2A5B] text-white shadow-md shadow-blue-950/20 scale-[1.02]"
@@ -172,6 +183,34 @@ export function OtaSearchEngine({ enabledTabs, onSearch }: OtaSearchEngineProps)
       </div>
 
       {/* Formulario de Búsqueda Adaptativo */}
+      {activeTab === "buses" ? (
+        <div className="mt-3.5 sm:mt-5 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-[#0A2A5B] to-[#103b7c] text-white flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-[#FF5A19] flex items-center justify-center shrink-0 shadow-md">
+              <Bus className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-300 block">
+                ✦ Boletería Oficial Habilitada · Central de Pasajes
+              </span>
+              <h4 className="text-sm sm:text-base font-black">
+                Pasajes Nacionales en Micro a +1.600 Destinos + Puntos Rewards
+              </h4>
+              <p className="text-xs text-white/80 mt-0.5">
+                Cotizá en vivo en nuestro buscador oficial, emití tu E-Ticket al instante y reservá tu TravelCab a la Terminal.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => router.push("/buses?brand=ecosistema")}
+            className="w-full sm:w-auto px-5 py-3 rounded-xl bg-[#FF5A19] hover:bg-[#e04c10] text-white font-black text-xs sm:text-sm whitespace-nowrap transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shrink-0"
+          >
+            <span>Ir a Boletería de Buses</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      ) : (
       <form onSubmit={handleSearchSubmit} className="mt-3.5 sm:mt-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
           
@@ -266,6 +305,7 @@ export function OtaSearchEngine({ enabledTabs, onSearch }: OtaSearchEngineProps)
           </div>
         </div>
       </form>
+      )}
 
       {/* Modal de Cotización Asistida para Autos, Asistencia y Parques */}
       {assistedQuoteModal && (

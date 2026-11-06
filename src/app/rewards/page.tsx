@@ -15,6 +15,8 @@ import {
   Save,
   X,
   AlertCircle,
+  Bus,
+  AlertTriangle,
 } from "lucide-react";
 import {
   collection,
@@ -23,6 +25,10 @@ import {
   updateDoc,
   deleteDoc,
   doc,
+  query,
+  where,
+  getDocs,
+  increment,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -77,11 +83,30 @@ const CATEGORIES = [
   "Otros",
 ];
 
+interface BusTicketClaim {
+  id?: string;
+  ticketNumber: string;
+  ticketNumberNormalized: string;
+  passengerName: string;
+  passengerDni: string;
+  passengerPhone: string;
+  passengerEmail: string;
+  origin: string;
+  destination: string;
+  busCompany?: string;
+  amountPaid: number;
+  estimatedPoints: number;
+  brandSource?: string;
+  status: "Pendiente" | "Aprobado" | "Rechazado";
+  createdAt: string;
+  approvedAt?: string;
+}
+
 /* ════════════════════════════════════════════════════════════
    COMPONENTE PRINCIPAL
 ════════════════════════════════════════════════════════════ */
 export default function RewardsAdminPage() {
-  const [activeSection, setActiveSection] = useState<"catalog" | "redemptions">("catalog");
+  const [activeSection, setActiveSection] = useState<"catalog" | "redemptions" | "bus_claims">("catalog");
 
   // Catálogo de ítems
   const [items, setItems] = useState<RewardItem[]>([]);
@@ -96,6 +121,11 @@ export default function RewardsAdminPage() {
   const [loadingRedemptions, setLoadingRedemptions] = useState(true);
   const [redemptionSearch, setRedemptionSearch] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  // Reclamos de Boletos Central de Pasajes
+  const [busClaims, setBusClaims] = useState<BusTicketClaim[]>([]);
+  const [loadingBusClaims, setLoadingBusClaims] = useState(true);
+  const [busClaimSearch, setBusClaimSearch] = useState("");
 
   // Status
   const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -124,6 +154,18 @@ export default function RewardsAdminPage() {
       list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setRedemptions(list);
       setLoadingRedemptions(false);
+    });
+    return () => unsub();
+  }, []);
+
+  // Cargar reclamos de boletos de Central de Pasajes
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "bus_ticket_claims"), (snap) => {
+      const list: BusTicketClaim[] = [];
+      snap.forEach((d) => list.push({ id: d.id, ...d.data() } as BusTicketClaim));
+      list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      setBusClaims(list);
+      setLoadingBusClaims(false);
     });
     return () => unsub();
   }, []);
@@ -175,6 +217,66 @@ export default function RewardsAdminPage() {
       showStatus("success", `Solicitud marcada como ${estado}.`);
     } catch (err: any) {
       showStatus("error", `Error: ${err.message}`);
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handleUpdateBusClaimStatus = async (claim: BusTicketClaim, newStatus: "Aprobado" | "Rechazado") => {
+    if (!claim.id) return;
+    setUpdatingId(claim.id);
+    try {
+      if (newStatus === "Aprobado") {
+        // Control estricto de unicidad para el Operador antes de aprobar
+        const dupSnap = await getDocs(
+          query(
+            collection(db, "bus_ticket_claims"),
+            where("ticketNumberNormalized", "==", claim.ticketNumberNormalized)
+          )
+        );
+        let duplicateApprovedBy: string | null = null;
+        dupSnap.forEach((d) => {
+          const data = d.data();
+          if (d.id !== claim.id && data.status === "Aprobado") {
+            duplicateApprovedBy = data.passengerName || data.passengerEmail || "otro pasajero";
+          }
+        });
+
+        if (duplicateApprovedBy) {
+          showStatus(
+            "error",
+            `🚨 ALERTA DE BOLETO DUPLICADO: El boleto N.º ${claim.ticketNumber} ya fue aprobado y acreditado anteriormente a ${duplicateApprovedBy}. Operación bloqueada.`
+          );
+          setUpdatingId(null);
+          return;
+        }
+
+        // Acreditar puntos en la cuenta del usuario si está registrado por email
+        if (claim.passengerEmail) {
+          const userSnap = await getDocs(
+            query(collection(db, "users"), where("email", "==", claim.passengerEmail.toLowerCase()))
+          );
+          for (const uDoc of userSnap.docs) {
+            await updateDoc(doc(db, "users", uDoc.id), {
+              points: increment(Number(claim.estimatedPoints || 15)),
+              rewardPoints: increment(Number(claim.estimatedPoints || 15)),
+            });
+          }
+        }
+      }
+
+      await updateDoc(doc(db, "bus_ticket_claims", claim.id), {
+        status: newStatus,
+        approvedAt: new Date().toISOString(),
+      });
+      showStatus(
+        "success",
+        newStatus === "Aprobado"
+          ? `Boleto N.º ${claim.ticketNumber} aprobado y +${claim.estimatedPoints} puntos acreditados.`
+          : `Boleto N.º ${claim.ticketNumber} marcado como Rechazado.`
+      );
+    } catch (err: any) {
+      showStatus("error", `Error al procesar boleto: ${err.message}`);
     } finally {
       setUpdatingId(null);
     }
@@ -300,6 +402,15 @@ export default function RewardsAdminPage() {
           }`}
         >
           📋 Solicitudes ({redemptions.filter(r => r.estado === "Pendiente").length} pendientes)
+        </button>
+        <button
+          onClick={() => setActiveSection("bus_claims")}
+          className={`px-5 py-2.5 rounded-t-xl text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${
+            activeSection === "bus_claims" ? "border-violet-600 text-violet-700 bg-violet-50" : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          <Bus className="h-4 w-4" />
+          <span>Boletos Central de Pasajes ({busClaims.filter(c => c.status === "Pendiente").length} pendientes)</span>
         </button>
       </div>
 
@@ -466,6 +577,158 @@ export default function RewardsAdminPage() {
                 <div className="text-center py-16 text-slate-400">
                   <Clock className="h-12 w-12 mx-auto mb-3 text-slate-200" />
                   <p className="font-semibold">No hay solicitudes de canje todavía.</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══ SECCIÓN: VALIDACIÓN DE BOLETOS CENTRAL DE PASAJES (CON ALERTA DE DUPLICADOS) ══ */}
+      {activeSection === "bus_claims" && (
+        <div className="space-y-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Buscar por N.º de boleto, pasajero, DNI o destino..."
+              value={busClaimSearch}
+              onChange={(e) => setBusClaimSearch(e.target.value)}
+              className="bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-violet-500 w-full max-w-md"
+            />
+          </div>
+
+          {loadingBusClaims ? (
+            <div className="flex items-center justify-center py-20">
+              <RefreshCw className="h-8 w-8 animate-spin text-violet-500" />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {busClaims
+                .filter(
+                  (c) =>
+                    c.ticketNumber?.toLowerCase().includes(busClaimSearch.toLowerCase()) ||
+                    c.passengerName?.toLowerCase().includes(busClaimSearch.toLowerCase()) ||
+                    c.passengerDni?.toLowerCase().includes(busClaimSearch.toLowerCase()) ||
+                    c.destination?.toLowerCase().includes(busClaimSearch.toLowerCase())
+                )
+                .map((c) => {
+                  const alreadyApprovedDuplicate = busClaims.find(
+                    (other) =>
+                      other.id !== c.id &&
+                      other.ticketNumberNormalized === c.ticketNumberNormalized &&
+                      other.status === "Aprobado"
+                  );
+
+                  return (
+                    <div
+                      key={c.id}
+                      className={`bg-white rounded-2xl border p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center gap-4 ${
+                        alreadyApprovedDuplicate
+                          ? "border-red-400 bg-red-50/40"
+                          : c.status === "Pendiente"
+                          ? "border-amber-200"
+                          : c.status === "Aprobado"
+                          ? "border-emerald-200"
+                          : "border-slate-200"
+                      }`}
+                    >
+                      <div className="flex-1 space-y-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`text-[10px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1 ${
+                              c.status === "Pendiente"
+                                ? "bg-amber-100 text-amber-800"
+                                : c.status === "Aprobado"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-slate-100 text-slate-500"
+                            }`}
+                          >
+                            {c.status === "Pendiente" ? (
+                              <Clock className="h-2.5 w-2.5" />
+                            ) : c.status === "Aprobado" ? (
+                              <CheckCircle className="h-2.5 w-2.5" />
+                            ) : (
+                              <XCircle className="h-2.5 w-2.5" />
+                            )}
+                            {c.status}
+                          </span>
+                          <span className="text-xs font-black bg-slate-900 text-white px-2.5 py-0.5 rounded-lg">
+                            Boleto N.º {c.ticketNumber}
+                          </span>
+                          {c.brandSource && (
+                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-violet-100 text-violet-700">
+                              Origen: {c.brandSource}
+                            </span>
+                          )}
+                          <span className="text-[10px] text-slate-400">
+                            {c.createdAt
+                              ? new Date(c.createdAt).toLocaleDateString("es-AR", {
+                                  day: "2-digit",
+                                  month: "short",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : ""}
+                          </span>
+                        </div>
+
+                        {alreadyApprovedDuplicate && (
+                          <div className="mt-2 p-2.5 rounded-xl bg-red-100 border border-red-300 text-red-900 text-xs font-bold flex items-center gap-2">
+                            <AlertTriangle className="h-4 w-4 text-red-700 shrink-0" />
+                            <span>
+                              🚨 ALERTA AL OPERADOR: Este N.º de boleto ({c.ticketNumber}) YA FUE ACREDITADO a{" "}
+                              {alreadyApprovedDuplicate.passengerName} (DNI {alreadyApprovedDuplicate.passengerDni}). No aprobar duplicado.
+                            </span>
+                          </div>
+                        )}
+
+                        <h3 className="font-black text-slate-800 text-sm pt-1">
+                          {c.passengerName} · DNI {c.passengerDni}
+                        </h3>
+                        <p className="text-xs text-slate-500">
+                          {c.passengerEmail} · WhatsApp: {c.passengerPhone}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-3 mt-1 text-xs">
+                          <span className="font-bold text-slate-700">
+                            🚌 Ruta: {c.origin} → {c.destination}
+                          </span>
+                          <span className="font-bold text-slate-700">
+                            💳 Abonado: ${Number(c.amountPaid || 0).toLocaleString("es-AR")} ARS
+                          </span>
+                          <span className="text-violet-700 font-black bg-violet-50 px-2 py-0.5 rounded">
+                            +{c.estimatedPoints || 15} Puntos Rewards
+                          </span>
+                        </div>
+                      </div>
+
+                      {c.status === "Pendiente" && (
+                        <div className="flex gap-2 flex-shrink-0">
+                          <button
+                            onClick={() => handleUpdateBusClaimStatus(c, "Aprobado")}
+                            disabled={updatingId === c.id || Boolean(alreadyApprovedDuplicate)}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-xs font-black text-white transition-all disabled:opacity-40 cursor-pointer"
+                          >
+                            <CheckCircle className="h-3.5 w-3.5" /> Aprobar y Acreditar
+                          </button>
+                          <button
+                            onClick={() => handleUpdateBusClaimStatus(c, "Rechazado")}
+                            disabled={updatingId === c.id}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-red-100 hover:bg-red-200 border border-red-200 px-4 py-2 text-xs font-black text-red-700 transition-all disabled:opacity-50 cursor-pointer"
+                          >
+                            <XCircle className="h-3.5 w-3.5" /> Rechazar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+              {busClaims.length === 0 && (
+                <div className="text-center py-16 text-slate-400">
+                  <Bus className="h-12 w-12 mx-auto mb-3 text-slate-200" />
+                  <p className="font-semibold">No hay boletos pendientes de validación todavía.</p>
                 </div>
               )}
             </div>

@@ -317,16 +317,20 @@ export default function LunaViajeraLandingClient({ initialCms }: LunaViajeraLand
       setExcursiones(finalCatalog.length > 0 ? finalCatalog : DEFAULT_EXCURSIONES);
     };
 
-    const unsubCms = onSnapshot(doc(db, "cms", "landing_lunaviajera"), (snap) => {
-      if (snap.exists()) {
-        const loaded = snap.data();
-        setCms({ ...DEFAULT_LUNA_CMS, ...loaded });
-        if (loaded.excursiones && Array.isArray(loaded.excursiones) && loaded.excursiones.length > 0) {
-          cmsExcursionesList = loaded.excursiones;
-          mergeReceptivoCatalog();
+    const unsubCms = onSnapshot(
+      doc(db, "cms", "landing_lunaviajera"),
+      (snap) => {
+        if (snap.exists()) {
+          const loaded = snap.data();
+          setCms({ ...DEFAULT_LUNA_CMS, ...loaded });
+          if (loaded.excursiones && Array.isArray(loaded.excursiones) && loaded.excursiones.length > 0) {
+            cmsExcursionesList = loaded.excursiones;
+            mergeReceptivoCatalog();
+          }
         }
-      }
-    });
+      },
+      () => {}
+    );
 
     // Escuchar catálogo de Turismo Receptivo en Firestore (colección 'experiences', acotado con limit)
     const unsubExp = onSnapshot(
@@ -636,6 +640,10 @@ export default function LunaViajeraLandingClient({ initialCms }: LunaViajeraLand
               <span>Excursiones</span>
               <span className="h-1.5 w-1.5 rounded-full bg-[#DFB15B]"></span>
             </a>
+            <Link href="/buses?brand=lunaviajera" className="hover:text-[#DFB15B] transition flex items-center gap-1.5 py-1 text-[#DFB15B]">
+              <Bus className="h-4 w-4" />
+              <span>Pasajes en Bus</span>
+            </Link>
             <a href="#galeria" className="hover:text-[#DFB15B] transition py-1">
               Galería
             </a>
@@ -752,6 +760,14 @@ export default function LunaViajeraLandingClient({ initialCms }: LunaViajeraLand
                 <Mountain className="h-5 w-5 text-[#DFB15B]" />
                 <span>Nuestra Filosofía</span>
               </a>
+
+              <Link
+                href="/buses?brand=lunaviajera"
+                className="px-7 py-4 bg-[#0A2E20]/95 hover:bg-[#0A2E20] text-[#DFB15B] font-black text-xs sm:text-sm uppercase tracking-wider rounded-xl border-2 border-[#DFB15B] transition shadow-[0_12px_35px_rgba(0,0,0,0.9)] hover:shadow-[0_16px_40px_rgba(223,177,91,0.5)] flex items-center justify-center gap-2.5 active:scale-95 backdrop-blur-md"
+              >
+                <Bus className="h-5 w-5 text-[#DFB15B]" />
+                <span>Sacar Pasajes en Bus</span>
+              </Link>
             </div>
 
           </div>

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   FileText, Save, Image, Link as LinkIcon, Shield, Sparkles, 
   Trash2, Plus, ArrowRight, Eye, CheckCircle2, AlertCircle, RefreshCw,
-  Upload, X, HelpCircle, Users, Compass, Bot, Mountain, Phone
+  Upload, X, HelpCircle, Users, Compass, Bot, Mountain, Phone, Bus
 } from 'lucide-react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -901,7 +901,7 @@ const DEFAULT_LUNAVIAJERA_CMS_DATA = {
   ]
 };
 
-type ActiveTab = 'hero' | 'servicios' | 'conductores' | 'rewards' | 'faq' | 'legales' | 'slider' | 'ofertas' | 'social' | 'eco_hero' | 'eco_promo' | 'eco_unidades' | 'eco_quienes' | 'eco_stats' | 'eco_apps' | 'eco_trabaja' | 'eco_legales' | 'rew_slider' | 'rew_beneficios' | 'rew_social' | 'rew_negocio' | 'rew_legales' | 'app_cards' | 'app_rewards' | 'afi_hero' | 'afi_cobro' | 'afi_faq' | 'afi_footer' | 'exp_pushpop' | 'exp_floating' | 'exp_quienes' | 'exp_marketplace' | 'exp_buscador' | 'exp_metrics' | 'exp_testimonials' | 'lv_hero' | 'lv_cards' | 'lv_galeria' | 'lv_catalogo' | 'lv_travis' | 'lv_quienes' | 'lv_contacto';
+type ActiveTab = 'hero' | 'servicios' | 'conductores' | 'rewards' | 'faq' | 'legales' | 'slider' | 'ofertas' | 'social' | 'eco_hero' | 'eco_promo' | 'eco_unidades' | 'eco_quienes' | 'eco_stats' | 'eco_apps' | 'eco_trabaja' | 'eco_legales' | 'rew_slider' | 'rew_beneficios' | 'rew_social' | 'rew_negocio' | 'rew_legales' | 'app_cards' | 'app_rewards' | 'afi_hero' | 'afi_cobro' | 'afi_faq' | 'afi_footer' | 'exp_pushpop' | 'exp_floating' | 'exp_quienes' | 'exp_marketplace' | 'exp_buscador' | 'exp_metrics' | 'exp_testimonials' | 'lv_hero' | 'lv_cards' | 'lv_galeria' | 'lv_catalogo' | 'lv_travis' | 'lv_quienes' | 'lv_contacto' | 'bus_cms';
 
 export default function CMSPage() {
   const [selectedLanding, setSelectedLanding] = useState<'travelcab' | 'experience' | 'ecosistema' | 'rewards' | 'app-inicio' | 'afiliados' | 'lunaviajera'>('travelcab');
@@ -1781,16 +1781,16 @@ export default function CMSPage() {
         {(selectedLanding === 'travelcab' 
           ? ['hero', 'servicios', 'conductores', 'rewards', 'faq', 'legales'] 
           : selectedLanding === 'experience'
-          ? ['exp_pushpop', 'slider', 'exp_floating', 'exp_quienes', 'exp_marketplace', 'exp_buscador', 'exp_metrics', 'exp_testimonials', 'rewards', 'social']
+          ? ['exp_pushpop', 'slider', 'exp_floating', 'exp_quienes', 'exp_marketplace', 'exp_buscador', 'bus_cms', 'exp_metrics', 'exp_testimonials', 'rewards', 'social']
           : selectedLanding === 'lunaviajera'
-          ? ['lv_hero', 'lv_cards', 'lv_galeria', 'lv_catalogo', 'lv_travis', 'lv_quienes', 'lv_contacto']
+          ? ['lv_hero', 'lv_cards', 'lv_galeria', 'lv_catalogo', 'bus_cms', 'lv_travis', 'lv_quienes', 'lv_contacto']
           : selectedLanding === 'rewards'
           ? ['rew_slider', 'rew_beneficios', 'rew_social', 'rew_negocio', 'rew_legales']
           : selectedLanding === 'app-inicio'
           ? ['app_cards', 'app_rewards']
           : selectedLanding === 'afiliados'
           ? ['afi_hero', 'afi_cobro', 'afi_faq', 'afi_footer']
-          : ['eco_hero', 'eco_promo', 'eco_unidades', 'eco_quienes', 'eco_stats', 'eco_apps', 'eco_trabaja', 'eco_legales']
+          : ['eco_hero', 'eco_promo', 'eco_unidades', 'bus_cms', 'eco_quienes', 'eco_stats', 'eco_apps', 'eco_trabaja', 'eco_legales']
         ).map((tab) => (
           <button
             key={tab}
@@ -1838,6 +1838,7 @@ export default function CMSPage() {
             {tab === 'afi_cobro' && '⚡ 2. Métodos de Cobro (MP / CBU)'}
             {tab === 'afi_faq' && '❓ 3. Preguntas Frecuentes (FAQ)'}
             {tab === 'afi_footer' && '🏷️ 4. Marcas & Footer'}
+            {tab === 'bus_cms' && '🚌 Boletería Buses (Slider & Textos)'}
           </button>
         ))}
       </div>
@@ -5545,6 +5546,457 @@ export default function CMSPage() {
             </div>
           </div>
         )}
+
+        {/* ======================================================== */}
+        {/* EDITOR DE BOLETERÍA DE BUSES (PARA ECOSISTEMA, EXPERIENCE Y LUNA VIAJERA) */}
+        {/* ======================================================== */}
+        {activeTab === 'bus_cms' && (selectedLanding === 'ecosistema' || selectedLanding === 'experience' || selectedLanding === 'lunaviajera') && (() => {
+          const defaultSlidesByLanding: Record<string, any[]> = {
+            ecosistema: [
+              {
+                id: 'eco-1',
+                badge: '✦ BOLETERÍA OFICIAL NACIONAL · CENTRAL DE PASAJES',
+                highlightTag: '+1.600 Destinos Nacionales',
+                title: 'Más de 1.600 Destinos Operados en toda Argentina',
+                subtitle: 'Comercializamos pasajes oficiales de larga distancia con todas las empresas líderes del país. Elegí tu butaca Cama Suite, Ejecutivo o Semi-Cama y recibí tu E-Ticket al instante.',
+                imageUrl: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=1920&q=85',
+              },
+              {
+                id: 'eco-2',
+                badge: '✦ FINANCIACIÓN Y BENEFICIOS EXCLUSIVOS',
+                highlightTag: 'Suma Puntos TravelApp Rewards',
+                title: 'Viajá en Micro con Cuotas y Sumá Puntos Rewards',
+                subtitle: 'Aboná con todas las tarjetas de crédito, débito y billeteras virtuales en la pasarela oficial de Central de Pasajes y registrá tu boleto para acreditar puntos en tu cuenta TravelApp.',
+                imageUrl: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=1920&q=85',
+              },
+            ],
+            experience: [
+              {
+                id: 'exp-1',
+                badge: '✦ CONECTIVIDAD RECEPTIVA · NORTE ARGENTINO (NOA)',
+                highlightTag: 'Rutas Escénicas del NOA',
+                title: 'Recorré los Destinos del NOA en Micros de Primera Línea',
+                subtitle: 'Conectá San Miguel de Tucumán, Salta, Jujuy, Cafayate, Purmamarca, Tilcara y Termas de Río Hondo con frecuencias diarias y emisión inmediata.',
+                imageUrl: 'https://images.unsplash.com/photo-1501854140801-50d01698950b?auto=format&fit=crop&w=1920&q=85',
+              },
+              {
+                id: 'exp-2',
+                badge: '✦ TURISMO RECEPTIVO + BOLETERÍA OFICIAL',
+                highlightTag: 'Conexiones Regionales Diarias',
+                title: 'Armá tu Circuito por Tucumán, Salta y la Quebrada',
+                subtitle: 'Sacá tus tramos en bus entre provincias y complementá tu estadía con nuestras excursiones guiadas y traslados receptivos desde la Terminal a tu hotel.',
+                imageUrl: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=1920&q=85',
+              },
+            ],
+            lunaviajera: [
+              {
+                id: 'luna-1',
+                badge: '✦ LUNA VIAJERA · VALLES CALCHAQUÍES & TUCUMÁN',
+                highlightTag: 'Postal de Tafí del Valle',
+                title: 'Tafí del Valle y los Paisajes Mágicos de Tucumán',
+                subtitle: 'Llegá a Tucumán desde cualquier rincón del país a través de nuestra Boletería Oficial de Central de Pasajes y descubrí la Quebrada de Los Sosa, el lago La Angostura y los Valles.',
+                imageUrl: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1920&q=85',
+              },
+              {
+                id: 'luna-2',
+                badge: '✦ AVENTURA EN LAS YUNGAS Y LOS VALLES',
+                highlightTag: 'Valles & Selva de Yungas',
+                title: 'Conectá tu Viaje de Larga Distancia con Salidas de 1 Día',
+                subtitle: 'Emití tu pasaje nacional de micro al instante, validá tu boleto para sumar Puntos Rewards y reservá tu lugar en nuestras excursiones desde Yerba Buena.',
+                imageUrl: 'https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?auto=format&fit=crop&w=1920&q=85',
+              },
+            ],
+          };
+
+          const defaultDestinos = [
+            {
+              ciudad: 'Tafí del Valle & Valles',
+              provincia: 'Tucumán · Ruta 307',
+              categoria: 'Conexión Regional & Excursión',
+              img: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=800&q=80',
+              tag: 'Favorito Luna Viajera',
+            },
+            {
+              ciudad: 'Salta & Cafayate',
+              provincia: 'Norte Argentino (NOA)',
+              categoria: 'Semi-Cama / Cama Ejecutivo',
+              img: 'https://images.unsplash.com/photo-1501854140801-50d01698950b?auto=format&fit=crop&w=800&q=80',
+              tag: 'Circuito NOA',
+            },
+            {
+              ciudad: 'Buenos Aires (Retiro / Dellepiane)',
+              provincia: 'Salidas Diarias Nacionales',
+              categoria: 'Cama Ejecutivo / Suite',
+              img: 'https://images.unsplash.com/photo-1589909202802-8f4aadce1849?auto=format&fit=crop&w=800&q=80',
+              tag: 'Alta Frecuencia',
+            },
+          ];
+
+          const busesSection = data.busesSection || {};
+          const slides: any[] =
+            Array.isArray(busesSection.slides) && busesSection.slides.length > 0
+              ? busesSection.slides
+              : defaultSlidesByLanding[selectedLanding] || defaultSlidesByLanding.ecosistema;
+          const destinos: any[] =
+            Array.isArray(busesSection.destinos) && busesSection.destinos.length > 0
+              ? busesSection.destinos
+              : defaultDestinos;
+
+          const updateBusSlides = (newSlides: any[]) => {
+            setData((prev: any) => ({
+              ...prev,
+              busesSection: {
+                ...(prev.busesSection || {}),
+                slides: newSlides,
+                destinos,
+              },
+            }));
+          };
+
+          const updateBusDestinos = (newDestinos: any[]) => {
+            setData((prev: any) => ({
+              ...prev,
+              busesSection: {
+                ...(prev.busesSection || {}),
+                slides,
+                destinos: newDestinos,
+              },
+            }));
+          };
+
+          const updateBusText = (field: string, val: string) => {
+            setData((prev: any) => ({
+              ...prev,
+              busesSection: {
+                ...(prev.busesSection || {}),
+                slides,
+                destinos,
+                [field]: val,
+              },
+            }));
+          };
+
+          const previewUrl =
+            selectedLanding === 'lunaviajera'
+              ? '/buses?brand=lunaviajera'
+              : selectedLanding === 'experience'
+              ? '/buses?brand=experience'
+              : '/buses?brand=ecosistema';
+
+          return (
+            <div className="space-y-8">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
+                <div>
+                  <h3 className="text-base font-extrabold text-tech-blue flex items-center gap-2">
+                    <Bus className="h-5 w-5 text-vial-orange" />
+                    <span>
+                      Gestión de Página de Buses ({selectedLanding === 'ecosistema' ? 'travelapp.ar/buses' : selectedLanding === 'experience' ? 'experience.travelapp.ar/buses' : 'lunaviajera.travelapp.ar/buses'})
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Personalizá las imágenes y textos del Slider principal, la franja de TravelCab y las tarjetas de destinos y promociones que acompañan al buscador de Central de Pasajes.
+                  </p>
+                </div>
+                <a
+                  href={previewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-tech-blue text-white text-xs font-bold hover:opacity-90 transition shrink-0"
+                >
+                  <Eye className="h-4 w-4" />
+                  <span>Ver Página /buses de esta Unidad</span>
+                </a>
+              </div>
+
+              {/* 1. SLIDER HERO DE LA PÁGINA DE BUSES */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-black text-slate-800 uppercase tracking-wider">
+                    1. Slides del Hero Principal (Junto al Buscador de Central de Pasajes)
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateBusSlides([
+                        ...slides,
+                        {
+                          id: `bus-slide-${Date.now()}`,
+                          badge: '✦ PROMOCIÓN ESPECIAL EN BUS',
+                          highlightTag: 'Salidas Diarias',
+                          title: 'Nuevo Slide de Boletería',
+                          subtitle: 'Descripción del servicio o promoción.',
+                          imageUrl: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=1920&q=85',
+                        },
+                      ])
+                    }
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Agregar Slide</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4">
+                  {slides.map((slide, idx) => (
+                    <div
+                      key={slide.id || idx}
+                      className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-4"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black uppercase text-tech-blue bg-blue-100 px-2.5 py-1 rounded-md">
+                          Slide #{idx + 1}
+                        </span>
+                        {slides.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => updateBusSlides(slides.filter((_, i) => i !== idx))}
+                            className="text-xs font-bold text-rose-600 hover:underline flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> Eliminar
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <CMSInput
+                          label="Badge Superior"
+                          value={slide.badge || ''}
+                          onChange={(val) => {
+                            const next = [...slides];
+                            next[idx] = { ...next[idx], badge: val };
+                            updateBusSlides(next);
+                          }}
+                        />
+                        <CMSInput
+                          label="Etiqueta Destacada (Píldora)"
+                          value={slide.highlightTag || ''}
+                          onChange={(val) => {
+                            const next = [...slides];
+                            next[idx] = { ...next[idx], highlightTag: val };
+                            updateBusSlides(next);
+                          }}
+                        />
+                      </div>
+
+                      <CMSInput
+                        label="Título Principal del Slide"
+                        value={slide.title || ''}
+                        onChange={(val) => {
+                          const next = [...slides];
+                          next[idx] = { ...next[idx], title: val };
+                          updateBusSlides(next);
+                        }}
+                      />
+
+                      <CMSTextarea
+                        label="Subtítulo / Descripción"
+                        value={slide.subtitle || ''}
+                        onChange={(val) => {
+                          const next = [...slides];
+                          next[idx] = { ...next[idx], subtitle: val };
+                          updateBusSlides(next);
+                        }}
+                        rows={2}
+                      />
+
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                        <div className="md:col-span-8">
+                          <CMSInput
+                            label="URL de Imagen de Fondo"
+                            value={slide.imageUrl || ''}
+                            onChange={(val) => {
+                              const next = [...slides];
+                              next[idx] = { ...next[idx], imageUrl: val };
+                              updateBusSlides(next);
+                            }}
+                            placeholder="https://images.unsplash.com/..."
+                          />
+                        </div>
+                        <div className="md:col-span-4">
+                          <label className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 cursor-pointer">
+                            <Upload className="h-4 w-4 text-tech-blue" />
+                            <span>Subir Imagen desde PC</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                const b64 = await compressImage(file, 1400, 900, 0.78);
+                                const next = [...slides];
+                                next[idx] = { ...next[idx], imageUrl: b64 };
+                                updateBusSlides(next);
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 2. TEXTOS DEL BLOQUE TRAVELCAB Y VALIDADOR REWARDS */}
+              <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
+                <h4 className="text-sm font-black text-slate-800 uppercase tracking-wider">
+                  2. Textos de Conexión TravelCab y Bloque de Puntos Rewards
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <CMSInput
+                    label="Título Franja TravelCab a la Terminal"
+                    value={busesSection.travelCabTitle || '¿Necesitás traslado hacia o desde la Terminal de Ómnibus?'}
+                    onChange={(val) => updateBusText('travelCabTitle', val)}
+                  />
+                  <CMSInput
+                    label="Subtítulo Franja TravelCab"
+                    value={
+                      busesSection.travelCabSubtitle ||
+                      'Dejá programado tu TravelCab con tarifa fija y conductor verificado para llegar con tiempo a tu plataforma.'
+                    }
+                    onChange={(val) => updateBusText('travelCabSubtitle', val)}
+                  />
+                  <CMSInput
+                    label="Título Bloque Validador Rewards"
+                    value={
+                      busesSection.rewardsTitle ||
+                      '¿Compraste tu pasaje en nuestro buscador? ¡Reclamá tus Puntos Rewards!'
+                    }
+                    onChange={(val) => updateBusText('rewardsTitle', val)}
+                  />
+                  <CMSInput
+                    label="Título Sección Destinos y Promociones"
+                    value={
+                      busesSection.destinosTitle || 'Destinos Más Buscados en Nuestra Boletería'
+                    }
+                    onChange={(val) => updateBusText('destinosTitle', val)}
+                  />
+                </div>
+              </div>
+
+              {/* 3. TARJETAS DE DESTINOS Y PROMOCIONES */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-black text-slate-800 uppercase tracking-wider">
+                    3. Tarjetas de Destinos y Promociones de Micro
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateBusDestinos([
+                        ...destinos,
+                        {
+                          ciudad: 'Nuevo Destino',
+                          provincia: 'Región / Ruta',
+                          categoria: 'Semi-Cama / Cama Ejecutivo',
+                          img: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80',
+                          tag: 'Destacado',
+                        },
+                      ])
+                    }
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Agregar Destino</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {destinos.map((dest, idx) => (
+                    <div
+                      key={idx}
+                      className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black text-slate-700">
+                          Destino #{idx + 1}: {dest.ciudad}
+                        </span>
+                        {destinos.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => updateBusDestinos(destinos.filter((_, i) => i !== idx))}
+                            className="text-xs font-bold text-rose-600 hover:underline flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> Quitar
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <CMSInput
+                          label="Ciudad / Destino"
+                          value={dest.ciudad || ''}
+                          onChange={(val) => {
+                            const next = [...destinos];
+                            next[idx] = { ...next[idx], ciudad: val };
+                            updateBusDestinos(next);
+                          }}
+                        />
+                        <CMSInput
+                          label="Provincia / Ruta"
+                          value={dest.provincia || ''}
+                          onChange={(val) => {
+                            const next = [...destinos];
+                            next[idx] = { ...next[idx], provincia: val };
+                            updateBusDestinos(next);
+                          }}
+                        />
+                        <CMSInput
+                          label="Categoría de Servicio"
+                          value={dest.categoria || ''}
+                          onChange={(val) => {
+                            const next = [...destinos];
+                            next[idx] = { ...next[idx], categoria: val };
+                            updateBusDestinos(next);
+                          }}
+                        />
+                        <CMSInput
+                          label="Etiqueta (Tag)"
+                          value={dest.tag || ''}
+                          onChange={(val) => {
+                            const next = [...destinos];
+                            next[idx] = { ...next[idx], tag: val };
+                            updateBusDestinos(next);
+                          }}
+                        />
+                      </div>
+
+                      <div className="flex items-end gap-2">
+                        <div className="flex-1">
+                          <CMSInput
+                            label="Imagen del Destino (URL)"
+                            value={dest.img || ''}
+                            onChange={(val) => {
+                              const next = [...destinos];
+                              next[idx] = { ...next[idx], img: val };
+                              updateBusDestinos(next);
+                            }}
+                          />
+                        </div>
+                        <label className="px-3 py-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 cursor-pointer shrink-0">
+                          Subir Foto
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              const b64 = await compressImage(file, 900, 600, 0.75);
+                              const next = [...destinos];
+                              next[idx] = { ...next[idx], img: b64 };
+                              updateBusDestinos(next);
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
       </div>
     </div>

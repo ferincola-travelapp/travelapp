@@ -111,13 +111,24 @@ export async function queryExternalServiceProviders(
     });
   }
 
-  if (normalizedQuery.includes('micro') || normalizedQuery.includes('colectivo') || normalizedQuery.includes('omnibus') || normalizedQuery.includes('terminal')) {
+  if (
+    normalizedQuery.includes('micro') ||
+    normalizedQuery.includes('colectivo') ||
+    normalizedQuery.includes('omnibus') ||
+    normalizedQuery.includes('bus') ||
+    normalizedQuery.includes('pasaje') ||
+    normalizedQuery.includes('boleto') ||
+    normalizedQuery.includes('central de pasajes') ||
+    normalizedQuery.includes('terminal')
+  ) {
     results.push({
-      providerName: 'Red de Transporte Interurbano',
+      providerName: 'Boletería Oficial TravelApp · Central de Pasajes (Agencia CAG)',
       category: 'micros',
-      title: 'Salidas desde Terminal Central de Tucumán',
-      description: 'Conexión con Tafí del Valle, Cafayate, Salta, Termas de Río Hondo y todo el Norte Argentino. Transfer puerta a terminal con TravelCab.',
-      availability: 'Salidas frecuentes'
+      title: 'Emisión Oficial de Pasajes en Micro a +1.600 Destinos Nacionales y Regionales (NOA)',
+      description:
+        'Comercializamos pasajes oficiales de ómnibus en todo el país y el Norte Argentino (Tucumán, Tafí del Valle, Salta, Jujuy, Cafayate, Purmamarca, Córdoba, Buenos Aires, Mendoza, Bariloche y más) en categorías Semi-Cama, Cama Ejecutivo y Cama Suite. El pasajero cotiza y emite su E-Ticket en vivo desde nuestra página dedicada /buses (travelapp.ar/buses, experience.travelapp.ar/buses o lunaviajera.travelapp.ar/buses). Además, una vez emitido el boleto, puede cargar su N.º de Boleto en el Validador de /buses para sumar Puntos TravelApp Rewards y reservar su traslado seguro en TravelCab hacia o desde la Terminal de Ómnibus.',
+      availability: 'Emisión online inmediata 24/7 en /buses',
+      sourceUrl: 'https://travelapp.ar/buses'
     });
   }
 
