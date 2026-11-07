@@ -87,7 +87,12 @@ async function processAnuraCallEvent(params: Record<string, any>) {
   const currentHour = parseInt(argHourStr, 10);
   const isOutOfHours = currentHour >= 22 || currentHour < 8;
 
+  // Disparar WhatsApp en cualquier llamada entrante al Preatendedor (o cuando no fue atendida por los internos de operadores 100/101)
+  const wasAnsweredByHumanOperator =
+    extension === '100' || extension === '101';
+
   const isMissedOrTrigger =
+    !wasAnsweredByHumanOperator ||
     callStatus.includes('MISS') ||
     callStatus.includes('NO_ANSWER') ||
     callStatus.includes('BUSY') ||
@@ -95,9 +100,13 @@ async function processAnuraCallEvent(params: Record<string, any>) {
     callStatus.includes('IVR') ||
     callStatus.includes('TRAVIS') ||
     callStatus.includes('INCOMING') ||
+    callStatus.includes('END') ||
+    callStatus.includes('START') ||
+    callStatus.includes('ANSWERED') ||
     (isOutOfHours && anuraCfg.autoWhatsAppOnOutOfHours);
 
   let whatsappSent = false;
+  let whatsappDetail: any = null;
   const welcomeMessage =
     anuraCfg.missedCallWhatsAppMessage ||
     DEFAULT_TRAVIS_CONFIG.anuraConfig!.missedCallWhatsAppMessage;
@@ -117,6 +126,7 @@ async function processAnuraCallEvent(params: Record<string, any>) {
       }
     );
     whatsappSent = waRes.success;
+    whatsappDetail = waRes.data || waRes.error;
   }
 
   // Registrar llamada y conversación en Firestore + CRM
@@ -191,6 +201,7 @@ async function processAnuraCallEvent(params: Record<string, any>) {
     caller: cleanPhone,
     callStatus,
     whatsappAutoReplySent: whatsappSent,
+    whatsappDetail,
   });
 }
 
