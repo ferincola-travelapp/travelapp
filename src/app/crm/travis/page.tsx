@@ -5,7 +5,7 @@ import { doc, getDoc, setDoc, updateDoc, addDoc, collection, onSnapshot, query, 
 import { db } from '@/lib/firebase';
 import {
   TravisConfig, TravisKnowledgeEntry, DEFAULT_TRAVIS_CONFIG,
-  MessageChannel,
+  MessageChannel, CommentAutomationRule, DEFAULT_COMMENT_RULES, BusinessUnit,
 } from '@/types/messaging';
 import {
   Bot, Save, RefreshCw, Send, Plus, Edit2, Trash2, Check, X,
@@ -32,13 +32,13 @@ const Facebook = ({ className }: { className?: string }) => (
 // ─── Channel status badge ─────────────────────────────────────────────────────
 
 const CHANNEL_CONFIG = [
-  { key: 'whatsapp' as MessageChannel, label: 'WhatsApp', icon: Phone, color: 'emerald', desc: 'Integrado via ManyChat. Requiere API Token activo.' },
-  { key: 'instagram' as MessageChannel, label: 'Instagram DM', icon: Instagram, color: 'pink', desc: 'Instagram Direct Messages via ManyChat Pro.' },
-  { key: 'messenger' as MessageChannel, label: 'Messenger', icon: Facebook, color: 'blue', desc: 'Facebook Messenger via ManyChat.' },
-  { key: 'web' as MessageChannel, label: 'Chat Web', icon: Globe, color: 'sky', desc: 'Widget de chat en las landing pages (ManyChat widget).' },
+  { key: 'whatsapp' as MessageChannel, label: 'WhatsApp Oficial', icon: Phone, color: 'emerald', desc: 'Conectado directo por Meta Cloud API ($0 costo extra).' },
+  { key: 'instagram' as MessageChannel, label: 'Instagram DM + Comentarios', icon: Instagram, color: 'pink', desc: 'Conectado directo por Meta Graph API (DMs y Private Replies).' },
+  { key: 'messenger' as MessageChannel, label: 'Facebook Messenger + Comentarios', icon: Facebook, color: 'blue', desc: 'Conectado directo por Meta Graph API (Messenger y Feed).' },
+  { key: 'web' as MessageChannel, label: 'Chat Web', icon: Globe, color: 'sky', desc: 'Widget nativo de chat en las landing pages de TravelApp.' },
 ];
 
-type TravisTab = 'prompt' | 'knowledge' | 'channels' | 'training';
+type TravisTab = 'prompt' | 'knowledge' | 'comments' | 'channels' | 'training';
 
 // ─── System Prompt Tab ────────────────────────────────────────────────────────
 
@@ -286,6 +286,483 @@ function KnowledgeBaseTab({ config, onSave }: { config: TravisConfig; onSave: (p
   );
 }
 
+// ─── Comment Automation Tab (Instagram & Facebook Specific Posts) ─────────────
+
+function CommentAutomationTab({
+  config,
+  onSave,
+}: {
+  config: TravisConfig;
+  onSave: (partial: Partial<TravisConfig>) => Promise<void>;
+}) {
+  const [rules, setRules] = useState<CommentAutomationRule[]>(
+    config.commentRules && config.commentRules.length > 0
+      ? config.commentRules
+      : DEFAULT_COMMENT_RULES
+  );
+  const [editingRule, setEditingRule] = useState<CommentAutomationRule | null>(null);
+  const [isNew, setIsNew] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loadingPosts, setLoadingPosts] = useState(false);
+  const [fetchedPosts, setFetchedPosts] = useState<{
+    instagram: { id: string; caption: string; permalink: string }[];
+    facebook: { id: string; caption: string; permalink: string }[];
+  }>({ instagram: [], facebook: [] });
+
+  // Form states
+  const [keywordsInput, setKeywordsInput] = useState('');
+  const [publicRepliesInput, setPublicRepliesInput] = useState('');
+
+  useEffect(() => {
+    if (config.commentRules && config.commentRules.length > 0) {
+      setRules(config.commentRules);
+    }
+  }, [config.commentRules]);
+
+  const BUSINESS_UNITS: BusinessUnit[] = [
+    'TravelApp Experience',
+    'TravelCab (Usuario)',
+    'TravelCab (Conductor)',
+    'TravelApp Rewards',
+    'TravelApp Afiliados',
+    'TravelApp',
+  ];
+
+  const handleLoadPostsFromMeta = async () => {
+    setLoadingPosts(true);
+    try {
+      const res = await fetch('/api/webhooks/meta-social?action=list_posts');
+      const data = await res.json();
+      if (data.posts) {
+        setFetchedPosts(data.posts);
+      }
+    } catch (err) {
+      console.warn('Error cargando publicaciones de Meta:', err);
+    }
+    setLoadingPosts(false);
+  };
+
+  const openNewRule = () => {
+    const draft: CommentAutomationRule = {
+      id: `rule_${Date.now()}`,
+      name: '',
+      platform: 'both',
+      postId: 'ALL',
+      postUrl: '',
+      keywords: ['info', 'precio'],
+      publicReplies: [
+        '¡Hola @{usuario}! 🙌 Ya te enviamos toda la información por mensaje privado. ¡Revisá tu bandeja!',
+      ],
+      sendPrivateDm: true,
+      privateDmText:
+        '¡Hola @{usuario}! 👋 Soy Travis de TravelApp. Vi tu comentario en nuestra publicación y te escribo por privado para pasarte toda la info. ¿En qué te puedo ayudar?',
+      useTravisAiForDm: true,
+      businessUnit: 'TravelApp Experience',
+      isActive: true,
+      stats: { commentsReplied: 0, dmsSent: 0 },
+      createdAt: Date.now(),
+    };
+    setEditingRule(draft);
+    setKeywordsInput(draft.keywords.join(', '));
+    setPublicRepliesInput(draft.publicReplies.join('\n'));
+    setIsNew(true);
+  };
+
+  const openEditRule = (rule: CommentAutomationRule) => {
+    setEditingRule({ ...rule });
+    setKeywordsInput((rule.keywords || []).join(', '));
+    setPublicRepliesInput((rule.publicReplies || []).join('\n'));
+    setIsNew(false);
+  };
+
+  const handleSaveRule = async () => {
+    if (!editingRule || !editingRule.name.trim()) return;
+    setSaving(true);
+    const cleanedRule: CommentAutomationRule = {
+      ...editingRule,
+      postId: editingRule.postId.trim() || 'ALL',
+      keywords: keywordsInput
+        .split(',')
+        .map(k => k.trim())
+        .filter(Boolean),
+      publicReplies: publicRepliesInput
+        .split('\n')
+        .map(r => r.trim())
+        .filter(Boolean),
+    };
+
+    const updated = isNew
+      ? [...rules, cleanedRule]
+      : rules.map(r => (r.id === cleanedRule.id ? cleanedRule : r));
+
+    await onSave({ commentRules: updated });
+    setRules(updated);
+    setEditingRule(null);
+    setIsNew(false);
+    setSaving(false);
+  };
+
+  const handleToggleRule = async (id: string) => {
+    const updated = rules.map(r => (r.id === id ? { ...r, isActive: !r.isActive } : r));
+    setRules(updated);
+    await onSave({ commentRules: updated });
+  };
+
+  const handleDeleteRule = async (id: string) => {
+    const updated = rules.filter(r => r.id !== id);
+    setRules(updated);
+    await onSave({ commentRules: updated });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-pink-50/70 border border-pink-200 rounded-xl p-3.5 flex items-start justify-between gap-3">
+        <div className="flex gap-2.5">
+          <Instagram className="h-4 w-4 text-pink-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs font-bold text-slate-800">
+              Respuesta Automática a Comentarios + Envío de DM (Instagram & Facebook)
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Configurá respuestas para <strong>publicaciones o Reels específicos</strong> (o para todos tus posteos). Cuando alguien comenta una palabra clave, Travis responde en el comentario público y le abre una conversación por mensaje privado (Private Reply).
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={openNewRule}
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-tech-blue text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <Plus className="h-3.5 w-3.5" /> Nueva Regla de Posteo
+        </button>
+      </div>
+
+      {/* Formulario Crear/Editar Regla */}
+      {editingRule && (
+        <div className="bg-white border-2 border-tech-blue/30 rounded-2xl p-4 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-black text-slate-800">
+              {isNew ? '✨ Nueva Regla de Comentarios en Publicación' : `✏️ Editando: ${editingRule.name}`}
+            </h4>
+            <button
+              onClick={() => setEditingRule(null)}
+              className="p-1 text-slate-400 hover:text-slate-600"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="md:col-span-2">
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Nombre de la Regla / Publicación
+              </label>
+              <input
+                value={editingRule.name}
+                onChange={e => setEditingRule({ ...editingRule, name: e.target.value })}
+                placeholder="Ej: Reel Excursión Tafí del Valle / Búsqueda Choferes"
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-tech-blue/20"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Red Social</label>
+              <select
+                value={editingRule.platform}
+                onChange={e => setEditingRule({ ...editingRule, platform: e.target.value as any })}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white font-semibold text-slate-700"
+              >
+                <option value="both">📸 + 📘 Instagram y Facebook</option>
+                <option value="instagram">📸 Solo Instagram (Post / Reel)</option>
+                <option value="facebook">📘 Solo Facebook Page</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Selección de Publicación Específica */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2.5">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <label className="text-xs font-bold text-slate-700">
+                🎯 ¿En qué publicación debe actuar Travis?
+              </label>
+              <button
+                type="button"
+                onClick={handleLoadPostsFromMeta}
+                disabled={loadingPosts}
+                className="flex items-center gap-1 px-2.5 py-1 bg-white border border-slate-200 hover:border-tech-blue text-slate-700 text-[11px] font-bold rounded-lg transition-colors"
+              >
+                <RefreshCw className={`h-3 w-3 ${loadingPosts ? 'animate-spin text-tech-blue' : ''}`} />
+                {loadingPosts ? 'Consultando Meta...' : 'Cargar mis publicaciones de IG/FB'}
+              </button>
+            </div>
+
+            {(fetchedPosts.instagram.length > 0 || fetchedPosts.facebook.length > 0) && (
+              <div>
+                <select
+                  value={editingRule.postId}
+                  onChange={e => setEditingRule({ ...editingRule, postId: e.target.value })}
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white text-slate-700"
+                >
+                  <option value="ALL">🌐 Todas las publicaciones (cualquier post o Reel)</option>
+                  {fetchedPosts.instagram.map(p => (
+                    <option key={p.id} value={p.id}>
+                      📸 [IG {p.id}] {p.caption.slice(0, 70)}...
+                    </option>
+                  ))}
+                  {fetchedPosts.facebook.map(p => (
+                    <option key={p.id} value={p.id}>
+                      📘 [FB {p.id}] {p.caption.slice(0, 70)}...
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                  ID de Publicación (o escribí <code className="font-mono font-bold">ALL</code> para todas)
+                </label>
+                <input
+                  value={editingRule.postId}
+                  onChange={e => setEditingRule({ ...editingRule, postId: e.target.value })}
+                  placeholder="ALL o el ID numérico del Post/Reel (ej: 180293847291)"
+                  className="w-full px-3 py-1.5 text-xs font-mono border border-slate-200 rounded-lg bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                  Link del Post / Reel (opcional, como referencia)
+                </label>
+                <input
+                  value={editingRule.postUrl || ''}
+                  onChange={e => setEditingRule({ ...editingRule, postUrl: e.target.value })}
+                  placeholder="https://www.instagram.com/reel/..."
+                  className="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-white"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Palabras clave disparadoras (separadas por coma)
+              </label>
+              <input
+                value={keywordsInput}
+                onChange={e => setKeywordsInput(e.target.value)}
+                placeholder="info, precio, valor, quiero, chofer (vacío = responde a todo)"
+                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">
+                Si lo dejás vacío, Travis responderá a cualquier comentario en esa publicación.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Unidad de Negocio Asignada
+              </label>
+              <select
+                value={editingRule.businessUnit}
+                onChange={e =>
+                  setEditingRule({ ...editingRule, businessUnit: e.target.value as BusinessUnit })
+                }
+                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white font-semibold text-slate-700"
+              >
+                {BUSINESS_UNITS.map(u => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[10px] text-slate-400 mt-1">
+                Clasifica automáticamente el Lead en el CRM y le da contexto a Travis.
+              </p>
+            </div>
+          </div>
+
+          {/* Respuestas públicas en el comentario */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              💬 Respuesta(s) Pública(s) en el Comentario (una por línea — rotan al azar)
+            </label>
+            <textarea
+              value={publicRepliesInput}
+              onChange={e => setPublicRepliesInput(e.target.value)}
+              rows={3}
+              placeholder="¡Hola @{usuario}! 🙌 Te enviamos toda la info por mensaje privado."
+              className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg resize-none"
+            />
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              Usá <code className="bg-slate-100 px-1 rounded">{'{usuario}'}</code> para mencionar automáticamente a quien comentó.
+            </p>
+          </div>
+
+          {/* Mensaje Privado (DM) automático */}
+          <div className="bg-indigo-50/50 border border-indigo-200 rounded-xl p-3 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-slate-800">
+                  📩 Enviar también Mensaje Privado (DM) automático al usuario
+                </span>
+                <p className="text-[11px] text-slate-500">
+                  Abre el chat privado con el usuario en Instagram/Messenger usando la API oficial de Private Replies.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setEditingRule({ ...editingRule, sendPrivateDm: !editingRule.sendPrivateDm })
+                }
+              >
+                {editingRule.sendPrivateDm ? (
+                  <ToggleRight className="h-7 w-7 text-tech-blue" />
+                ) : (
+                  <ToggleLeft className="h-7 w-7 text-slate-300" />
+                )}
+              </button>
+            </div>
+
+            {editingRule.sendPrivateDm && (
+              <>
+                <textarea
+                  value={editingRule.privateDmText}
+                  onChange={e => setEditingRule({ ...editingRule, privateDmText: e.target.value })}
+                  rows={3}
+                  className="w-full px-3 py-2 text-xs border border-indigo-200 rounded-lg bg-white resize-none"
+                  placeholder="Mensaje privado inicial..."
+                />
+                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!editingRule.useTravisAiForDm}
+                    onChange={e =>
+                      setEditingRule({ ...editingRule, useTravisAiForDm: e.target.checked })
+                    }
+                    className="rounded border-slate-300 text-tech-blue"
+                  />
+                  <span>
+                    <strong>Potenciar con Travis IA (Gemini 2.5 Flash):</strong> adaptar el DM exactamente a lo que preguntó en el comentario usando el catálogo de <strong>{editingRule.businessUnit}</strong>.
+                  </span>
+                </label>
+              </>
+            )}
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={handleSaveRule}
+              disabled={saving || !editingRule.name.trim()}
+              className="px-4 py-2 bg-tech-blue hover:bg-blue-700 text-white text-xs font-bold rounded-xl disabled:opacity-50 flex items-center gap-1.5"
+            >
+              <Save className="h-3.5 w-3.5" />
+              {saving ? 'Guardando...' : 'Guardar Regla'}
+            </button>
+            <button
+              onClick={() => setEditingRule(null)}
+              className="px-4 py-2 border border-slate-200 text-slate-600 text-xs font-semibold rounded-xl"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Listado de Reglas Activas */}
+      <div className="space-y-2.5">
+        {rules.map(rule => (
+          <div
+            key={rule.id}
+            className={`border rounded-xl p-3.5 transition-all ${
+              rule.isActive ? 'bg-white border-slate-200' : 'bg-slate-50 border-slate-200 opacity-60'
+            }`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-slate-800 text-sm">{rule.name}</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-pink-100 text-pink-700">
+                    {rule.platform === 'both'
+                      ? '📸 IG + 📘 FB'
+                      : rule.platform === 'instagram'
+                        ? '📸 Instagram'
+                        : '📘 Facebook'}
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-50 text-indigo-700">
+                    {rule.businessUnit}
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-slate-100 text-slate-600">
+                    {rule.postId === 'ALL' ? '🌐 Todos los posteos' : `📌 Post ID: ${rule.postId}`}
+                  </span>
+                </div>
+
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {rule.keywords && rule.keywords.length > 0 ? (
+                    rule.keywords.map((kw, i) => (
+                      <span
+                        key={i}
+                        className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-md font-semibold"
+                      >
+                        #{kw}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md font-semibold">
+                      ⚡ Responde a cualquier comentario
+                    </span>
+                  )}
+                </div>
+
+                <div className="mt-2 text-xs text-slate-500 space-y-1">
+                  <p className="truncate">
+                    <strong>💬 Público:</strong> {rule.publicReplies?.[0] || '—'}
+                  </p>
+                  {rule.sendPrivateDm && (
+                    <p className="truncate text-indigo-600">
+                      <strong>📩 DM Privado:</strong> {rule.privateDmText}
+                    </p>
+                  )}
+                </div>
+
+                <div className="mt-2 flex items-center gap-4 text-[10px] text-slate-400">
+                  <span>💬 {rule.stats?.commentsReplied || 0} comentarios respondidos</span>
+                  <span>📩 {rule.stats?.dmsSent || 0} DMs enviados</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <button
+                  onClick={() => handleToggleRule(rule.id)}
+                  title={rule.isActive ? 'Desactivar regla' : 'Activar regla'}
+                >
+                  {rule.isActive ? (
+                    <ToggleRight className="h-6 w-6 text-tech-blue" />
+                  ) : (
+                    <ToggleLeft className="h-6 w-6 text-slate-300" />
+                  )}
+                </button>
+                <button
+                  onClick={() => openEditRule(rule)}
+                  className="p-1.5 hover:bg-slate-100 rounded-lg"
+                >
+                  <Edit2 className="h-3.5 w-3.5 text-slate-400" />
+                </button>
+                <button
+                  onClick={() => handleDeleteRule(rule.id)}
+                  className="p-1.5 hover:bg-red-50 rounded-lg"
+                >
+                  <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Channels Tab ─────────────────────────────────────────────────────────────
 
 function ChannelsTab({ config, onSave }: { config: TravisConfig; onSave: (partial: Partial<TravisConfig>) => Promise<void> }) {
@@ -293,10 +770,11 @@ function ChannelsTab({ config, onSave }: { config: TravisConfig; onSave: (partia
   const [autoReply, setAutoReply] = useState(config.autoReplyEnabled);
   const [handoffTriggers, setHandoffTriggers] = useState(config.handoffTriggers.join(', '));
   const [outOfHours, setOutOfHours] = useState(config.outOfHoursMessage);
+  const [anuraConfig, setAnuraConfig] = useState(
+    config.anuraConfig || DEFAULT_TRAVIS_CONFIG.anuraConfig!
+  );
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-
-  const manyChatTokenSet = process.env.NEXT_PUBLIC_APP_URL !== undefined; // always true, just showing config
 
   const handleSave = async () => {
     setSaving(true);
@@ -305,6 +783,7 @@ function ChannelsTab({ config, onSave }: { config: TravisConfig; onSave: (partia
       autoReplyEnabled: autoReply,
       handoffTriggers: handoffTriggers.split(',').map(t => t.trim()).filter(Boolean),
       outOfHoursMessage: outOfHours,
+      anuraConfig,
     });
     setSaving(false);
     setSaved(true);
@@ -368,28 +847,39 @@ function ChannelsTab({ config, onSave }: { config: TravisConfig; onSave: (partia
         </div>
       </div>
 
-      {/* Configuración Meta WhatsApp Cloud API Oficial */}
+      {/* Configuración Meta WhatsApp + Instagram + Messenger + Comentarios Directo */}
       <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4 space-y-3">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold">
             <Phone className="h-4 w-4" />
           </div>
           <div>
-            <h4 className="font-bold text-slate-800 text-sm">Conexión Oficial Meta WhatsApp Cloud API</h4>
-            <p className="text-xs text-slate-500">Parámetros para configurar en Meta for Developers (WhatsApp Webhook)</p>
+            <h4 className="font-bold text-slate-800 text-sm">
+              1. Conexión Directa Meta (WhatsApp, Instagram DM, Messenger y Comentarios)
+            </h4>
+            <p className="text-xs text-slate-500">
+              Copiá estos datos en tu App de Meta for Developers (Webhooks de WhatsApp, Instagram y Page)
+            </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
           <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-sm">
-            <span className="text-slate-400 block font-medium mb-1">Callback URL (Webhook de Meta):</span>
+            <span className="text-slate-400 block font-medium mb-1">Webhook Unificado (WA + IG + FB):</span>
             <code className="text-emerald-700 font-mono font-semibold break-all select-all">
-              https://travelapp.ar/api/webhooks/whatsapp
+              https://www.travelapp.ar/api/webhook
+            </code>
+          </div>
+
+          <div className="bg-white p-3 rounded-xl border border-pink-100 shadow-sm">
+            <span className="text-slate-400 block font-medium mb-1">Webhook IG + Messenger + Comentarios:</span>
+            <code className="text-pink-700 font-mono font-semibold break-all select-all">
+              https://www.travelapp.ar/api/webhooks/meta-social
             </code>
           </div>
 
           <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-sm">
-            <span className="text-slate-400 block font-medium mb-1">Verify Token (Token de Verificación):</span>
+            <span className="text-slate-400 block font-medium mb-1">Verify Token (para todos):</span>
             <code className="text-emerald-700 font-mono font-semibold select-all">
               travelapp_meta_verify_2026
             </code>
@@ -399,12 +889,73 @@ function ChannelsTab({ config, onSave }: { config: TravisConfig; onSave: (partia
         <div className="bg-white/90 p-3 rounded-xl border border-emerald-100 text-xs text-slate-600 space-y-1.5">
           <div className="flex items-center gap-2">
             <Check className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
-            <span><strong>Campo a suscribir:</strong> En Meta Webhooks suscripción de campos, marcar <code className="bg-slate-100 px-1 py-0.5 rounded text-emerald-800 font-bold">messages</code>.</span>
+            <span>
+              <strong>Campos a suscribir en Instagram:</strong>{' '}
+              <code className="bg-slate-100 px-1 py-0.5 rounded text-pink-700 font-bold">messages</code> y{' '}
+              <code className="bg-slate-100 px-1 py-0.5 rounded text-pink-700 font-bold">comments</code>.
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <Check className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
-            <span><strong>Motor Cognitivo:</strong> Impulsado por <strong>Google Gemini 2.5 Flash</strong> (soporta texto, notas de voz en audio nativo y pines GPS).</span>
+            <span>
+              <strong>Campos a suscribir en Página de Facebook (Page):</strong>{' '}
+              <code className="bg-slate-100 px-1 py-0.5 rounded text-blue-700 font-bold">messages</code>,{' '}
+              <code className="bg-slate-100 px-1 py-0.5 rounded text-blue-700 font-bold">messaging_postbacks</code> y{' '}
+              <code className="bg-slate-100 px-1 py-0.5 rounded text-blue-700 font-bold">feed</code>.
+            </span>
           </div>
+        </div>
+      </div>
+
+      {/* Configuración Central Telefónica ANURA ($0 costo extra -> Rescate por WhatsApp) */}
+      <div className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold">
+              <Phone className="h-4 w-4" />
+            </div>
+            <div>
+              <h4 className="font-bold text-slate-800 text-sm">
+                2. Central Telefónica ANURA → Derivación Automática a Travis por WhatsApp ($0 costo)
+              </h4>
+              <p className="text-xs text-slate-500">
+                Cuando entra una llamada perdida o fuera de horario en Anura, Travis le escribe al instante por WhatsApp al número que llamó.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAnuraConfig(prev => ({ ...prev, enabled: !prev.enabled }))}
+          >
+            {anuraConfig.enabled ? (
+              <ToggleRight className="h-7 w-7 text-indigo-600" />
+            ) : (
+              <ToggleLeft className="h-7 w-7 text-slate-300" />
+            )}
+          </button>
+        </div>
+
+        <div className="bg-white p-3 rounded-xl border border-indigo-100 text-xs">
+          <span className="text-slate-400 block font-medium mb-1">
+            URL para pegar en Anura &gt; Integraciones &gt; Web Hooks:
+          </span>
+          <code className="text-indigo-700 font-mono font-semibold break-all select-all">
+            https://www.travelapp.ar/api/webhooks/anura
+          </code>
+        </div>
+
+        <div className="space-y-2">
+          <label className="block text-xs font-bold text-slate-700">
+            Mensaje automático de WhatsApp cuando alguien llama a la central Anura:
+          </label>
+          <textarea
+            value={anuraConfig.missedCallWhatsAppMessage}
+            onChange={e =>
+              setAnuraConfig(prev => ({ ...prev, missedCallWhatsAppMessage: e.target.value }))
+            }
+            rows={2}
+            className="w-full px-3 py-2 text-xs border border-indigo-200 rounded-xl bg-white resize-none"
+          />
         </div>
       </div>
 
@@ -664,7 +1215,8 @@ export default function TravisSettingsPage() {
   const TABS = [
     { key: 'prompt' as TravisTab, label: 'System Prompt', icon: Sparkles, desc: 'Personalidad y reglas de Travis' },
     { key: 'knowledge' as TravisTab, label: 'Conocimiento', icon: BookOpen, desc: 'Artículos de información' },
-    { key: 'channels' as TravisTab, label: 'Canales', icon: Settings, desc: 'WhatsApp, IG, Messenger, Web' },
+    { key: 'comments' as TravisTab, label: 'Comentarios IG/FB', icon: MessageSquare, desc: 'Respuestas por posteo + DM' },
+    { key: 'channels' as TravisTab, label: 'Canales y Anura', icon: Settings, desc: 'WhatsApp, IG, Messenger, Anura' },
     { key: 'training' as TravisTab, label: 'Entrenar', icon: Bot, desc: 'Probar y mejorar respuestas' },
   ];
 
@@ -767,6 +1319,7 @@ export default function TravisSettingsPage() {
           <>
             {activeTab === 'prompt' && <SystemPromptTab config={config} onSave={handleSave} />}
             {activeTab === 'knowledge' && <KnowledgeBaseTab config={config} onSave={handleSave} />}
+            {activeTab === 'comments' && <CommentAutomationTab config={config} onSave={handleSave} />}
             {activeTab === 'channels' && <ChannelsTab config={config} onSave={handleSave} />}
             {activeTab === 'training' && <TrainingTab />}
           </>

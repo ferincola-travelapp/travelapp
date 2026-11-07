@@ -14,6 +14,7 @@ import {
   markWhatsAppMessageAsRead,
   fetchMetaMediaAsBase64,
 } from '@/lib/meta-whatsapp';
+import { handleMetaSocialWebhookPayload } from '@/app/api/webhooks/meta-social/route';
 
 export const maxDuration = 60; // Máxima duración permitida en Vercel Serverless
 
@@ -43,6 +44,11 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+
+    // Si Meta envía eventos de Instagram o Página de Facebook a este mismo webhook, delegar al motor social
+    if (body.object === 'instagram' || body.object === 'page') {
+      return await handleMetaSocialWebhookPayload(body);
+    }
     
     // 1. Extraer objeto de cambio de Meta
     const entry = body.entry?.[0];

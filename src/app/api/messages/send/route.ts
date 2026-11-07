@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { sendWhatsAppTextMessage } from '@/lib/meta-whatsapp';
+import { sendSocialTextMessage } from '@/lib/meta-social';
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,6 +33,20 @@ export async function POST(req: NextRequest) {
         delivered: waRes.success,
         detail: waRes.data || waRes.error,
       };
+    }
+
+    // 1.5. Si el canal es Instagram DM o Facebook Messenger directo via Meta Graph API
+    if ((channel === 'instagram' || channel === 'messenger') && (recipientPhone || conversationId)) {
+      const cleanRecipientId = (recipientPhone || conversationId || '')
+        .replace(/^(ig_|fb_|comment_instagram_|comment_facebook_)/, '');
+      if (cleanRecipientId) {
+        const socialRes = await sendSocialTextMessage(channel, cleanRecipientId, content);
+        deliveryResult = {
+          channel,
+          delivered: socialRes.success,
+          detail: socialRes.data || socialRes.error,
+        };
+      }
     }
 
     // 2. Si tiene suscriptor de ManyChat (Instagram, Messenger o WhatsApp vía ManyChat)

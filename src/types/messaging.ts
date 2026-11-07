@@ -196,6 +196,35 @@ export interface TravisChannelStatus {
   web: boolean;
 }
 
+export interface CommentAutomationRule {
+  id: string;
+  name: string;
+  platform: 'instagram' | 'facebook' | 'both';
+  postId: string;           // ID específico de la publicación/Reel o 'ALL' para cualquier post
+  postUrl?: string;         // URL opcional de referencia a la publicación
+  postCaption?: string;     // Extracto opcional del texto del post
+  keywords: string[];       // Palabras clave disparadoras (vacío = cualquier comentario)
+  publicReplies: string[];  // Respuestas públicas rotativas en el comentario (soporta {usuario})
+  sendPrivateDm: boolean;   // Si envía un DM privado automático (Private Reply de Meta)
+  privateDmText: string;    // Mensaje privado inicial (soporta {usuario})
+  useTravisAiForDm?: boolean; // Si Travis IA responde al comentario con el contexto de la unidad
+  businessUnit: BusinessUnit;
+  isActive: boolean;
+  stats?: {
+    commentsReplied: number;
+    dmsSent: number;
+  };
+  createdAt: number;
+}
+
+export interface AnuraIntegrationConfig {
+  enabled: boolean;
+  click2DialToken?: string;
+  autoWhatsAppOnMissedCall: boolean;
+  autoWhatsAppOnOutOfHours: boolean;
+  missedCallWhatsAppMessage: string;
+}
+
 export interface TravisConfig {
   systemPrompt: string;
   businessContext: string;
@@ -207,7 +236,86 @@ export interface TravisConfig {
   outOfHoursMessage: string;
   updatedAt: number;
   isAiDispatchForcedEnabled?: boolean;
+  commentRules?: CommentAutomationRule[];
+  anuraConfig?: AnuraIntegrationConfig;
 }
+
+export const DEFAULT_COMMENT_RULES: CommentAutomationRule[] = [
+  {
+    id: 'rule_ig_travelapp_experiences_post',
+    name: '📸 @travelapp.ar — Post Salidas Programadas Experience',
+    platform: 'instagram',
+    postId: '18003355895959858',
+    postUrl: 'https://www.instagram.com/p/Da3Sa6xCcuw/',
+    keywords: [], // Responde a cualquier comentario en esta publicación específica
+    publicReplies: [
+      '¡Hola @{usuario}! ✈️🧳 Ya te enviamos por mensaje privado las salidas programadas y detalles de TravelApp Experience.',
+      '¡Gracias por comentar @{usuario}! 🙌 Revisá tu bandeja de mensajes privados que Travis ya te escribió.',
+    ],
+    sendPrivateDm: true,
+    privateDmText: '¡Hola @{usuario}! 👋 Soy Travis, tu conserje digital de TravelApp Experience. Vi tu comentario en nuestra publicación de Salidas Programadas (Mar del Plata, Camboriú, Caribe y Norte Argentino). ¿Qué destino te gustaría cotizar y para cuántas personas?',
+    useTravisAiForDm: true,
+    businessUnit: 'TravelApp Experience',
+    isActive: true,
+    stats: { commentsReplied: 0, dmsSent: 0 },
+    createdAt: Date.now(),
+  },
+  {
+    id: 'rule_ig_travelcab_flota_fundadora',
+    name: '📸 @travelcab.ar — Post Convocatoria Flota Fundadora (Conductores)',
+    platform: 'instagram',
+    postId: '17904872556454139',
+    postUrl: 'https://www.instagram.com/p/DaslfQXlbbS/',
+    keywords: [], // Responde a cualquier comentario en este post de reclutamiento
+    publicReplies: [
+      '¡Hola @{usuario}! 🚘🤝 Ya te enviamos por mensaje privado toda la info y requisitos para sumarte a la Flota Fundadora de TravelCab.',
+      '¡Bienvenido @{usuario}! 🙌 Te acabamos de escribir al privado con los beneficios exclusivos para Socios Fundadores.',
+    ],
+    sendPrivateDm: true,
+    privateDmText: '¡Hola @{usuario}! 🚗 Soy Travis de TravelCab. Vi tu comentario para sumarte a nuestra Flota Fundadora con la comisión más baja del mercado (10-15%) y pasajeros validados. Contame: ¿qué auto tenés (marca, modelo y año) y en qué zona manejás?',
+    useTravisAiForDm: true,
+    businessUnit: 'TravelCab (Conductor)',
+    isActive: true,
+    stats: { commentsReplied: 0, dmsSent: 0 },
+    createdAt: Date.now(),
+  },
+  {
+    id: 'rule_experiences_tafi',
+    name: '🌐 Regla General — Excursiones y Tours (Todos los posteos)',
+    platform: 'both',
+    postId: 'ALL',
+    keywords: ['info', 'precio', 'valor', 'tafi', 'tour', 'excursion', 'quiero', 'mas info', 'vacaciones'],
+    publicReplies: [
+      '¡Hola @{usuario}! 🙌 Ya te enviamos toda la info y tarifas por mensaje privado. ¡Revisá tu bandeja!',
+      '¡Gracias por comentar @{usuario}! 🏔️✨ Te acabamos de escribir por DM con las salidas disponibles y precios.',
+    ],
+    sendPrivateDm: true,
+    privateDmText: '¡Hola @{usuario}! 👋 Soy Travis de TravelApp Experience. Vi tu comentario en nuestra publicación y te paso toda la información de nuestras excursiones y viajes. ¿Para cuántas personas y qué destino te gustaría viajar?',
+    useTravisAiForDm: true,
+    businessUnit: 'TravelApp Experience',
+    isActive: true,
+    stats: { commentsReplied: 0, dmsSent: 0 },
+    createdAt: Date.now(),
+  },
+  {
+    id: 'rule_drivers_recruitment',
+    name: '🌐 Regla General — Conductores TravelCab (Todos los posteos)',
+    platform: 'both',
+    postId: 'ALL',
+    keywords: ['chofer', 'conductor', 'manejar', 'auto', 'requisitos', 'trabajar', 'inscribirme', 'flota'],
+    publicReplies: [
+      '¡Hola @{usuario}! 🚕 Te enviamos los requisitos y el link de alta para conductores por mensaje privado.',
+      '¡Bienvenido @{usuario}! 🙌 Revisá tus mensajes privados que ya te mandamos toda la info para sumarte a TravelCab.',
+    ],
+    sendPrivateDm: true,
+    privateDmText: '¡Hola @{usuario}! 🚗 Soy Travis de TravelCab. Te contacto por tu comentario para sumarte como conductor (tenemos la comisión más baja: 10-15%). ¿Qué modelo y año es tu vehículo?',
+    useTravisAiForDm: true,
+    businessUnit: 'TravelCab (Conductor)',
+    isActive: true,
+    stats: { commentsReplied: 0, dmsSent: 0 },
+    createdAt: Date.now(),
+  },
+];
 
 export const DEFAULT_TRAVIS_CONFIG: Omit<TravisConfig, 'updatedAt'> = {
   systemPrompt: `Sos Travis, el asistente virtual de TravelApp — una plataforma de movilidad premium de Tucumán, Argentina. 
@@ -234,8 +342,8 @@ Operamos con: TravelCab (remises y transporte urbano), TravelExperiences (tours 
   
   activeChannels: {
     whatsapp: true,
-    instagram: false,
-    messenger: false,
+    instagram: true,
+    messenger: true,
     web: true,
   },
   
@@ -255,6 +363,14 @@ Operamos con: TravelCab (remises y transporte urbano), TravelExperiences (tours 
   ],
   
   outOfHoursMessage: '¡Hola! 👋 Gracias por escribirnos. Nuestro equipo atiende de lunes a sábados de 8:00 a 22:00 hs. Dejanos tu mensaje y te respondemos a la brevedad. Si es urgente, llamanos al +54 9 381 418-8106.',
+  commentRules: DEFAULT_COMMENT_RULES,
+  anuraConfig: {
+    enabled: true,
+    click2DialToken: '',
+    autoWhatsAppOnMissedCall: true,
+    autoWhatsAppOnOutOfHours: true,
+    missedCallWhatsAppMessage: '¡Hola! 👋 Vimos que recién te comunicaste por teléfono con TravelApp. Soy Travis, tu asistente virtual. ¿Necesitás pedir un móvil de TravelCab, consultar por un tour o hablar con un operador?',
+  },
 };
 
 // -----------------------------------------------------------------------------
