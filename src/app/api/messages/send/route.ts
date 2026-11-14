@@ -7,8 +7,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendWhatsAppTextMessage } from '@/lib/meta-whatsapp';
 import { sendSocialTextMessage } from '@/lib/meta-social';
+import { requireAuth } from '@/lib/api-auth';
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth(req);
+  if (auth.error) return auth.error;
+
   try {
     const body = await req.json();
     const { 

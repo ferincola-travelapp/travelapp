@@ -74,27 +74,19 @@ export async function ensureMetaTokensLoaded(): Promise<{
   };
 }
 
-const DEFAULT_TA_B64 =
-  'RUFBVVk2VWpXTFY4QlN4OUZtb01HcU9pM1lMeHdkSVpBbUZTRThhSEdyc1VaQnplRkdHU250WG5hcTVJOVJDdmttMHV2bVU3eThBSmxlSnBYYXZXWkM4cjlaQ1pBTUMwWkJya2JTU050RVpCMGM5Y3lIT2tlSVI5WkNKYmtIVkpHWkNPYURCZkZaQXdycjdBRFMweG9iV0FrV1Fnc1pCMEtjblpBTmtsZmxOb1VmeEhGamkwTVRQWkFKTmZCVTFhNW9uYUJxa3BnUlpDb3NjU2Q4WkQ=';
-const DEFAULT_TC_B64 =
-  'RUFBVVk2VWpXTFY4QlN4WTMyU3dwYnNDR0xwT2NmQW5FbVpDWUxqWkF5OWpLQzM4V0VPQ1YyNE9jTEtKUWt4TG1NYVVIMzlOWkN6Rm5jRU40SFhUMzhkSDVONTg2WTRiOHMydTlER0hhOUVCRjU0MnRXWkM1VmlxRXZ2Y3E0dER6QVJaQVpBeFRNeWZlc2laQVpBSU1Gcko2T0g1dzc3NzMyTzdTM1RqTHhwMnNoWkMzbU0wZTJzTDQ3WThERDBhZ3VCZEc2MU9nT3NaQ01aRA==';
-
 export function getMetaSocialConfig(): MetaSocialConfig {
-  const defaultTaToken = Buffer.from(DEFAULT_TA_B64, 'base64').toString('utf8');
-  const defaultTcToken = Buffer.from(DEFAULT_TC_B64, 'base64').toString('utf8');
-
   const sharedToken =
     process.env.META_PAGE_ACCESS_TOKEN ||
     process.env.META_TRAVELAPP_PAGE_TOKEN ||
     cachedFirestoreTokens.travelappToken ||
-    defaultTaToken;
+    '';
 
   return {
     pageAccessToken: sharedToken,
     travelcabPageAccessToken:
       process.env.META_TRAVELCAB_PAGE_TOKEN ||
       cachedFirestoreTokens.travelcabToken ||
-      defaultTcToken,
+      sharedToken,
     instagramAccessToken:
       process.env.META_INSTAGRAM_ACCESS_TOKEN ||
       cachedFirestoreTokens.travelappToken ||

@@ -159,9 +159,7 @@ export default function PartnerProfilePage({ params }: { params: Promise<{ partn
           }
         } as DriverPartner);
       } else {
-        if (partnerId === 'DRV-001' || partnerId === 'carlos-mamani') {
-          setPartner(MOCK_PARTNER);
-        }
+        // Si no está en drivers, también escuchar partners/{partnerId}
       }
     }, (error) => {
       console.error("Error loading partner detail:", error);

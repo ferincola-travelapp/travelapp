@@ -5,7 +5,7 @@ import type { NextRequest } from "next/server";
  * PUBLIC_ROUTES – paths that never require authentication.
  * Everything else in the ecosystem is considered protected.
  */
-const PUBLIC_ROUTES = ["/login", "/registro", "/landing", "/marketplace", "/canjes", "/rewards", "/afiliados", "/politica-de-cookies", "/checkout", "/lunaviajera", "/descargas", "/descargar", "/apk", "/buses", "/pasajes"];
+const PUBLIC_ROUTES = ["/login", "/admin/login", "/registro", "/landing", "/marketplace", "/canjes", "/rewards", "/afiliados", "/politica-de-cookies", "/checkout", "/lunaviajera", "/descargas", "/descargar", "/apk", "/buses", "/pasajes"];
 
 /**
  * SESSION_COOKIE – lightweight presence signal set by AuthContext on login/logout.
@@ -155,7 +155,8 @@ export function proxy(request: NextRequest) {
   // ─── 4. CHECK SESSION COOKIE ────────────────────────────────────────────────
   const session = request.cookies.get(SESSION_COOKIE);
   if (!session || !session.value) {
-    const loginUrl = new URL("/login", request.url);
+    const targetLogin = hostname.startsWith("admin.") ? "/admin/login" : "/login";
+    const loginUrl = new URL(targetLogin, request.url);
     // Preserve the originally requested URL so we can redirect back after login
     loginUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(loginUrl);

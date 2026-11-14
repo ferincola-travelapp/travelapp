@@ -232,7 +232,7 @@ function normalizeStatus(status: any): ExtendedTrip['status'] {
     const qTrips = collection(db, 'trips');
     const unsub = onSnapshot(qTrips, (snap) => {
       if (snap.empty) {
-        setTrips(SEED_TRIPS);
+        setTrips([]);
         setLoading(false);
         return;
       }
@@ -270,8 +270,8 @@ function normalizeStatus(status: any): ExtendedTrip['status'] {
       setTrips(docs);
       setLoading(false);
     }, (err) => {
-      console.warn('Error syncing trips from Firestore, using seed fallback:', err);
-      setTrips(SEED_TRIPS);
+      console.warn('Error syncing trips from Firestore:', err);
+      setTrips([]);
       setLoading(false);
     });
 

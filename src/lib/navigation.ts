@@ -139,10 +139,6 @@ export const getSidebarConfig = (pathname: string) => {
         { id: 'history', label: 'Trazabilidad & Reportes', href: '/travelcab/history', icon: Route },
         { id: 'branches', label: 'Gestión de Sucursal', href: '/travelcab/branches', icon: Building2 },
         { id: 'drivers', label: 'Gestión de Conductores', href: '/travelcab/drivers', icon: Users },
-        { id: 'fleet', label: 'Gestión de Móviles', href: '/travelcab/fleet', icon: Car },
-        { id: 'travelcab-create-service', label: 'Crear Servicio', href: '/travelcab/settings?tab=tariffs&action=new', icon: PlusCircle },
-        { id: 'travelcab-create-category', label: 'Crear Categoría', href: '/travelcab/settings?tab=categories&action=new', icon: PlusCircle },
-        { id: 'settings', label: 'Gestión de Tarifas', href: '/travelcab/settings', icon: DollarSign },
         { id: 'audio-settings', label: 'Audios y Locuciones', href: '/travelcab/settings?tab=system', icon: Megaphone },
         { id: 'security', label: 'Seguridad del Ecosistema', href: '/travelcab/security', icon: ShieldAlert },
       ]

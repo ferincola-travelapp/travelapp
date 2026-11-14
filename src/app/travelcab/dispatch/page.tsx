@@ -127,7 +127,7 @@ export default function DispatcherPage() {
   );
 
   return (
-    <div className="flex h-[calc(100vh-64px)] w-full overflow-hidden bg-slate-50">
+    <div className="flex h-[calc(100vh-110px)] w-full overflow-hidden rounded-xl border border-slate-200/90 bg-white">
       
       {/* Columna Izquierda (60%) - Mapa Interactivo Real con Google Maps */}
       <div className="hidden w-[60%] border-r border-slate-200 bg-slate-950 lg:flex lg:flex-col relative">

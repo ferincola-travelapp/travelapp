@@ -100,43 +100,56 @@ export async function POST(req: NextRequest) {
     const mpUrl = 'https://api.mercadopago.com/v1/payments';
     
     let paymentId = 'mp_pay_' + Date.now();
-    let paymentStatus = 'approved';
+    let paymentStatus = 'rejected';
     let isRealTransaction = false;
 
-    if (driverAccessToken && !driverAccessToken.includes('TU_ACCESS_TOKEN')) {
-      try {
-        const mpResponse = await fetch(mpUrl, {
-          method: 'POST',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${driverAccessToken}`
-          },
-          body: JSON.stringify({
-            description: `Viaje TravelCab Nro ${tripId}`,
-            installments: 1,
-            payer: {
-              email: passengerData.email || 'test_user_wallet@travelapp.ar'
-            },
-            payment_method_id: 'account_money', // Simular pago con saldo en cuenta
-            transaction_amount: Number(amount),
-            application_fee: Number(applicationFee), // Comisión del ecosistema (split)
-            external_reference: tripId,
-          })
-        });
+    if (!driverAccessToken || driverAccessToken.includes('TU_ACCESS_TOKEN')) {
+      return NextResponse.json(
+        { error: 'El conductor no tiene una billetera de Mercado Pago vinculada.' },
+        { status: 400 }
+      );
+    }
 
-        if (mpResponse.ok) {
-          const mpData = await mpResponse.json();
-          paymentId = String(mpData.id);
-          paymentStatus = mpData.status; // 'approved', 'in_process', 'rejected'
-          isRealTransaction = true;
-        } else {
-          const errBody = await mpResponse.text();
-          console.warn('[Mercado Pago API Warning] Error de procesador MP, usando simulación aprobada:', errBody);
-        }
-      } catch (mpErr) {
-        console.error('[Mercado Pago API Connection Error]:', mpErr);
+    try {
+      const mpResponse = await fetch(mpUrl, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${driverAccessToken}`
+        },
+        body: JSON.stringify({
+          description: `Viaje TravelCab Nro ${tripId}`,
+          installments: 1,
+          payer: {
+            email: passengerData.email || 'test_user_wallet@travelapp.ar'
+          },
+          payment_method_id: 'account_money',
+          transaction_amount: Number(amount),
+          application_fee: Number(applicationFee),
+          external_reference: tripId,
+        })
+      });
+
+      if (mpResponse.ok) {
+        const mpData = await mpResponse.json();
+        paymentId = String(mpData.id);
+        paymentStatus = mpData.status; // 'approved', 'in_process', 'rejected'
+        isRealTransaction = true;
+      } else {
+        const errBody = await mpResponse.text();
+        console.error('[Mercado Pago API Error]:', errBody);
+        return NextResponse.json(
+          { error: 'Pago rechazado por Mercado Pago', details: errBody },
+          { status: 402 }
+        );
       }
+    } catch (mpErr) {
+      console.error('[Mercado Pago API Connection Error]:', mpErr);
+      return NextResponse.json(
+        { error: 'Error de conexión con Mercado Pago' },
+        { status: 502 }
+      );
     }
 
     // 5. Actualizar el viaje en Firestore
@@ -148,6 +161,13 @@ export async function POST(req: NextRequest) {
       paymentMethod: 'Mercado Pago (Wallet Connect)',
       paidAt: Date.now()
     });
+
+    if (paymentStatus !== 'approved') {
+      return NextResponse.json(
+        { error: 'El pago no fue aprobado', paymentStatus, paymentId },
+        { status: 402 }
+      );
+    }
 
     // 6. Registrar transacción en el Ledger de Auditoría de TravelApp Ecosistema
     await addDoc(collection(db, 'transactions'), {

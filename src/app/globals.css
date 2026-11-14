@@ -56,3 +56,21 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+
+/* Unified Minimalist Scope for TravelCab inner pages */
+.travelcab-minimal-scope {
+  font-family: 'Quicksand', sans-serif;
+}
+.travelcab-minimal-scope > div {
+  background-color: transparent !important;
+  padding: 0 !important;
+}
+.travelcab-minimal-scope .shadow-sm,
+.travelcab-minimal-scope .shadow-md,
+.travelcab-minimal-scope .shadow-lg {
+  box-shadow: none !important;
+}
+.travelcab-minimal-scope .rounded-2xl,
+.travelcab-minimal-scope .rounded-3xl {
+  border-radius: 0.75rem !important;
+}

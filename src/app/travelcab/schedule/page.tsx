@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -287,22 +287,22 @@ export default function TravelCabSchedulePage() {
   const arcCount = trips.filter(t => t.serviceCategory === 'ARC' && t.status !== 'cancelled').length;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 space-y-6">
+    <div className="space-y-6 text-slate-800">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-800/80 pb-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-200/80 pb-6">
         <div>
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
               <Calendar className="h-6 w-6" />
             </div>
             <div>
-              <h1 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
+              <h1 className="text-2xl font-black tracking-tight text-[#0a2a5b] flex items-center gap-2">
                 Agenda de Traslados & Calendario
                 <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-bold">
                   TravelCab Despacho
                 </span>
               </h1>
-              <p className="text-xs text-slate-400 font-medium">
+              <p className="text-xs text-slate-500 font-medium">
                 Control y asignación de viajes programados urbanos, traslados al aeropuerto y media distancia
               </p>
             </div>
@@ -312,7 +312,7 @@ export default function TravelCabSchedulePage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black text-sm shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r bg-[#0a2a5b] hover:bg-[#071f45] text-white font-black text-sm shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
           >
             <Plus className="h-4 w-4" />
             Programar Traslado Manual
@@ -322,12 +322,12 @@ export default function TravelCabSchedulePage() {
 
       {/* Tarjetas de Métricas Rápidas */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-        <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80">
+        <div className="p-4 rounded-2xl bg-white/80 border border-slate-200/90">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400">Total Programados</span>
+            <span className="text-xs font-bold text-slate-500">Total Programados</span>
             <Calendar className="h-4 w-4 text-slate-500" />
           </div>
-          <p className="text-2xl font-black text-white mt-1.5">{totalCount}</p>
+          <p className="text-2xl font-black text-[#0a2a5b] mt-1.5">{totalCount}</p>
         </div>
 
         <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20">
@@ -364,7 +364,7 @@ export default function TravelCabSchedulePage() {
       </div>
 
       {/* Barra de Filtros y Control */}
-      <div className="flex flex-col lg:flex-row gap-3 items-center justify-between bg-slate-900/40 border border-slate-800/80 p-3.5 rounded-2xl">
+      <div className="flex flex-col lg:flex-row gap-3 items-center justify-between bg-white/80 border border-slate-200/90 p-3.5 rounded-2xl">
         <div className="relative w-full lg:w-96">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
           <input
@@ -372,7 +372,7 @@ export default function TravelCabSchedulePage() {
             placeholder="Buscar por pasajero, origen, destino, chofer o vuelo..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+            className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs text-[#0a2a5b] placeholder-slate-500 focus:outline-none focus:border-amber-500"
           />
         </div>
 
@@ -381,7 +381,7 @@ export default function TravelCabSchedulePage() {
           <button
             onClick={() => setFilterCategory('ALL')}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              filterCategory === 'ALL' ? 'bg-slate-700 text-white' : 'bg-slate-950 text-slate-400 hover:text-white'
+              filterCategory === 'ALL' ? 'bg-slate-700 text-[#0a2a5b]' : 'bg-slate-100 text-slate-600 hover:text-[#0a2a5b]'
             }`}
           >
             Todos
@@ -389,7 +389,7 @@ export default function TravelCabSchedulePage() {
           <button
             onClick={() => setFilterCategory('MU')}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-              filterCategory === 'MU' ? 'bg-blue-600 text-white' : 'bg-slate-950 text-blue-400 hover:bg-blue-950/50'
+              filterCategory === 'MU' ? 'bg-blue-600 text-[#0a2a5b]' : 'bg-blue-50 text-blue-700 hover:bg-blue-950/50'
             }`}
           >
             🏙️ Movilidad Urbana
@@ -397,7 +397,7 @@ export default function TravelCabSchedulePage() {
           <button
             onClick={() => setFilterCategory('TRANSFER')}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-              filterCategory === 'TRANSFER' ? 'bg-purple-600 text-white' : 'bg-slate-950 text-purple-400 hover:bg-purple-950/50'
+              filterCategory === 'TRANSFER' ? 'bg-purple-600 text-[#0a2a5b]' : 'bg-purple-50 text-purple-700 hover:bg-purple-950/50'
             }`}
           >
             ✈️ Transfers
@@ -405,7 +405,7 @@ export default function TravelCabSchedulePage() {
           <button
             onClick={() => setFilterCategory('ARC')}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-              filterCategory === 'ARC' ? 'bg-amber-600 text-white' : 'bg-slate-950 text-amber-400 hover:bg-amber-950/50'
+              filterCategory === 'ARC' ? 'bg-amber-600 text-[#0a2a5b]' : 'bg-amber-50 text-amber-700 hover:bg-amber-950/50'
             }`}
           >
             🛣️ Media Distancia
@@ -417,7 +417,7 @@ export default function TravelCabSchedulePage() {
           <select
             value={filterStatus}
             onChange={(e: any) => setFilterStatus(e.target.value)}
-            className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 font-semibold"
+            className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-[#0a2a5b] focus:outline-none focus:border-amber-500 font-semibold"
           >
             <option value="ALL">Estado: Todos</option>
             <option value="UNASSIGNED">⚠️ Sin Asignar (Bolsa)</option>
@@ -435,10 +435,10 @@ export default function TravelCabSchedulePage() {
           <p className="text-xs font-bold uppercase tracking-widest">Cargando Agenda en tiempo real...</p>
         </div>
       ) : filteredTrips.length === 0 ? (
-        <div className="py-20 text-center rounded-3xl bg-slate-900/30 border border-slate-800/80 p-8">
+        <div className="py-20 text-center rounded-3xl bg-white/80 border border-slate-200/90 p-8">
           <Calendar className="h-12 w-12 text-slate-600 mx-auto mb-3" />
-          <h3 className="text-base font-bold text-white">No hay traslados agendados con este filtro</h3>
-          <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1">
+          <h3 className="text-base font-bold text-[#0a2a5b]">No hay traslados agendados con este filtro</h3>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
             Los viajes programados desde la app de clientes o agendados manualmente aparecerán aquí organizados por horario.
           </p>
           <button
@@ -460,7 +460,7 @@ export default function TravelCabSchedulePage() {
                 className={`rounded-2xl p-5 border transition-all relative flex flex-col justify-between ${
                   isUnassigned
                     ? 'bg-rose-950/20 border-rose-500/30 shadow-lg shadow-rose-950/20'
-                    : 'bg-slate-900/70 border-slate-800/80 hover:border-slate-700'
+                    : 'bg-white/85 border-slate-200/90 hover:border-slate-700'
                 }`}
               >
                 <div>
@@ -478,7 +478,7 @@ export default function TravelCabSchedulePage() {
                       </span>
 
                       {trip.flightNumber && (
-                        <span className="px-2 py-0.5 rounded-md bg-slate-800 text-[10px] font-bold text-slate-300">
+                        <span className="px-2 py-0.5 rounded-md bg-slate-800 text-[10px] font-bold text-slate-600">
                           Vuelo: {trip.flightNumber}
                         </span>
                       )}
@@ -488,22 +488,22 @@ export default function TravelCabSchedulePage() {
                       <span className="text-sm font-black text-emerald-400">
                         ${trip.estimatedPrice || trip.finalPrice || 0} ARS
                       </span>
-                      <span className="block text-[10px] text-slate-400">
+                      <span className="block text-[10px] text-slate-500">
                         {trip.paymentMethod || 'Efectivo'}
                       </span>
                     </div>
                   </div>
 
                   {/* Horario de Agenda Destacado */}
-                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 mb-3.5">
+                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 mb-3.5">
                     <Clock className="h-4 w-4 text-amber-400 shrink-0" />
                     <div>
                       <span className="text-[11px] font-black text-amber-400 uppercase tracking-wide">
                         {formatTripDateTime(trip)}
                       </span>
                       {trip.securityPin && (
-                        <span className="ml-2 text-[10px] font-bold text-slate-400">
-                          PIN: <span className="text-white">{trip.securityPin}</span>
+                        <span className="ml-2 text-[10px] font-bold text-slate-500">
+                          PIN: <span className="text-[#0a2a5b]">{trip.securityPin}</span>
                         </span>
                       )}
                     </div>
@@ -514,24 +514,24 @@ export default function TravelCabSchedulePage() {
                     <div className="flex items-start gap-2">
                       <div className="h-2 w-2 rounded-full bg-emerald-500 mt-1 shrink-0" />
                       <div>
-                        <span className="text-[10px] text-slate-400 font-bold block">Punto de Recogida</span>
-                        <p className="text-xs font-semibold text-slate-200 line-clamp-1">{trip.origin}</p>
+                        <span className="text-[10px] text-slate-500 font-bold block">Punto de Recogida</span>
+                        <p className="text-xs font-semibold text-slate-700 line-clamp-1">{trip.origin}</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-2">
                       <div className="h-2 w-2 rounded-full bg-rose-500 mt-1 shrink-0" />
                       <div>
-                        <span className="text-[10px] text-slate-400 font-bold block">Destino</span>
-                        <p className="text-xs font-semibold text-slate-200 line-clamp-1">{trip.destination}</p>
+                        <span className="text-[10px] text-slate-500 font-bold block">Destino</span>
+                        <p className="text-xs font-semibold text-slate-700 line-clamp-1">{trip.destination}</p>
                       </div>
                     </div>
                   </div>
 
                   {/* Datos del Pasajero */}
-                  <div className="p-2.5 rounded-xl bg-slate-950/50 border border-slate-800/60 flex items-center justify-between mb-4">
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between mb-4">
                     <div>
-                      <span className="text-[10px] text-slate-400 font-bold block">Pasajero</span>
-                      <p className="text-xs font-bold text-white">
+                      <span className="text-[10px] text-slate-500 font-bold block">Pasajero</span>
+                      <p className="text-xs font-bold text-[#0a2a5b]">
                         {trip.passengerName || trip.userName || 'Pasajero TravelCab'}
                       </p>
                     </div>
@@ -540,7 +540,7 @@ export default function TravelCabSchedulePage() {
                       <div className="flex items-center gap-1.5">
                         <a
                           href={`tel:${trip.passengerPhone}`}
-                          className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white"
+                          className="p-1.5 rounded-lg bg-slate-800 text-slate-600 hover:text-[#0a2a5b]"
                           title="Llamar"
                         >
                           <Phone className="h-3.5 w-3.5" />
@@ -560,7 +560,7 @@ export default function TravelCabSchedulePage() {
                 </div>
 
                 {/* Sección Chofer Asignado / Acción de Despacho */}
-                <div className="border-t border-slate-800/80 pt-3 mt-1">
+                <div className="border-t border-slate-200/80 pt-3 mt-1">
                   {isUnassigned ? (
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-xs font-bold text-rose-400 flex items-center gap-1.5">
@@ -584,8 +584,8 @@ export default function TravelCabSchedulePage() {
                           {(trip.driverName || 'C')[0]}
                         </div>
                         <div>
-                          <p className="text-xs font-bold text-white">{trip.driverName}</p>
-                          <p className="text-[10px] text-slate-400 font-medium">
+                          <p className="text-xs font-bold text-[#0a2a5b]">{trip.driverName}</p>
+                          <p className="text-[10px] text-slate-500 font-medium">
                             {trip.vehicleModel} · {trip.vehiclePlate}
                           </p>
                         </div>
@@ -598,7 +598,7 @@ export default function TravelCabSchedulePage() {
                             setSelectedDriverId(trip.driverId || '');
                             setShowAssignModal(true);
                           }}
-                          className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-bold text-slate-300"
+                          className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-bold text-slate-600"
                           title="Cambiar Chofer"
                         >
                           Reasignar
@@ -623,11 +623,11 @@ export default function TravelCabSchedulePage() {
       {/* MODAL: ASIGNAR CHOFER */}
       {showAssignModal && selectedTrip && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <div>
-                <h3 className="text-base font-black text-white">Asignar Chofer al Traslado</h3>
-                <p className="text-xs text-slate-400 font-medium">
+                <h3 className="text-base font-black text-[#0a2a5b]">Asignar Chofer al Traslado</h3>
+                <p className="text-xs text-slate-500 font-medium">
                   {selectedTrip.origin} ➡️ {selectedTrip.destination}
                 </p>
               </div>
@@ -636,14 +636,14 @@ export default function TravelCabSchedulePage() {
                   setShowAssignModal(false);
                   setSelectedTrip(null);
                 }}
-                className="p-1.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white"
+                className="p-1.5 rounded-full hover:bg-slate-800 text-slate-500 hover:text-[#0a2a5b]"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             <div className="space-y-3">
-              <label className="text-xs font-bold text-slate-300 block">
+              <label className="text-xs font-bold text-slate-600 block">
                 Seleccioná el Conductor de la Flota:
               </label>
               <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
@@ -659,19 +659,19 @@ export default function TravelCabSchedulePage() {
                       onClick={() => setSelectedDriverId(d.id)}
                       className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
                         isSelected
-                          ? 'bg-amber-500/10 border-amber-500 text-white'
-                          : 'bg-slate-950/60 border-slate-800 hover:border-slate-700 text-slate-300'
+                          ? 'bg-amber-500/10 border-amber-500 text-[#0a2a5b]'
+                          : 'bg-slate-50 border-slate-200 hover:border-slate-700 text-slate-600'
                       }`}
                     >
                       <div className="flex items-center gap-3">
                         <div className={`h-8 w-8 rounded-xl flex items-center justify-center font-bold text-xs ${
-                          isSelected ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300'
+                          isSelected ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-600'
                         }`}>
                           {name[0]}
                         </div>
                         <div>
-                          <p className="text-xs font-bold text-white">{name}</p>
-                          <p className="text-[10px] text-slate-400">{vehicle} · {plate}</p>
+                          <p className="text-xs font-bold text-[#0a2a5b]">{name}</p>
+                          <p className="text-[10px] text-slate-500">{vehicle} · {plate}</p>
                         </div>
                       </div>
 
@@ -691,7 +691,7 @@ export default function TravelCabSchedulePage() {
                   setShowAssignModal(false);
                   setSelectedTrip(null);
                 }}
-                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs"
+                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-600 font-bold text-xs"
               >
                 Cancelar
               </button>
@@ -711,18 +711,18 @@ export default function TravelCabSchedulePage() {
       {/* MODAL: PROGRAMAR VIAJE MANUAL DESDE CENTRAL */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-5 my-8">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="w-full max-w-lg bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-5 my-8">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <div>
-                <h3 className="text-base font-black text-white flex items-center gap-2">
+                <h3 className="text-base font-black text-[#0a2a5b] flex items-center gap-2">
                   <Calendar className="h-5 w-5 text-amber-500" />
                   Programar Traslado Manual
                 </h3>
-                <p className="text-xs text-slate-400 font-medium">Despacho telefónico o corporativo agendado</p>
+                <p className="text-xs text-slate-500 font-medium">Despacho telefónico o corporativo agendado</p>
               </div>
               <button
                 onClick={() => setShowCreateModal(false)}
-                className="p-1.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white"
+                className="p-1.5 rounded-full hover:bg-slate-800 text-slate-500 hover:text-[#0a2a5b]"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -731,7 +731,7 @@ export default function TravelCabSchedulePage() {
             <form onSubmit={handleCreateScheduledTrip} className="space-y-4">
               {/* Tipo de Servicio */}
               <div>
-                <label className="text-xs font-bold text-slate-300 mb-1.5 block">Tipo de Servicio:</label>
+                <label className="text-xs font-bold text-slate-600 mb-1.5 block">Tipo de Servicio:</label>
                 <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
@@ -739,7 +739,7 @@ export default function TravelCabSchedulePage() {
                     className={`p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                       createForm.serviceCategory === 'MU'
                         ? 'bg-blue-600/20 border-blue-500 text-blue-300'
-                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                        : 'bg-slate-50 border-slate-200 text-slate-500'
                     }`}
                   >
                     🏙️ Urbana (MU)
@@ -750,7 +750,7 @@ export default function TravelCabSchedulePage() {
                     className={`p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                       createForm.serviceCategory === 'TRANSFER'
                         ? 'bg-purple-600/20 border-purple-500 text-purple-300'
-                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                        : 'bg-slate-50 border-slate-200 text-slate-500'
                     }`}
                   >
                     ✈️ Transfer
@@ -761,7 +761,7 @@ export default function TravelCabSchedulePage() {
                     className={`p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                       createForm.serviceCategory === 'ARC'
                         ? 'bg-amber-600/20 border-amber-500 text-amber-300'
-                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                        : 'bg-slate-50 border-slate-200 text-slate-500'
                     }`}
                   >
                     🛣️ Media Dist.
@@ -772,23 +772,23 @@ export default function TravelCabSchedulePage() {
               {/* Fecha y Hora */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold text-slate-300 mb-1 block">Fecha de Recogida:</label>
+                  <label className="text-xs font-bold text-slate-600 mb-1 block">Fecha de Recogida:</label>
                   <input
                     type="date"
                     required
                     value={createForm.date}
                     onChange={(e) => setCreateForm({ ...createForm, date: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-[#0a2a5b] focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-slate-300 mb-1 block">Hora:</label>
+                  <label className="text-xs font-bold text-slate-600 mb-1 block">Hora:</label>
                   <input
                     type="time"
                     required
                     value={createForm.time}
                     onChange={(e) => setCreateForm({ ...createForm, time: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-[#0a2a5b] focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
@@ -796,24 +796,24 @@ export default function TravelCabSchedulePage() {
               {/* Pasajero y Teléfono */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold text-slate-300 mb-1 block">Nombre Pasajero:</label>
+                  <label className="text-xs font-bold text-slate-600 mb-1 block">Nombre Pasajero:</label>
                   <input
                     type="text"
                     required
                     placeholder="Ej. Martín Gómez"
                     value={createForm.passengerName}
                     onChange={(e) => setCreateForm({ ...createForm, passengerName: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-[#0a2a5b] focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-slate-300 mb-1 block">Teléfono / WhatsApp:</label>
+                  <label className="text-xs font-bold text-slate-600 mb-1 block">Teléfono / WhatsApp:</label>
                   <input
                     type="tel"
                     placeholder="+54 9 381 ..."
                     value={createForm.passengerPhone}
                     onChange={(e) => setCreateForm({ ...createForm, passengerPhone: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-[#0a2a5b] focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
@@ -821,25 +821,25 @@ export default function TravelCabSchedulePage() {
               {/* Origen y Destino */}
               <div className="space-y-2">
                 <div>
-                  <label className="text-xs font-bold text-slate-300 mb-1 block">Origen (Dirección exacta):</label>
+                  <label className="text-xs font-bold text-slate-600 mb-1 block">Origen (Dirección exacta):</label>
                   <input
                     type="text"
                     required
                     placeholder="Ej. Hotel Hilton Garden Inn, Tucumán"
                     value={createForm.origin}
                     onChange={(e) => setCreateForm({ ...createForm, origin: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-[#0a2a5b] focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-slate-300 mb-1 block">Destino:</label>
+                  <label className="text-xs font-bold text-slate-600 mb-1 block">Destino:</label>
                   <input
                     type="text"
                     required
                     placeholder="Ej. Aeropuerto Internacional Benjamín Matienzo (TUC)"
                     value={createForm.destination}
                     onChange={(e) => setCreateForm({ ...createForm, destination: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-[#0a2a5b] focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
@@ -847,20 +847,20 @@ export default function TravelCabSchedulePage() {
               {/* Tarifa y Chofer Asignado Opcional */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold text-slate-300 mb-1 block">Precio Pactado ($ ARS):</label>
+                  <label className="text-xs font-bold text-slate-600 mb-1 block">Precio Pactado ($ ARS):</label>
                   <input
                     type="number"
                     value={createForm.estimatedPrice}
                     onChange={(e) => setCreateForm({ ...createForm, estimatedPrice: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-emerald-400 font-bold focus:outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-emerald-400 font-bold focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-slate-300 mb-1 block">Asignar Chofer:</label>
+                  <label className="text-xs font-bold text-slate-600 mb-1 block">Asignar Chofer:</label>
                   <select
                     value={createForm.driverId}
                     onChange={(e) => setCreateForm({ ...createForm, driverId: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-[#0a2a5b] focus:outline-none focus:border-amber-500"
                   >
                     <option value="">Dejar en Bolsa Pública</option>
                     {drivers.map(d => (
@@ -876,14 +876,14 @@ export default function TravelCabSchedulePage() {
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs"
+                  className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-600 font-bold text-xs"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={savingTrip}
-                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black text-xs cursor-pointer shadow-lg shadow-amber-500/20"
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r bg-[#0a2a5b] hover:bg-[#071f45] text-white font-black text-xs cursor-pointer shadow-lg shadow-amber-500/20"
                 >
                   {savingTrip ? 'Programando...' : 'Programar y Guardar'}
                 </button>

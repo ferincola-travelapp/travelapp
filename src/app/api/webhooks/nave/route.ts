@@ -7,6 +7,14 @@ const NAVE_STORE_CODE = process.env.NAVE_STORE_CODE || 'S-6A60-0761-P';
 
 export async function POST(req: NextRequest) {
   try {
+    const webhookSecret = process.env.NAVE_WEBHOOK_SECRET;
+    if (webhookSecret) {
+      const provided = req.headers.get('x-webhook-secret') || new URL(req.url).searchParams.get('secret');
+      if (provided !== webhookSecret) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+      }
+    }
+
     const url = new URL(req.url);
     const searchParams = url.searchParams;
     const body = await req.json().catch(() => ({}));
@@ -16,7 +24,7 @@ export async function POST(req: NextRequest) {
 
     let transactionId = body.payment_id || body.transaction_id || body.id || searchParams.get('id');
     let externalRef = body.external_payment_id || body.external_reference || body.merchant_order_id || searchParams.get('file_number');
-    let status = (body.status || body.state || 'APPROVED').toUpperCase();
+    let status = String(body.status || body.state || '').toUpperCase();
     let amount = Number(body.amount || body.total_amount || 0);
 
     const channel = resolveNaveBrandChannel({

@@ -10,7 +10,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
  * Routes that should render WITHOUT the chrome (navbar + sidebar).
  * Add any future public/standalone pages here.
  */
-const SHELL_FREE_ROUTES = ["/login"];
+const SHELL_FREE_ROUTES = ["/login", "/admin/login"];
 
 function AppShell({ 
   children, 
@@ -33,8 +33,19 @@ function AppShell({
 
   const hideShell =
     isLandingHost ||
+    pathname === "/" ||
+    pathname === "/vision-general" ||
+    pathname.startsWith("/vision-general/") ||
+    pathname === "/audit" ||
+    pathname.startsWith("/audit/") ||
+    pathname === "/hr" ||
+    pathname.startsWith("/hr/") ||
+    pathname === "/travelcab" ||
+    pathname.startsWith("/travelcab/") ||
     pathname === "/login" ||
     pathname.startsWith("/login/") ||
+    pathname === "/admin/login" ||
+    pathname.startsWith("/admin/login/") ||
     pathname === "/registro" ||
     pathname.startsWith("/registro/") ||
     pathname === "/marketplace" ||

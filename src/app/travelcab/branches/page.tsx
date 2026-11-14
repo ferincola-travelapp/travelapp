@@ -3,10 +3,12 @@
 import React, { useState, useEffect } from 'react';
 import {
   Building2, Plus, Search, MapPin, Trash2, ArrowUpRight, ArrowDownRight,
-  TrendingUp, Landmark, Calendar, FileText, CheckCircle2, RefreshCw, Sparkles, DollarSign
+  TrendingUp, Landmark, Calendar, FileText, CheckCircle2, RefreshCw, Sparkles, DollarSign,
+  Lock, Unlock
 } from 'lucide-react';
 import { collection, onSnapshot, doc, setDoc, deleteDoc, addDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface CashMovement {
   id: string;
@@ -88,6 +90,9 @@ export default function BranchCashPage() {
     date: new Date().toISOString().split('T')[0]
   });
 
+  const { user } = useAuth();
+  const [cashSessions, setCashSessions] = useState<Record<string, { isOpen: boolean; openedAt?: number; closedAt?: number; openedBy?: string }>>({});
+
   // Load branches
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'branches'), (snapshot) => {
@@ -97,20 +102,26 @@ export default function BranchCashPage() {
         location: docSnap.data().location || '',
         active: docSnap.data().active !== undefined ? docSnap.data().active : true
       }));
-      setBranches(list.length > 0 ? list : [
-        { id: '1', name: 'Sucursal Retiro', location: 'CABA', active: true },
-        { id: '2', name: 'Sucursal Pilar', location: 'GBA Norte', active: true },
-        { id: '3', name: 'Sucursal Tucumán', location: 'Tucumán', active: true }
-      ]);
+      setBranches(list);
     });
-    return () => unsub();
+    const unsubCash = onSnapshot(collection(db, 'branch_cash_sessions'), (snapshot) => {
+      const map: Record<string, any> = {};
+      snapshot.docs.forEach((d) => {
+        map[d.id] = d.data();
+      });
+      setCashSessions(map);
+    });
+    return () => {
+      unsub();
+      unsubCash();
+    };
   }, []);
 
   // Load cash movements in real-time
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'cash_movements'), (snapshot) => {
       if (snapshot.empty) {
-        setMovements(MOCK_MOVEMENTS);
+        setMovements([]);
       } else {
         const list: CashMovement[] = snapshot.docs.map(docSnap => {
           const data = docSnap.data();
@@ -132,7 +143,7 @@ export default function BranchCashPage() {
       setLoading(false);
     }, (error) => {
       console.error("Error loading cash movements:", error);
-      setMovements(MOCK_MOVEMENTS);
+      setMovements([]);
       setLoading(false);
     });
     return () => unsub();
@@ -192,33 +203,74 @@ export default function BranchCashPage() {
   const totalEgresos = filtered.filter(m => m.type === 'egreso').reduce((acc, m) => acc + m.amount, 0);
   const totalNeto = totalIngresos - totalEgresos;
 
+  const activeBranchId = filterBranch !== 'all' ? filterBranch : (branches[0]?.id || 'general');
+  const activeBranchName = branches.find(b => b.id === activeBranchId)?.name || 'Caja General';
+  const currentCashSession = cashSessions[activeBranchId];
+  const isCashOpen = Boolean(currentCashSession?.isOpen);
+
+  const handleToggleCash = async () => {
+    const nextOpen = !isCashOpen;
+    await setDoc(
+      doc(db, 'branch_cash_sessions', activeBranchId),
+      {
+        branchId: activeBranchId,
+        branchName: activeBranchName,
+        isOpen: nextOpen,
+        ...(nextOpen
+          ? { openedAt: Date.now(), openedBy: user?.email || 'operador@travelapp.ar' }
+          : { closedAt: Date.now(), closedBy: user?.email || 'operador@travelapp.ar', closingNet: totalNeto }),
+      },
+      { merge: true }
+    );
+  };
+
   return (
-    <div className="flex h-full w-full flex-col bg-slate-50 p-6 gap-6">
+    <div className="flex h-full w-full flex-col gap-6">
       
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-slate-200/80 pb-4">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold text-tech-blue">
-            <Landmark className="h-7 w-7 text-tech-blue" /> Gestión de Caja de Sucursales
+          <h1 className="flex items-center gap-2 text-lg font-bold text-[#0a2a5b]">
+            <Landmark className="h-5 w-5 text-[#0a2a5b]" /> Gestión de Caja de Sucursales
           </h1>
-          <p className="mt-1 text-sm text-slate-500 font-medium">Libro diario de ingresos y egresos por sucursal en el módulo TravelCab.</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Libro diario de ingresos y egresos por sucursal ·{' '}
+            <span className={`font-bold ${isCashOpen ? 'text-emerald-700' : 'text-slate-500'}`}>
+              {activeBranchName}: {isCashOpen ? 'Caja Abierta' : 'Caja Cerrada'}
+            </span>
+          </p>
         </div>
-        <button
-          onClick={() => {
-            setForm({
-              branchId: branches[0]?.id || '',
-              amount: '',
-              type: 'ingreso',
-              concept: '',
-              date: new Date().toISOString().split('T')[0]
-            });
-            setShowModal(true);
-          }}
-          className="inline-flex items-center justify-center space-x-2 rounded-xl bg-tech-blue px-4 py-2.5 text-sm font-bold text-white hover:bg-tech-blue/90 shadow-sm transition-all"
-        >
-          <Plus className="h-4 w-4" />
-          <span>Registrar Movimiento</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={handleToggleCash}
+            className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-xs font-bold transition-all cursor-pointer ${
+              isCashOpen
+                ? 'border border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
+                : 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+            }`}
+          >
+            {isCashOpen ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+            <span>{isCashOpen ? 'Cerrar Caja' : 'Abrir Caja'}</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setForm({
+                branchId: branches[0]?.id || '',
+                amount: '',
+                type: 'ingreso',
+                concept: '',
+                date: new Date().toISOString().split('T')[0]
+              });
+              setShowModal(true);
+            }}
+            className="inline-flex items-center justify-center space-x-2 rounded-lg bg-[#0a2a5b] px-4 py-2 text-xs font-bold text-white hover:bg-[#071f45] transition-all cursor-pointer"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Registrar Movimiento</span>
+          </button>
+        </div>
       </div>
 
       {/* Financial KPIs */}

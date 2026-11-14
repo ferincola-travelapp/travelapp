@@ -68,8 +68,8 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     match /experience_reservations/{document=**} {
-      allow read: if true;
-      allow create: if true;
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() || isAdmin();
       allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
     }
     match /tariffs/{document=**} {
@@ -189,7 +189,12 @@ service cloud.firestore {
 
       // Subcolección de Chat en vivo del viaje (Pasajero <-> Conductor)
       match /messages/{messageId} {
-        allow read, create, update, delete: if isAuthenticated();
+        allow read, create: if isAuthenticated() && (
+          get(/databases/$(database)/documents/trips/$(tripId)).data.passengerId == request.auth.uid ||
+          get(/databases/$(database)/documents/trips/$(tripId)).data.driverId == request.auth.uid ||
+          isAdmin()
+        );
+        allow update, delete: if isAdmin();
       }
     }
 
@@ -201,15 +206,18 @@ service cloud.firestore {
 
     // --- EXPERIENCIAS Y SALIDAS PROPIAS / MI VIAJE (CONTRACTED TRIPS) ---
     match /contracted_trips/{tripId} {
-      allow read: if true;
-      allow create: if true;
-      allow update: if isAuthenticated() || isAdmin();
+      allow read: if isAuthenticated() || isAdmin();
+      allow create: if isAuthenticated() || isAdmin();
+      allow update: if isAdmin() || (isAuthenticated() && (
+        resource.data.coordinatorId == request.auth.uid ||
+        resource.data.userId == request.auth.uid
+      ));
       allow delete: if isAdmin();
 
       // Subcolecciones de fotos en vivo, chat grupal, comunicados y vouchers
       match /{subcollection=**} {
-        allow read: if true;
-        allow write: if isAuthenticated();
+        allow read: if isAuthenticated() || isAdmin();
+        allow write: if isAuthenticated() || isAdmin();
       }
     }
 
@@ -300,6 +308,16 @@ service cloud.firestore {
       );
       allow create: if isAuthenticated() || isAdmin();
       allow update, delete: if isAdmin() || isSupervisor() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+    }
+
+    // --- MENSAJERÍA INTERNA DE OPERADORES (VISIÓN GENERAL) ---
+    match /operator_messages/{msgId} {
+      allow read, create: if isAuthenticated() && (
+        request.auth.token.email.matches('.*@travelapp\\.ar$') ||
+        request.auth.token.email == 'ferincola@gmail.com' ||
+        isAdmin()
+      );
+      allow update, delete: if isAdmin();
     }
   }
 }

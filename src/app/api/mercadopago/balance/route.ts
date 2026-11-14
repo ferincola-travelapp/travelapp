@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
+import { requireAuth } from '@/lib/api-auth';
 
 // GET /api/mercadopago/balance
 // Consulta los datos reales de la cuenta de Mercado Pago y los pagos aprobados acumulados.
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req);
+  if (auth.error) return auth.error;
+
   try {
     const accessToken = process.env.MP_ACCESS_TOKEN;
 

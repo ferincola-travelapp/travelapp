@@ -43,17 +43,7 @@ function CheckoutSuccessContent() {
 
             if (!snap.empty) {
               const expDoc = snap.docs[0];
-              const data = expDoc.data();
-              setExperienceData(data);
-
-              // Actualizar a confirmada si aún estaba pendiente
-              if (data.estado !== 'Confirmada') {
-                await updateDoc(doc(db, 'experience_reservations', expDoc.id), {
-                  estado: 'Confirmada',
-                  paymentStatus: 'Aprobado (NAVE Banco Galicia)',
-                  paidAt: Date.now()
-                });
-              }
+              setExperienceData(expDoc.data());
             } else {
               // Fallback: buscar en contracted_trips
               const tripQ = query(collection(db, 'contracted_trips'), where('reservationCode', '==', file));
@@ -67,20 +57,16 @@ function CheckoutSuccessContent() {
           }
         }
 
-        // CASO 2: Cobro de TravelCab
+        // CASO 2: Cobro de TravelCab (solo lectura; la confirmación la realiza el webhook del servidor)
         if (tripId && tripId !== 'landing') {
           try {
             const docRef = doc(db, 'trips', tripId);
-            await updateDoc(docRef, {
-              paymentStatus: 'paid',
-              paidAt: Date.now()
-            });
             const snap = await getDoc(docRef);
             if (snap.exists()) {
               setTripData(snap.data());
             }
           } catch (cabErr) {
-            console.error('Error actualizando pago de viaje TravelCab:', cabErr);
+            console.error('Error consultando viaje TravelCab:', cabErr);
           }
         }
       } finally {

@@ -1,117 +1,108 @@
-"use client";
+'use client';
+
 import React, { useState, useEffect } from 'react';
-import { Vault, Landmark, BookOpen, AlarmClock, Building2, BarChart2 } from 'lucide-react';
 import {
-  BankAccount, AuditAdjustment, LedgerTransaction, ScheduledTransaction,
-  INITIAL_ACCOUNTS, INITIAL_TRANSACTIONS, INITIAL_SCHEDULED,
-} from '@/components/audit/types';
-import { FlowTab }          from '@/components/audit/FlowTab';
-import { LedgerTab }        from '@/components/audit/LedgerTab';
-import { ScheduleTab }      from '@/components/audit/ScheduleTab';
-import { ProfitabilityTab } from '@/components/audit/ProfitabilityTab';
-import { DirectoryTab }     from '@/components/audit/DirectoryTab';
+  Landmark,
+  Wallet,
+  BookOpen,
+  AlarmClock,
+  Building2,
+  KeyRound,
+  BarChart2,
+  CalendarDays,
+} from 'lucide-react';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { MinimalModuleShell, MinimalNavItem } from '@/components/layout/MinimalModuleShell';
+import { ForexRevenueChart } from '@/components/audit/ForexRevenueChart';
+import { CashBoxTab } from '@/components/audit/CashBoxTab';
+import { PaymentOrdersTab } from '@/components/audit/PaymentOrdersTab';
+import {
+  RealFlowAndBanksTab,
+  RealLedgerTab,
+  RealScheduleTab,
+  RealDirectoryTab,
+  RealProfitabilityTab,
+} from '@/components/audit/RealAuditTabs';
 
-type TabId = 'flow' | 'ledger' | 'schedule' | 'profit' | 'directory';
+type AuditTabKey =
+  | 'flow'
+  | 'cashbox'
+  | 'ledger'
+  | 'schedule'
+  | 'directory'
+  | 'orders'
+  | 'profit'
+  | 'agenda';
 
-const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
-  { id: 'flow',      label: 'Flujo y Bancos',      icon: <Landmark className="h-4 w-4" /> },
-  { id: 'ledger',    label: 'Libro Mayor',          icon: <BookOpen className="h-4 w-4" /> },
-  { id: 'schedule',  label: 'Vencimientos',         icon: <AlarmClock className="h-4 w-4" /> },
-  { id: 'profit',    label: 'Rentabilidad',         icon: <BarChart2 className="h-4 w-4" /> },
-  { id: 'directory', label: 'Directorio',           icon: <Building2 className="h-4 w-4" /> },
+const NAV_ITEMS: MinimalNavItem[] = [
+  { key: 'flow', label: 'Flujo y Bancos', icon: Landmark },
+  { key: 'cashbox', label: 'Caja Diaria', icon: Wallet },
+  { key: 'ledger', label: 'Libro Mayor', icon: BookOpen },
+  { key: 'schedule', label: 'Vencimientos', icon: AlarmClock },
+  { key: 'directory', label: 'Directorio', icon: Building2 },
+  { key: 'orders', label: 'Órdenes de Pago', icon: KeyRound },
+  { key: 'profit', label: 'Rentabilidad', icon: BarChart2 },
+  { key: 'agenda', label: 'Agenda de Vencimientos', icon: CalendarDays },
 ];
 
-export default function AuditPage() {
-  const [activeTab, setActiveTab]       = useState<TabId>('flow');
-  const [accounts, setAccounts]         = useState<BankAccount[]>(INITIAL_ACCOUNTS);
-  const [adjustments, setAdjustments]   = useState<AuditAdjustment[]>([]);
-  const [transactions, setTransactions] = useState<LedgerTransaction[]>(INITIAL_TRANSACTIONS);
-  const [scheduled, setScheduled]       = useState<ScheduledTransaction[]>(INITIAL_SCHEDULED);
+export default function AdministracionPage() {
+  const [activeKey, setActiveKey] = useState<AuditTabKey>('flow');
+  const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
+  const [trips, setTrips] = useState<any[]>([]);
+  const [reservations, setReservations] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
 
-  // Load persisted accounts & adjustments from localStorage on mount
   useEffect(() => {
-    const savedAcc = localStorage.getItem('travelapp_audit_accounts');
-    if (savedAcc) {
-      try { setAccounts(JSON.parse(savedAcc)); } catch (e) {}
-    }
-    const savedAdj = localStorage.getItem('travelapp_audit_adjustments');
-    if (savedAdj) {
-      try { setAdjustments(JSON.parse(savedAdj)); } catch (e) {}
-    }
+    const unsubBranches = onSnapshot(collection(db, 'branches'), (snap) => {
+      setBranches(snap.docs.map((d) => ({ id: d.id, name: d.data().name || 'Sucursal' })));
+    });
+    const unsubTrips = onSnapshot(collection(db, 'trips'), (snap) => {
+      setTrips(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    });
+    const unsubRes = onSnapshot(collection(db, 'experience_reservations'), (snap) => {
+      setReservations(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    });
+    const unsubTx = onSnapshot(
+      query(collection(db, 'transactions'), orderBy('date', 'desc')),
+      (snap) => {
+        setTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }
+    );
+
+    return () => {
+      unsubBranches();
+      unsubTrips();
+      unsubRes();
+      unsubTx();
+    };
   }, []);
 
-  // Save changes to localStorage
-  useEffect(() => {
-    if (accounts !== INITIAL_ACCOUNTS) {
-      localStorage.setItem('travelapp_audit_accounts', JSON.stringify(accounts));
-    }
-  }, [accounts]);
-
-  useEffect(() => {
-    if (adjustments.length > 0) {
-      localStorage.setItem('travelapp_audit_adjustments', JSON.stringify(adjustments));
-    }
-  }, [adjustments]);
-
-  const settleItem = (id: string) =>
-    setScheduled(p => p.map(s => s.id === id ? { ...s, status: 'pagado' } : s));
-
   return (
-    <div className="min-h-full bg-slate-50 p-6 lg:p-8">
-      {/* ── Header ── */}
-      <div className="mb-8">
-        <h1 className="flex items-center gap-3 text-2xl font-black text-tech-blue">
-          <Vault className="h-7 w-7 text-vial-orange" />
-          Auditoría &amp; Control Financiero
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Gestión integral de cuentas, movimientos, vencimientos, rentabilidad y directorio comercial del ecosistema TravelApp.
-        </p>
-      </div>
+    <MinimalModuleShell
+      moduleTitle="Administración"
+      navItems={NAV_ITEMS}
+      activeKey={activeKey}
+      onSelectKey={(k) => setActiveKey(k as AuditTabKey)}
+    >
+      {activeKey === 'flow' && (
+        <div className="space-y-6">
+          <ForexRevenueChart
+            trips={trips}
+            reservations={reservations}
+            transactions={transactions}
+          />
+          <RealFlowAndBanksTab />
+        </div>
+      )}
 
-      {/* ── Tab Bar ── */}
-      <div className="mb-8 flex overflow-x-auto gap-1 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
-        {TABS.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex flex-1 min-w-max items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold transition-all ${
-              activeTab === tab.id
-                ? 'bg-tech-blue text-white shadow-sm'
-                : 'text-slate-500 hover:bg-slate-50 hover:text-tech-blue'
-            }`}
-          >
-            {tab.icon}
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ── Tab Content ── */}
-      {activeTab === 'flow' && (
-        <FlowTab
-          accounts={accounts}
-          adjustments={adjustments}
-          setAccounts={setAccounts}
-          setAdjustments={setAdjustments}
-        />
-      )}
-      {activeTab === 'ledger' && (
-        <LedgerTab
-          transactions={transactions}
-          accounts={accounts}
-          onAdd={tx => setTransactions(p => [tx, ...p])}
-        />
-      )}
-      {activeTab === 'schedule' && (
-        <ScheduleTab
-          items={scheduled}
-          onAdd={s => setScheduled(p => [s, ...p])}
-          onSettle={settleItem}
-        />
-      )}
-      {activeTab === 'profit'    && <ProfitabilityTab />}
-      {activeTab === 'directory' && <DirectoryTab />}
-    </div>
+      {activeKey === 'cashbox' && <CashBoxTab branches={branches} />}
+      {activeKey === 'ledger' && <RealLedgerTab transactions={transactions} branches={branches} />}
+      {activeKey === 'schedule' && <RealScheduleTab branches={branches} />}
+      {activeKey === 'directory' && <RealDirectoryTab />}
+      {activeKey === 'orders' && <PaymentOrdersTab branches={branches} />}
+      {activeKey === 'profit' && <RealProfitabilityTab transactions={transactions} />}
+      {activeKey === 'agenda' && <RealScheduleTab branches={branches} isAgendaView />}
+    </MinimalModuleShell>
   );
 }
