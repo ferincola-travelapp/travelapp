@@ -74,8 +74,8 @@ const LAUNCHER_MODULES: LauncherModule[] = [
   {
     id: 'travelapp',
     label: 'TravelApp',
-    description: 'Usuarios, apps y ecosistema',
-    href: '/users',
+    description: 'Turismo emisivo y gestión operativa',
+    href: '/travelapp',
     row: 'center',
     logoSrc: '/assets/travelapp_original.svg',
   },

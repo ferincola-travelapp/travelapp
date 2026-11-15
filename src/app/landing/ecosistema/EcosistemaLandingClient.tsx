@@ -154,7 +154,7 @@ const DEFAULT_ECOSISTEMA_CMS = {
     { valor: "24 / 7", label: "Coordinación & Soporte", icono: "Shield" },
     { valor: "100%", label: "Salidas Garantizadas con Time-to-Pay", icono: "Clock" },
   ],
-  showStats: true,
+  showStats: false,
   promoPushPop: {
     enabled: true,
     badge: "🔥 TRAVEL SALE 2026",
@@ -171,10 +171,12 @@ const DEFAULT_ECOSISTEMA_CMS = {
     email: "hola@travelapp.ar"
   },
   redesSociales: {
-    facebook: "https://facebook.com/travelapp.ar",
-    instagram: "https://instagram.com/travelapp.ar",
+    facebook: "",
+    instagram: "",
     whatsapp: "https://wa.me/5493812000712",
-    messenger: "https://m.me/travelapp.ar"
+    linkedin: "",
+    youtube: "",
+    tiktok: ""
   },
   legales: {
     razonSocial: "TravelApp S.A.S.",
@@ -264,24 +266,36 @@ export default function EcosistemaLandingClient({
   // Teléfono oficial para Header y Footer
   const officialPhone = cms.contacto?.telefono || cms.redesSociales?.whatsapp || "0810-220-0018";
 
-  // Configuración del Footer conectado al CMS
-  const footerConfig = React.useMemo(() => ({
-    razonSocial: cms.legales?.razonSocial || "TravelApp S.A.S.",
-    cuit: cms.legales?.cuit || "30-71829304-8",
-    domicilio: cms.legales?.domicilio || "San Miguel de Tucumán, Argentina",
-    phone: officialPhone,
-    email: cms.contacto?.email || "hola@travelapp.ar",
-    showFacebook: !!cms.redesSociales?.facebook,
-    facebookUrl: cms.redesSociales?.facebook || "https://facebook.com/travelapp.ar",
-    showInstagram: !!cms.redesSociales?.instagram,
-    instagramUrl: cms.redesSociales?.instagram || "https://instagram.com/travelapp.ar",
-    showLinkedin: !!cms.redesSociales?.linkedin,
-    linkedinUrl: cms.redesSociales?.linkedin,
-    showYoutube: !!cms.redesSociales?.youtube,
-    youtubeUrl: cms.redesSociales?.youtube,
-    showTiktok: !!cms.redesSociales?.tiktok,
-    tiktokUrl: cms.redesSociales?.tiktok,
-  }), [cms.legales, cms.contacto, cms.redesSociales, officialPhone]);
+  // Configuración del Footer conectado al CMS (oculta redes y sellos sin datos cargados)
+  const footerConfig = React.useMemo(() => {
+    const sellos = cms.sellosLegales || {};
+    const trustBadges = [
+      { id: "arca", name: "ARCA Fiscal", codeOrImageUrl: sellos.arcaQr || "", active: Boolean(sellos.arcaQr?.trim()) },
+      { id: "bases_datos", name: "Bases de Datos (Ley 25.326)", codeOrImageUrl: sellos.baseDatosSello || "", active: Boolean(sellos.baseDatosSello?.trim()) },
+      { id: "atavyt", name: "ATAVyT", codeOrImageUrl: sellos.atavyt || "", active: Boolean(sellos.atavyt?.trim()) },
+      { id: "faevyt", name: "FAEVYT", codeOrImageUrl: sellos.faevyt || "", active: Boolean(sellos.faevyt?.trim()) },
+      { id: "iata", name: "IATA Member", codeOrImageUrl: sellos.iata || "", active: Boolean(sellos.iata?.trim()) },
+    ];
+
+    return {
+      razonSocial: cms.legales?.razonSocial || "TravelApp S.A.S.",
+      cuit: cms.legales?.cuit || "30-71829304-8",
+      domicilio: cms.legales?.domicilio || "San Miguel de Tucumán, Argentina",
+      phone: officialPhone,
+      email: cms.contacto?.email || "hola@travelapp.ar",
+      showFacebook: Boolean(cms.redesSociales?.facebook?.trim()),
+      facebookUrl: cms.redesSociales?.facebook?.trim() || "",
+      showInstagram: Boolean(cms.redesSociales?.instagram?.trim()),
+      instagramUrl: cms.redesSociales?.instagram?.trim() || "",
+      showLinkedin: Boolean(cms.redesSociales?.linkedin?.trim()),
+      linkedinUrl: cms.redesSociales?.linkedin?.trim() || "",
+      showYoutube: Boolean(cms.redesSociales?.youtube?.trim()),
+      youtubeUrl: cms.redesSociales?.youtube?.trim() || "",
+      showTiktok: Boolean(cms.redesSociales?.tiktok?.trim()),
+      tiktokUrl: cms.redesSociales?.tiktok?.trim() || "",
+      trustBadges,
+    };
+  }, [cms.legales, cms.contacto, cms.redesSociales, cms.sellosLegales, officialPhone]);
 
   // Unidades dinámicas del ecosistema
   const ecosystemUnits = Array.isArray(cms.unidades) && cms.unidades.length > 0
@@ -383,7 +397,7 @@ export default function EcosistemaLandingClient({
           </div>
 
           {/* Métricas / Stats del CMS si están activadas */}
-          {cms.showStats !== false && cms.stats && (
+          {cms.showStats === true && Array.isArray(cms.stats) && cms.stats.length > 0 && (
             <div className="mt-14 pt-10 border-t border-slate-200/60 grid grid-cols-2 md:grid-cols-4 gap-6">
               {cms.stats.map((st: any, i: number) => (
                 <div key={i} className="text-center p-4 rounded-2xl bg-white border border-slate-200/70 shadow-xs">
@@ -400,13 +414,17 @@ export default function EcosistemaLandingClient({
         </div>
       </section>
 
-      {/* 6. Sección 2: TravelApp App Móvil (Descargas Play Store / App Store y Registro) */}
-      <OtaAppSection
-        showPlayStore={cms.apps?.playStoreUrl || cms.appSection?.showPlayStore}
-        showAppStore={cms.apps?.appStoreUrl || cms.appSection?.showAppStore}
-        playStoreUrl={cms.apps?.playStoreUrl || cms.appSection?.playStoreUrl}
-        appStoreUrl={cms.apps?.appStoreUrl || cms.appSection?.appStoreUrl}
-      />
+      {/* 6. Sección 2: TravelApp App Móvil (Opcional desde CMS) */}
+      {cms.apps?.enabled !== false && (
+        <OtaAppSection
+          titulo={cms.apps?.titulo}
+          subtitulo={cms.apps?.subtitulo}
+          showPlayStore={Boolean(cms.apps?.showPlayStore !== false && cms.apps?.playStoreUrl?.trim())}
+          showAppStore={Boolean(cms.apps?.showAppStore !== false && cms.apps?.appStoreUrl?.trim())}
+          playStoreUrl={cms.apps?.playStoreUrl?.trim() || ""}
+          appStoreUrl={cms.apps?.appStoreUrl?.trim() || ""}
+        />
+      )}
 
       {/* 7. Sección 3: TravelApp Rewards (Resumen del Programa y CTA Registro) */}
       <OtaRewardsSection />

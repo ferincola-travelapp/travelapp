@@ -2,10 +2,16 @@ export type OtaPackageType = 'paquete' | 'salida_grupal' | 'crucero' | 'escapada
 export type OtaProviderType = 'propio' | 'mayorista';
 export type OtaProviderCategory = 'propio' | 'operador_verificado';
 export type OtaModality = 'Salida Grupal Acompañada' | 'Individual';
-export type OtaTransportType = 'Aéreo' | 'Bus' | 'Bus Cama' | 'Bus Semicama' | 'Crucero' | 'Terrestre' | 'Sin Transporte';
+export type OtaTransportType = 'Aéreo' | 'Avión' | 'Bus' | 'Bus Cama' | 'Bus Semicama' | 'Barco' | 'Crucero' | 'Tren' | 'Terrestre' | 'Sin Transporte';
 export type OtaBusType = 'Semicama' | 'Cama' | 'Cama Ejecutivo' | 'Suite';
 export type OtaFoodPlan = 'Solo Alojamiento' | 'Desayuno' | 'Media Pensión' | 'Pensión Completa' | 'All Inclusive';
-export type OtaActionType = 'ver_detalle' | 'whatsapp' | 'reservar' | 'senar' | 'pagar';
+export type OtaActionType = 'ver_detalle' | 'whatsapp' | 'reservar' | 'senar' | 'pagar' | 'consultar';
+export type OtaInquiryChannel = 'travis_webchat' | 'whatsapp' | 'both';
+
+export interface OtaMediaItem {
+  url: string;
+  type: 'image' | 'video';
+}
 
 export interface OtaItineraryDay {
   day: number;
@@ -13,12 +19,29 @@ export interface OtaItineraryDay {
   description: string;
 }
 
+export type OtaRegion =
+  | 'Nacional'
+  | 'Internacional'
+  | 'Regional'
+  | 'Argentina'
+  | 'Brasil'
+  | 'Sudamérica'
+  | 'Caribe'
+  | 'Estados Unidos'
+  | 'Europa'
+  | 'Asia'
+  | 'África'
+  | 'Oceanía';
+
 export interface OtaPackage {
   id: string;
   title: string;
   destination: string;
   country: string;
-  region: 'Nacional' | 'Internacional' | 'Regional';
+  region: OtaRegion;
+  tripKind?: string;
+  sortOrder?: number;
+  customTags?: string[];
   type: OtaPackageType;
   providerType: OtaProviderType; // Retrocompatibilidad
   providerCategory?: OtaProviderCategory; // 'propio' (Salida Propia) | 'operador_verificado' (Operador Verificado)
@@ -60,15 +83,29 @@ export interface OtaPackage {
   installments?: string; // Retrocompatibilidad
 
   // Puntos Rewards (cargados manualmente)
+  rewardsDiscountPercent?: number; // % de descuento aplicado a Miembros Rewards
   rewardsPointsEarned?: number; // Puntos que acumula al comprar (ej. 850)
   rewardsPointsRequired?: number; // Puntos necesarios para canjear el viaje (ej. 15000)
 
-  // Acciones seleccionables al cargar
-  enabledActions?: OtaActionType[]; // Ej: ['ver_detalle', 'whatsapp', 'reservar', 'senar', 'pagar']
+  // Acciones seleccionables al cargar + Seña + Travis
+  enabledActions?: OtaActionType[]; // Ej: ['ver_detalle', 'whatsapp', 'reservar', 'senar', 'pagar', 'consultar']
+  publishAction?: 'reservar' | 'consultar' | 'senar' | 'comprar';
+  depositType?: 'percentage' | 'fixed';
+  depositValue?: number;
+  inquiryChannel?: OtaInquiryChannel;
+  travisPrompt?: string;
+  whatsappNumber?: string;
+
+  // Identificación y control interno
+  code?: string;
+  operatorId?: string;
+  status?: 'published' | 'draft';
+  active?: boolean;
 
   badge?: string; // Ej: "🔥 ALL INCLUSIVE 5★", "🌴 DESTACADO"
   imageUrl: string;
   gallery?: string[];
+  galleryMedia?: OtaMediaItem[];
   description: string;
   includedServices: string[];
   itinerarySummary?: OtaItineraryDay[];

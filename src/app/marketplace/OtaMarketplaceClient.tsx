@@ -38,24 +38,55 @@ import {
   Users,
   Compass
 } from "lucide-react";
-import { collection, onSnapshot, addDoc, query, limit } from "firebase/firestore";
+import { collection, onSnapshot, addDoc, query, limit, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { OtaPackage, OtaPackageType, OtaProviderCategory, OtaModality, OtaActionType } from "@/types/ota";
-import { DEFAULT_OTA_PACKAGES } from "@/lib/mockOtaPackages";
 import { OtaHeader } from "@/components/ota/OtaHeader";
 import { OtaFooter } from "@/components/ota/OtaFooter";
+import { OtaHeroSlider, HeroSlide } from "@/components/ota/OtaHeroSlider";
+
+const MARKETPLACE_REGIONS = [
+  "Argentina",
+  "Brasil",
+  "Sudamérica",
+  "Caribe",
+  "Estados Unidos",
+  "Europa",
+  "Asia",
+  "África",
+  "Oceanía",
+];
+
+const DEFAULT_MARKETPLACE_SLIDES: HeroSlide[] = [
+  {
+    id: "mkt-slide-1",
+    mediaType: "image",
+    mediaUrl: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=2560&q=95",
+    badge: "✦ TRAVELMARKET TURISMO EMISIVO",
+    title: "Paquetes Turísticos & Salidas Acompañadas",
+    subtitle: "Explorá salidas grupales con coordinador TravelApp y paquetes verificados en su moneda oficial.",
+    ctaText: "Ver Destinos",
+    ctaUrl: "#catalogo-marketplace",
+  },
+];
 
 interface OtaMarketplaceClientProps {
   initialCms?: any;
 }
 
 export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClientProps) {
-  const [packages, setPackages] = useState<OtaPackage[]>(DEFAULT_OTA_PACKAGES);
+  const [cms, setCms] = useState<any>(initialCms || {});
+  const [packages, setPackages] = useState<OtaPackage[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filtros
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRegion, setSelectedRegion] = useState<string>("all");
+  const [selectedQuickButton, setSelectedQuickButton] = useState<string>("all");
+  const [selectedDeparture, setSelectedDeparture] = useState<string>("all");
+  const [selectedDestinationFilter, setSelectedDestinationFilter] = useState<string>("all");
+  const [selectedTripKind, setSelectedTripKind] = useState<string>("all");
+  const [selectedTransport, setSelectedTransport] = useState<string>("all");
   const [selectedModality, setSelectedModality] = useState<string>("all");
   const [selectedProvider, setSelectedProvider] = useState<string>("all");
   const [selectedCurrency, setSelectedCurrency] = useState<string>("all");
@@ -70,6 +101,51 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
   const [leadSubmitted, setLeadSubmitted] = useState(false);
   const [submittingLead, setSubmittingLead] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+
+  // Escuchar CMS en vivo para slider de cabecera y botones rápidos
+  useEffect(() => {
+    const unsubCms = onSnapshot(doc(db, "cms", "landing_ecosistema"), (snap) => {
+      if (snap.exists()) {
+        setCms(snap.data());
+      }
+    });
+    return () => unsubCms();
+  }, []);
+
+  const marketplaceSlides: HeroSlide[] = useMemo(() => {
+    if (Array.isArray(cms?.marketplaceHeroSlider) && cms.marketplaceHeroSlider.length > 0) {
+      return cms.marketplaceHeroSlider;
+    }
+    return DEFAULT_MARKETPLACE_SLIDES;
+  }, [cms?.marketplaceHeroSlider]);
+
+  const customQuickButtons: { id: string; label: string; keyword: string }[] = useMemo(() => {
+    if (Array.isArray(cms?.marketplaceQuickButtons) && cms.marketplaceQuickButtons.length > 0) {
+      return cms.marketplaceQuickButtons;
+    }
+    return [
+      { id: "verano-2027", label: "Verano 2027", keyword: "Verano 2027" },
+      { id: "cupos-propios", label: "Cupos Propios", keyword: "propio" },
+    ];
+  }, [cms?.marketplaceQuickButtons]);
+
+  const availableDepartures = useMemo(() => {
+    const set = new Set<string>();
+    packages.forEach((p) => {
+      (p.departureDates || []).forEach((d) => {
+        if (d && d.trim()) set.add(d.trim());
+      });
+    });
+    return Array.from(set);
+  }, [packages]);
+
+  const availableDestinations = useMemo(() => {
+    const set = new Set<string>();
+    packages.forEach((p) => {
+      if (p.destination && p.destination.trim()) set.add(p.destination.trim());
+    });
+    return Array.from(set).sort();
+  }, [packages]);
 
   // Escuchar paquetes desde Firestore (colección ota_packages), con fallback a DEFAULT_OTA_PACKAGES
   useEffect(() => {
@@ -90,19 +166,19 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
             );
             setPackages(list);
           } else {
-            setPackages(DEFAULT_OTA_PACKAGES);
+            setPackages([]);
           }
           setLoading(false);
         },
         (error) => {
-          console.warn("Firestore ota_packages no disponible o vacío, usando fallback:", error);
-          setPackages(DEFAULT_OTA_PACKAGES);
+          console.warn("Firestore ota_packages no disponible:", error);
+          setPackages([]);
           setLoading(false);
         }
       );
       return () => unsub();
     } catch {
-      setPackages(DEFAULT_OTA_PACKAGES);
+      setPackages([]);
       setLoading(false);
     }
   }, []);
@@ -110,17 +186,59 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
   // Filtrado reactivo
   const filteredPackages = useMemo(() => {
     return packages.filter((pkg) => {
+      if ((pkg as any).status === "draft" || (pkg as any).active === false) return false;
+
       // Búsqueda de texto
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const matchTitle = pkg.title.toLowerCase().includes(q);
-        const matchDest = pkg.destination.toLowerCase().includes(q);
-        const matchCountry = pkg.country.toLowerCase().includes(q);
+        const matchTitle = (pkg.title || "").toLowerCase().includes(q);
+        const matchDest = (pkg.destination || "").toLowerCase().includes(q);
+        const matchCountry = (pkg.country || "").toLowerCase().includes(q);
         if (!matchTitle && !matchDest && !matchCountry) return false;
       }
 
       // Región
-      if (selectedRegion !== "all" && pkg.region !== selectedRegion) return false;
+      if (selectedRegion !== "all") {
+        const pkgReg = (pkg.region || "").toLowerCase();
+        const targetReg = selectedRegion.toLowerCase();
+        if (
+          pkgReg !== targetReg &&
+          !(pkg.destination || "").toLowerCase().includes(targetReg) &&
+          !(pkg.country || "").toLowerCase().includes(targetReg)
+        ) {
+          return false;
+        }
+      }
+
+      // Botón rápido / campaña (CMS)
+      if (selectedQuickButton !== "all") {
+        const kw = selectedQuickButton.toLowerCase();
+        const tags = Array.isArray(pkg.customTags) ? pkg.customTags.join(" ").toLowerCase() : "";
+        const haystack = `${pkg.title || ""} ${pkg.badge || ""} ${pkg.tripKind || ""} ${pkg.providerCategory || ""} ${pkg.providerType || ""} ${tags} ${(pkg.departureDates || []).join(" ")}`.toLowerCase();
+        if (!haystack.includes(kw)) return false;
+      }
+
+      // Fecha de salida
+      if (selectedDeparture !== "all") {
+        if (!(pkg.departureDates || []).some((d) => d.trim() === selectedDeparture)) return false;
+      }
+
+      // Destino exacto
+      if (selectedDestinationFilter !== "all" && (pkg.destination || "").trim() !== selectedDestinationFilter) {
+        return false;
+      }
+
+      // Tipo de viaje
+      if (selectedTripKind !== "all") {
+        const kind = (pkg.tripKind || pkg.type || "").toLowerCase();
+        if (!kind.includes(selectedTripKind.toLowerCase())) return false;
+      }
+
+      // Transporte
+      if (selectedTransport !== "all") {
+        const tr = (pkg.transportType || "").toLowerCase();
+        if (!tr.includes(selectedTransport.toLowerCase())) return false;
+      }
 
       // Modalidad (Salida Grupal Acompañada vs Individual)
       if (selectedModality !== "all") {
@@ -147,9 +265,12 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
       const priceB = b.price || b.priceUsd || b.priceArs || 0;
       if (priceSort === "asc") return priceA - priceB;
       if (priceSort === "desc") return priceB - priceA;
+      const orderA = typeof a.sortOrder === "number" ? a.sortOrder : 999;
+      const orderB = typeof b.sortOrder === "number" ? b.sortOrder : 999;
+      if (orderA !== orderB) return orderA - orderB;
       return 0;
     });
-  }, [packages, searchQuery, selectedRegion, selectedModality, selectedProvider, selectedCurrency, selectedFoodPlan, priceSort]);
+  }, [packages, searchQuery, selectedRegion, selectedQuickButton, selectedDeparture, selectedDestinationFilter, selectedTripKind, selectedTransport, selectedModality, selectedProvider, selectedCurrency, selectedFoodPlan, priceSort]);
 
   // Manejar consulta directa a CRM y creación de File en Concorde 360 (TravelApp Emisivo)
   const handleSubmitLead = async (e: React.FormEvent) => {
@@ -231,65 +352,122 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
       {/* Header Oficial OTA */}
       <OtaHeader />
 
-      {/* Hero Comercial OTA */}
-      <section className="relative bg-gradient-to-br from-[#07162c] via-[#0A2A5B] to-[#124285] text-white py-14 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto text-center relative z-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-sky-200 text-xs font-bold uppercase tracking-wider mb-4">
-            <Plane className="w-3.5 h-3.5 text-sky-300" />
-            <span>TravelMarket Turismo Emisivo</span>
-          </div>
+      {/* Hero Slider Editable desde CMS */}
+      <OtaHeroSlider slides={marketplaceSlides}>
+        <div className="max-w-5xl mx-auto bg-white p-2.5 sm:p-3 rounded-2xl shadow-2xl border border-slate-200 text-slate-800">
+          <div className="flex flex-col md:flex-row items-center gap-2">
+            <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-xl w-full">
+              <Search className="h-5 w-5 text-slate-400 shrink-0" />
+              <input
+                type="text"
+                placeholder="¿A dónde querés viajar? (ej. Cancún, Bariloche, Europa, Brasil...)"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="bg-transparent border-none text-xs sm:text-sm font-semibold outline-none w-full placeholder:text-slate-400 text-slate-800"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery("")} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
 
-          <h1 className="text-3xl sm:text-5xl font-black tracking-tight leading-tight">
-            Paquetes Turísticos & Salidas Acompañadas
-          </h1>
-          <p className="mt-3 text-sm sm:text-base text-slate-300 max-w-3xl mx-auto leading-relaxed">
-            Explorá salidas grupales exclusivas con coordinador TravelApp y paquetes de operadores internacionales verificados.
-            Tarifas transparentes publicadas en su moneda oficial y beneficios exclusivos para socios del Club Rewards.
-          </p>
+            <div className="flex flex-wrap md:flex-nowrap items-center gap-1.5 w-full md:w-auto">
+              <select
+                value={selectedDestinationFilter}
+                onChange={(e) => setSelectedDestinationFilter(e.target.value)}
+                className="bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 rounded-xl px-3 py-2.5 outline-none cursor-pointer w-full md:w-auto"
+              >
+                <option value="all">Todos los Destinos</option>
+                {availableDestinations.map((dest) => (
+                  <option key={dest} value={dest}>{dest}</option>
+                ))}
+              </select>
 
-          {/* Barra de Búsqueda Rápida */}
-          <div className="mt-8 max-w-4xl mx-auto bg-white p-2.5 sm:p-3 rounded-2xl shadow-2xl border border-slate-200 text-slate-800">
-            <div className="flex flex-col md:flex-row items-center gap-2">
-              <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-xl w-full">
-                <Search className="h-5 w-5 text-slate-400 shrink-0" />
-                <input
-                  type="text"
-                  placeholder="¿A dónde querés viajar? (ej. Cancún, Bariloche, Europa, Brasil...)"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="bg-transparent border-none text-xs sm:text-sm font-semibold outline-none w-full placeholder:text-slate-400 text-slate-800"
-                />
-                {searchQuery && (
-                  <button onClick={() => setSearchQuery("")} className="text-slate-400 hover:text-slate-600">
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
+              <select
+                value={selectedDeparture}
+                onChange={(e) => setSelectedDeparture(e.target.value)}
+                className="bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 rounded-xl px-3 py-2.5 outline-none cursor-pointer w-full md:w-auto"
+              >
+                <option value="all">Todas las Salidas</option>
+                {availableDepartures.map((dep) => (
+                  <option key={dep} value={dep}>{dep}</option>
+                ))}
+              </select>
 
-              {/* Selector de Modalidad y Región */}
-              <div className="flex items-center gap-1.5 w-full md:w-auto">
-                <select
-                  value={selectedModality}
-                  onChange={(e) => setSelectedModality(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 rounded-xl px-3 py-2.5 outline-none cursor-pointer w-full md:w-auto"
-                >
-                  <option value="all">Todas las Modalidades</option>
-                  <option value="grupal">👥 Salidas Grupales Acompañadas</option>
-                  <option value="individual">👤 Viajes Individuales</option>
-                </select>
-
-                <select
-                  value={selectedRegion}
-                  onChange={(e) => setSelectedRegion(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 rounded-xl px-3 py-2.5 outline-none cursor-pointer w-full md:w-auto"
-                >
-                  <option value="all">Todas las Regiones</option>
-                  <option value="Nacional">Destinos Nacionales</option>
-                  <option value="Internacional">Destinos Internacionales</option>
-                </select>
-              </div>
+              <select
+                value={selectedTripKind}
+                onChange={(e) => setSelectedTripKind(e.target.value)}
+                className="bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 rounded-xl px-3 py-2.5 outline-none cursor-pointer w-full md:w-auto"
+              >
+                <option value="all">Tipo de Viaje</option>
+                <option value="Paquete Propio">Paquete Propio</option>
+                <option value="Paquete Operador">Paquete Operador</option>
+                <option value="Salida Grupal">Salida Grupal</option>
+                <option value="Crucero">Crucero</option>
+                <option value="Escapada">Escapada</option>
+                <option value="Solo Alojamiento">Solo Alojamiento</option>
+              </select>
             </div>
           </div>
+        </div>
+      </OtaHeroSlider>
+
+      {/* Botonera superior de Regiones + Botones Rápidos (CMS) */}
+      <section id="catalogo-marketplace" className="bg-white border-b border-slate-200 py-4 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedRegion("all")}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer ${
+                selectedRegion === "all"
+                  ? "bg-[#0A2A5B] text-white border-[#0A2A5B] shadow-xs"
+                  : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+              }`}
+            >
+              Todas las Regiones
+            </button>
+            {MARKETPLACE_REGIONS.map((reg) => (
+              <button
+                key={reg}
+                type="button"
+                onClick={() => setSelectedRegion(selectedRegion === reg ? "all" : reg)}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer ${
+                  selectedRegion === reg
+                    ? "bg-[#0A2A5B] text-white border-[#0A2A5B] shadow-xs"
+                    : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                {reg}
+              </button>
+            ))}
+          </div>
+
+          {customQuickButtons.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1">
+                Destacados:
+              </span>
+              {customQuickButtons.map((btn) => {
+                const isSelected = selectedQuickButton === btn.keyword;
+                return (
+                  <button
+                    key={btn.id}
+                    type="button"
+                    onClick={() => setSelectedQuickButton(isSelected ? "all" : btn.keyword)}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer ${
+                      isSelected
+                        ? "bg-[#FF5A19] text-white border-[#FF5A19] shadow-xs"
+                        : "bg-orange-50 text-[#FF5A19] border-orange-200 hover:bg-orange-100"
+                    }`}
+                  >
+                    {btn.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
 
@@ -332,6 +510,19 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
                 🛡️ Operadores Verificados
               </button>
             </div>
+
+            {/* Pill: Transporte */}
+            <select
+              value={selectedTransport}
+              onChange={(e) => setSelectedTransport(e.target.value)}
+              className="bg-white border border-slate-200 text-xs font-bold text-slate-700 rounded-xl px-3 py-2 outline-none cursor-pointer shadow-xs"
+            >
+              <option value="all">Todo Transporte</option>
+              <option value="Avión">Avión</option>
+              <option value="Bus">Bus</option>
+              <option value="Barco">Barco</option>
+              <option value="Tren">Tren</option>
+            </select>
 
             {/* Pill: Moneda */}
             <select

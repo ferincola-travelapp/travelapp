@@ -100,16 +100,24 @@ export function OtaFooter({ config }: OtaFooterProps) {
   const phone = config?.phone || "0810-220-0018";
   const email = config?.email || "hola@travelapp.ar";
 
-  // Redes
-  const showFb = config?.showFacebook !== false;
-  const showIg = config?.showInstagram !== false;
-  const showYt = config?.showYoutube !== false;
-  const showTt = config?.showTiktok !== false;
-  const showLi = config?.showLinkedin !== false;
+  // Redes: solo se muestran si tienen URL cargada en el CMS
+  const fbUrl = config?.facebookUrl?.trim() || "";
+  const igUrl = config?.instagramUrl?.trim() || "";
+  const ytUrl = config?.youtubeUrl?.trim() || "";
+  const ttUrl = config?.tiktokUrl?.trim() || "";
+  const liUrl = config?.linkedinUrl?.trim() || "";
 
-  const trustBadges = config?.trustBadges && config.trustBadges.length > 0
-    ? config.trustBadges.filter(b => b.active)
-    : DEFAULT_TRUST_BADGES;
+  const showFb = config?.showFacebook !== false && fbUrl.length > 0;
+  const showIg = config?.showInstagram !== false && igUrl.length > 0;
+  const showYt = config?.showYoutube !== false && ytUrl.length > 0;
+  const showTt = config?.showTiktok !== false && ttUrl.length > 0;
+  const showLi = config?.showLinkedin !== false && liUrl.length > 0;
+  const hasAnySocial = showFb || showIg || showYt || showTt || showLi;
+
+  // Distintivos de confianza: ocultos si no tienen código o imagen cargada
+  const trustBadges = (config?.trustBadges || []).filter(
+    (b) => b.active !== false && Boolean(b.codeOrImageUrl && b.codeOrImageUrl.trim().length > 0)
+  );
 
   // Modales
   const [legalModal, setLegalModal] = useState<{ title: string; content: string } | null>(null);
@@ -154,102 +162,131 @@ export function OtaFooter({ config }: OtaFooterProps) {
               Plataforma integral de turismo, paquetes de operadores mayoristas y movilidad urbana de Argentina.
             </p>
 
-            {/* Espacio para Distintivos de Confianza (ARCA, Bases de Datos, ATAVyT, FAEVYT, DNAV, IATA) */}
-            <div className="pt-2">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block mb-2.5">
-                Certificaciones & Distintivos de Confianza
-              </span>
-              
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {trustBadges.map((badge) => (
-                  <div
-                    key={badge.id}
-                    className="p-2 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center gap-2 hover:border-slate-700 transition-colors"
-                  >
-                    <div className="w-5 h-5 rounded-md bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0">
-                      <FileCheck className="w-3.5 h-3.5" />
-                    </div>
-                    <span className="text-[10px] font-bold text-slate-300 leading-tight">
-                      {badge.name}
-                    </span>
-                  </div>
-                ))}
+            {/* Espacio para Distintivos de Confianza: solo visible si hay códigos/imágenes cargados */}
+            {trustBadges.length > 0 && (
+              <div className="pt-2">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block mb-2.5">
+                  Certificaciones & Distintivos de Confianza
+                </span>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {trustBadges.map((badge) => {
+                    const val = (badge.codeOrImageUrl || "").trim();
+                    const isImage =
+                      val.startsWith("http://") ||
+                      val.startsWith("https://") ||
+                      val.startsWith("/") ||
+                      val.startsWith("data:image");
+                    return (
+                      <div
+                        key={badge.id}
+                        className="p-2 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center gap-2 hover:border-slate-700 transition-colors"
+                      >
+                        {isImage ? (
+                          <img
+                            src={val}
+                            alt={badge.name}
+                            className="h-7 w-auto max-w-[60px] object-contain rounded bg-white p-0.5 shrink-0"
+                          />
+                        ) : (
+                          <div className="w-5 h-5 rounded-md bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0">
+                            <FileCheck className="w-3.5 h-3.5" />
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <span className="block text-[10px] font-bold text-slate-300 leading-tight truncate">
+                            {badge.name}
+                          </span>
+                          {!isImage && (
+                            <span className="block text-[9px] font-mono text-slate-400 truncate">
+                              {val}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* COLUMNA 2 (CENTRO): SEGUINOS EN NUESTRAS REDES SOCIALES */}
           <div className="lg:col-span-4 flex flex-col items-center justify-center text-center space-y-4 py-4 lg:py-0">
-            <h4 className="text-xs font-black uppercase tracking-wider text-slate-300">
-              Seguinos en nuestras redes sociales
-            </h4>
+            {hasAnySocial && (
+              <>
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-300">
+                  Seguinos en nuestras redes sociales
+                </h4>
 
-            <p className="text-xs text-slate-400 max-w-xs">
-              Enterate antes que nadie de promociones relámpago, cupos de temporada y novedades del ecosistema.
-            </p>
+                <p className="text-xs text-slate-400 max-w-xs">
+                  Enterate antes que nadie de promociones relámpago, cupos de temporada y novedades del ecosistema.
+                </p>
 
-            {/* Íconos Oficiales Activables desde CMS */}
-            <div className="flex items-center gap-3 pt-1">
-              {showFb && (
-                <a
-                  href={config?.facebookUrl || "https://facebook.com/travelapp.ar"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Facebook"
-                  className="w-10 h-10 rounded-2xl bg-slate-900 hover:bg-blue-600 text-slate-300 hover:text-white flex items-center justify-center transition-all border border-slate-800 hover:border-blue-500 shadow-md cursor-pointer"
-                >
-                  <FacebookIcon className="w-4 h-4" />
-                </a>
-              )}
+                {/* Íconos Oficiales Activables desde CMS (solo con URL cargada) */}
+                <div className="flex items-center gap-3 pt-1">
+                  {showFb && (
+                    <a
+                      href={fbUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Facebook"
+                      className="w-10 h-10 rounded-2xl bg-slate-900 hover:bg-blue-600 text-slate-300 hover:text-white flex items-center justify-center transition-all border border-slate-800 hover:border-blue-500 shadow-md cursor-pointer"
+                    >
+                      <FacebookIcon className="w-4 h-4" />
+                    </a>
+                  )}
 
-              {showIg && (
-                <a
-                  href={config?.instagramUrl || "https://instagram.com/travelapp.ar"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Instagram"
-                  className="w-10 h-10 rounded-2xl bg-slate-900 hover:bg-pink-600 text-slate-300 hover:text-white flex items-center justify-center transition-all border border-slate-800 hover:border-pink-500 shadow-md cursor-pointer"
-                >
-                  <InstagramIcon className="w-4 h-4" />
-                </a>
-              )}
+                  {showIg && (
+                    <a
+                      href={igUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Instagram"
+                      className="w-10 h-10 rounded-2xl bg-slate-900 hover:bg-pink-600 text-slate-300 hover:text-white flex items-center justify-center transition-all border border-slate-800 hover:border-pink-500 shadow-md cursor-pointer"
+                    >
+                      <InstagramIcon className="w-4 h-4" />
+                    </a>
+                  )}
 
-              {showYt && (
-                <a
-                  href={config?.youtubeUrl || "https://youtube.com/@travelapp"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="YouTube"
-                  className="w-10 h-10 rounded-2xl bg-slate-900 hover:bg-red-600 text-slate-300 hover:text-white flex items-center justify-center transition-all border border-slate-800 hover:border-red-500 shadow-md cursor-pointer"
-                >
-                  <YoutubeIcon className="w-4 h-4" />
-                </a>
-              )}
+                  {showYt && (
+                    <a
+                      href={ytUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="YouTube"
+                      className="w-10 h-10 rounded-2xl bg-slate-900 hover:bg-red-600 text-slate-300 hover:text-white flex items-center justify-center transition-all border border-slate-800 hover:border-red-500 shadow-md cursor-pointer"
+                    >
+                      <YoutubeIcon className="w-4 h-4" />
+                    </a>
+                  )}
 
-              {showTt && (
-                <a
-                  href={config?.tiktokUrl || "https://tiktok.com/@travelapp.ar"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="TikTok"
-                  className="w-10 h-10 rounded-2xl bg-slate-900 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-all border border-slate-800 hover:border-slate-600 shadow-md cursor-pointer"
-                >
-                  <TiktokIcon className="w-4 h-4" />
-                </a>
-              )}
+                  {showTt && (
+                    <a
+                      href={ttUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="TikTok"
+                      className="w-10 h-10 rounded-2xl bg-slate-900 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-all border border-slate-800 hover:border-slate-600 shadow-md cursor-pointer"
+                    >
+                      <TiktokIcon className="w-4 h-4" />
+                    </a>
+                  )}
 
-              {showLi && (
-                <a
-                  href={config?.linkedinUrl || "https://linkedin.com/company/travelapp-ar"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="LinkedIn"
-                  className="w-10 h-10 rounded-2xl bg-slate-900 hover:bg-blue-700 text-slate-300 hover:text-white flex items-center justify-center transition-all border border-slate-800 hover:border-blue-600 shadow-md cursor-pointer"
-                >
-                  <LinkedinIcon className="w-4 h-4" />
-                </a>
-              )}
-            </div>
+                  {showLi && (
+                    <a
+                      href={liUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="LinkedIn"
+                      className="w-10 h-10 rounded-2xl bg-slate-900 hover:bg-blue-700 text-slate-300 hover:text-white flex items-center justify-center transition-all border border-slate-800 hover:border-blue-600 shadow-md cursor-pointer"
+                    >
+                      <LinkedinIcon className="w-4 h-4" />
+                    </a>
+                  )}
+                </div>
+              </>
+            )}
 
             <div className="pt-2">
               <span className="text-[11px] font-bold text-slate-500">

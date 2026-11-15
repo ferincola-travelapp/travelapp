@@ -1,14 +1,18 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { 
   FileText, Save, Image, Link as LinkIcon, Shield, Sparkles, 
   Trash2, Plus, ArrowRight, Eye, CheckCircle2, AlertCircle, RefreshCw,
-  Upload, X, HelpCircle, Users, Compass, Bot, Mountain, Phone, Bus
+  Upload, X, HelpCircle, Users, Compass, Bot, Mountain, Phone, Bus,
+  ArrowLeft, Bell, Globe, LogOut, Menu, ExternalLink
 } from 'lucide-react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@/lib/firebase';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Helper function to compress images using Canvas to bypass Firestore 1MB limits
 const compressImage = (file: File, maxWidth = 800, maxHeight = 600, quality = 0.7): Promise<string> => {
@@ -901,15 +905,19 @@ const DEFAULT_LUNAVIAJERA_CMS_DATA = {
   ]
 };
 
-type ActiveTab = 'hero' | 'servicios' | 'conductores' | 'rewards' | 'faq' | 'legales' | 'slider' | 'ofertas' | 'social' | 'eco_hero' | 'eco_promo' | 'eco_unidades' | 'eco_quienes' | 'eco_stats' | 'eco_apps' | 'eco_trabaja' | 'eco_legales' | 'rew_slider' | 'rew_beneficios' | 'rew_social' | 'rew_negocio' | 'rew_legales' | 'app_cards' | 'app_rewards' | 'afi_hero' | 'afi_cobro' | 'afi_faq' | 'afi_footer' | 'exp_pushpop' | 'exp_floating' | 'exp_quienes' | 'exp_marketplace' | 'exp_buscador' | 'exp_metrics' | 'exp_testimonials' | 'lv_hero' | 'lv_cards' | 'lv_galeria' | 'lv_catalogo' | 'lv_travis' | 'lv_quienes' | 'lv_contacto' | 'bus_cms';
+type ActiveTab = 'hero' | 'servicios' | 'conductores' | 'rewards' | 'faq' | 'legales' | 'slider' | 'ofertas' | 'social' | 'eco_hero' | 'eco_promo' | 'eco_unidades' | 'eco_quienes' | 'eco_stats' | 'eco_apps' | 'eco_trabaja' | 'eco_legales' | 'eco_marketplace' | 'rew_slider' | 'rew_beneficios' | 'rew_social' | 'rew_negocio' | 'rew_legales' | 'app_cards' | 'app_rewards' | 'afi_hero' | 'afi_cobro' | 'afi_faq' | 'afi_footer' | 'exp_pushpop' | 'exp_floating' | 'exp_quienes' | 'exp_marketplace' | 'exp_buscador' | 'exp_metrics' | 'exp_testimonials' | 'lv_hero' | 'lv_cards' | 'lv_galeria' | 'lv_catalogo' | 'lv_travis' | 'lv_quienes' | 'lv_contacto' | 'bus_cms';
 
 export default function CMSPage() {
-  const [selectedLanding, setSelectedLanding] = useState<'travelcab' | 'experience' | 'ecosistema' | 'rewards' | 'app-inicio' | 'afiliados' | 'lunaviajera'>('travelcab');
-  const [activeTab, setActiveTab] = useState<ActiveTab>('hero');
+  const { user, logout } = useAuth();
+  const router = useRouter();
+  const [selectedLanding, setSelectedLanding] = useState<'travelcab' | 'experience' | 'ecosistema' | 'rewards' | 'app-inicio' | 'afiliados' | 'lunaviajera'>('ecosistema');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('eco_hero');
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [lang, setLang] = useState<'ES' | 'EN' | 'PT'>('ES');
 
   // Detectar parámetro ?landing= en la URL
   useEffect(() => {
@@ -1626,142 +1634,217 @@ export default function CMSPage() {
 
   if (loading) {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center bg-slate-50 p-12 text-slate-500">
-        <RefreshCw className="h-8 w-8 animate-spin text-tech-blue mb-3" />
+      <div
+        className="flex min-h-screen w-full flex-col items-center justify-center bg-gradient-to-br from-white via-[#F5F7FA] to-[#ECEFF4] p-12 text-slate-500"
+        style={{ fontFamily: "'Quicksand', sans-serif" }}
+      >
+        <RefreshCw className="h-8 w-8 animate-spin text-[#0a2a5b] mb-3" />
         <p className="text-sm font-semibold tracking-wide">Cargando base de datos del CMS...</p>
       </div>
     );
   }
 
+  const CMS_SITES: {
+    id: 'ecosistema' | 'travelcab' | 'experience' | 'lunaviajera' | 'rewards' | 'afiliados' | 'app-inicio';
+    label: string;
+    subtitle: string;
+    previewUrl?: string;
+  }[] = [
+    { id: 'ecosistema', label: 'Web Principal (travelapp.ar)', subtitle: 'Web + Marketplace + Buses', previewUrl: '/landing/ecosistema' },
+    { id: 'travelcab', label: 'TravelCab', subtitle: 'Movilidad & Conductores', previewUrl: '/landing/travelcab' },
+    { id: 'experience', label: 'TravelApp Experience', subtitle: 'Turismo & Excursiones', previewUrl: '/landing/experience' },
+    { id: 'lunaviajera', label: 'Luna Viajera', subtitle: 'Valles & Yungas', previewUrl: '/landing/lunaviajera' },
+    { id: 'rewards', label: 'TravelApp Rewards', subtitle: 'Puntos & Canjes', previewUrl: '/landing/rewards' },
+    { id: 'afiliados', label: 'Embajadores & Afiliados', subtitle: 'Programa de Referidos', previewUrl: '/landing/afiliados' },
+    { id: 'app-inicio', label: 'App Móvil (Tarjetas)', subtitle: 'Novedades & Beneficios App' },
+  ];
+
+  const activeSite = CMS_SITES.find((s) => s.id === selectedLanding) || CMS_SITES[0];
+  const displayName = user?.displayName || (user?.email ? user.email.split('@')[0] : 'Operador');
+
+  const handleLogout = async () => {
+    await logout();
+    router.replace('/admin/login');
+  };
+
   return (
-    <div className="flex h-full w-full flex-col bg-slate-50 p-6 overflow-y-auto">
-      
-      {/* HEADER DEL CMS */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-tech-blue flex items-center gap-2">
-                      <FileText className="h-7 w-7 text-tech-blue" />
-            Editor CMS — {selectedLanding === 'travelcab' ? 'TravelCab Landing' : selectedLanding === 'experience' ? 'TravelApp Experience' : selectedLanding === 'rewards' ? '🎁 TravelApp Rewards' : selectedLanding === 'app-inicio' ? '📱 App Cliente (Tarjetas)' : '🌐 Ecosistema TravelApp'}
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Administra visualmente y en tiempo real el contenido de tu Ecosistema sin modificar código.
-          </p>
-        </div>
+    <div
+      className="min-h-screen flex bg-gradient-to-br from-white via-[#F5F7FA] to-[#ECEFF4] text-slate-800"
+      style={{ fontFamily: "'Quicksand', sans-serif" }}
+    >
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/30 z-30 lg:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
 
-        <div className="flex items-center gap-3">
-          {selectedLanding !== 'app-inicio' && (
-            <a
-              href={selectedLanding === 'travelcab' ? "/landing/travelcab" : selectedLanding === 'experience' ? "/landing/experience" : selectedLanding === 'lunaviajera' ? "/landing/lunaviajera" : "/landing/ecosistema"}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50 transition-all"
+      {/* Sidebar Minimalista CMS */}
+      <aside
+        className={`fixed lg:sticky top-0 left-0 z-40 h-screen w-64 shrink-0 bg-white/95 backdrop-blur-md border-r border-slate-200/80 flex flex-col justify-between p-4 transition-transform lg:translate-x-0 ${
+          mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="space-y-5 overflow-y-auto pr-1">
+          <div className="flex items-center justify-between px-2 pt-1">
+            <img src="/assets/travelapp_original.svg" alt="TravelApp" className="h-7 w-auto" />
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(false)}
+              className="lg:hidden p-1 text-slate-500 hover:text-slate-800"
             >
-              <Eye className="h-4 w-4" />
-              Previsualizar Landing
-            </a>
-          )}
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-tech-blue px-5 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:brightness-110 active:scale-95 disabled:opacity-50"
-            style={{ backgroundColor: '#ff6b00' }}
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="px-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              CMS Web · Sitios & Landings
+            </p>
+          </div>
+
+          <nav className="space-y-1">
+            {CMS_SITES.map((site) => {
+              const active = selectedLanding === site.id;
+              return (
+                <button
+                  key={site.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedLanding(site.id);
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full text-left px-3.5 py-2.5 rounded-xl transition cursor-pointer ${
+                    active
+                      ? 'bg-[#0a2a5b] text-white'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-[#0a2a5b]'
+                  }`}
+                >
+                  <div className="text-xs font-bold leading-tight">{site.label}</div>
+                  <div className={`text-[10px] mt-0.5 ${active ? 'text-white/75' : 'text-slate-400'}`}>
+                    {site.subtitle}
+                  </div>
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+        <div className="pt-4 border-t border-slate-200/80 space-y-1">
+          <Link
+            href="/travelapp"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:text-[#0a2a5b] hover:bg-slate-100 transition"
           >
-            {saving ? (
-              <>
-                <RefreshCw className="h-4 w-4 animate-spin" /> Guardando...
-              </>
-            ) : (
-              <>
-                <Save className="h-4 w-4" /> Guardar Cambios
-              </>
+            <Compass className="w-4 h-4" />
+            <span>Módulo TravelApp</span>
+          </Link>
+          <Link
+            href="/"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-slate-500 hover:text-[#0a2a5b] hover:bg-slate-100 transition"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Volver a Concorde 360</span>
+          </Link>
+        </div>
+      </aside>
+
+      {/* Contenedor Principal */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className="sticky top-0 z-20 bg-white/85 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              className="lg:hidden p-1.5 rounded-lg text-slate-600 hover:bg-slate-100"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <div className="truncate">
+              <span className="text-sm font-bold text-[#0a2a5b] truncate">
+                CMS Web · {activeSite.label}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3">
+            {activeSite.previewUrl && (
+              <a
+                href={activeSite.previewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-[#0a2a5b] hover:bg-slate-50 transition"
+              >
+                <Eye className="h-3.5 w-3.5" />
+                <span>Ver Web</span>
+                <ExternalLink className="h-3 w-3" />
+              </a>
             )}
-          </button>
-        </div>
-      </div>
+            <Link
+              href="/marketplace"
+              target="_blank"
+              className="hidden md:inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-[#0a2a5b] hover:bg-slate-50 transition"
+            >
+              Marketplace ↗
+            </Link>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#0a2a5b] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#071f45] transition cursor-pointer disabled:opacity-50"
+            >
+              {saving ? (
+                <>
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Guardando...
+                </>
+              ) : (
+                <>
+                  <Save className="h-3.5 w-3.5" /> Guardar Cambios
+                </>
+              )}
+            </button>
 
-      {/* SELECTOR DE LANDING */}
-      <div className="mb-6 bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <span className="text-xs font-black text-slate-400 uppercase tracking-wider block">Seleccionar Landing a Editar</span>
-          <span className="text-sm font-bold text-slate-700">Elige cuál de las landing pages del ecosistema deseas modificar</span>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <button
-            onClick={() => setSelectedLanding('travelcab')}
-            className={`px-4 py-2 rounded-lg text-sm font-bold border transition-all ${
-              selectedLanding === 'travelcab' 
-                ? 'bg-tech-blue border-tech-blue text-white shadow-sm' 
-                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            🚗 TravelCab
-          </button>
-          <button
-            onClick={() => setSelectedLanding('experience')}
-            className={`px-4 py-2 rounded-lg text-sm font-bold border transition-all ${
-              selectedLanding === 'experience' 
-                ? 'bg-tech-blue border-tech-blue text-white shadow-sm' 
-                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            🌴 TravelApp Experience
-          </button>
-          <button
-            onClick={() => setSelectedLanding('lunaviajera')}
-            className={`px-4 py-2 rounded-lg text-sm font-bold border transition-all ${
-              selectedLanding === 'lunaviajera' 
-                ? 'bg-[#0A2E20] border-[#DFB15B] text-[#DFB15B] shadow-sm' 
-                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            🌙 Luna Viajera
-          </button>
-          <button
-            onClick={() => setSelectedLanding('rewards')}
-            className={`px-4 py-2 rounded-lg text-sm font-bold border transition-all ${
-              selectedLanding === 'rewards' 
-                ? 'bg-violet-600 border-violet-600 text-white shadow-sm' 
-                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            🎁 TravelApp Rewards
-          </button>
-          <button
-            onClick={() => setSelectedLanding('ecosistema')}
-            className={`px-4 py-2 rounded-lg text-sm font-bold border transition-all ${
-              selectedLanding === 'ecosistema' 
-                ? 'bg-tech-blue border-tech-blue text-white shadow-sm' 
-                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            🌐 Ecosistema TravelApp
-          </button>
-          <button
-            onClick={() => setSelectedLanding('afiliados')}
-            className={`px-4 py-2 rounded-lg text-sm font-bold border transition-all ${
-              selectedLanding === 'afiliados' 
-                ? 'bg-purple-600 border-purple-600 text-white shadow-sm' 
-                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            ⭐ Embajadores & Afiliados
-          </button>
-          <button
-            onClick={() => setSelectedLanding('app-inicio')}
-            className={`px-4 py-2 rounded-lg text-sm font-bold border transition-all ${
-              selectedLanding === 'app-inicio' 
-                ? 'bg-amber-600 border-amber-600 text-white shadow-sm' 
-                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            📱 App Tarjetas
-          </button>
-        </div>
-      </div>
+            <button
+              type="button"
+              aria-label="Alertas"
+              className="hidden sm:inline-flex p-2 rounded-lg text-slate-600 hover:text-[#0a2a5b] hover:bg-slate-100 transition cursor-pointer"
+            >
+              <Bell className="w-4 h-4" />
+            </button>
 
+            <div className="hidden sm:flex items-center gap-1 border border-slate-200 rounded-lg px-2 py-1 bg-white">
+              <Globe className="w-3.5 h-3.5 text-[#0a2a5b]" />
+              <select
+                value={lang}
+                onChange={(e) => setLang(e.target.value as 'ES' | 'EN' | 'PT')}
+                className="text-xs font-bold text-[#0a2a5b] bg-transparent outline-none cursor-pointer"
+              >
+                <option value="ES">ES</option>
+                <option value="EN">EN</option>
+                <option value="PT">PT</option>
+              </select>
+            </div>
+
+            <div className="hidden lg:flex items-center gap-2 border-l border-slate-200 pl-3">
+              <div className="text-right leading-tight">
+                <p className="text-xs font-bold text-[#0a2a5b]">{displayName}</p>
+                <p className="text-[10px] text-slate-400">CMS Admin</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleLogout}
+                title="Cerrar sesión"
+                className="p-2 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 transition cursor-pointer"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-6xl w-full mx-auto space-y-5">
       {/* MENSAJES DE ESTADO */}
       {statusMsg && (
-        <div className={`mb-6 rounded-xl border p-4 flex items-start gap-3 shadow-sm animate-fadeIn ${
+        <div className={`rounded-xl border p-4 flex items-start gap-3 shadow-sm animate-fadeIn ${
           statusMsg.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'
         }`}>
           {statusMsg.type === 'success' ? (
@@ -1777,7 +1860,8 @@ export default function CMSPage() {
       )}
 
       {/* PESTAÑAS DE EDICIÓN */}
-      <div className="flex border-b border-slate-200 overflow-x-auto gap-2 bg-white px-4 pt-3 rounded-t-xl">
+      <div>
+      <div className="flex border border-slate-200 border-b-0 overflow-x-auto gap-1.5 bg-white/90 px-4 pt-3 rounded-t-2xl">
         {(selectedLanding === 'travelcab' 
           ? ['hero', 'servicios', 'conductores', 'rewards', 'faq', 'legales'] 
           : selectedLanding === 'experience'
@@ -1790,7 +1874,7 @@ export default function CMSPage() {
           ? ['app_cards', 'app_rewards']
           : selectedLanding === 'afiliados'
           ? ['afi_hero', 'afi_cobro', 'afi_faq', 'afi_footer']
-          : ['eco_hero', 'eco_promo', 'eco_unidades', 'bus_cms', 'eco_quienes', 'eco_stats', 'eco_apps', 'eco_trabaja', 'eco_legales']
+          : ['eco_hero', 'eco_promo', 'eco_unidades', 'bus_cms', 'eco_quienes', 'eco_stats', 'eco_apps', 'eco_trabaja', 'eco_legales', 'eco_marketplace']
         ).map((tab) => (
           <button
             key={tab}
@@ -1832,6 +1916,7 @@ export default function CMSPage() {
             {tab === 'eco_apps' && '5. App Stores'}
             {tab === 'eco_trabaja' && '6. Trabaja con Nosotros'}
             {tab === 'eco_legales' && '7. Legal & Redes'}
+            {tab === 'eco_marketplace' && '8. Marketplace (Slider & Botones)'}
             {tab === 'app_cards' && '📱 Tarjetas Novedades App'}
             {tab === 'app_rewards' && '🎁 Beneficios Rewards App'}
             {tab === 'afi_hero' && '⭐ 1. Hero & Propuesta de Valor'}
@@ -4063,18 +4148,46 @@ export default function CMSPage() {
         {selectedLanding === 'ecosistema' && activeTab === 'eco_apps' && data && (
           <div className="space-y-6">
             <div className="border-b border-slate-100 pb-4">
-              <h3 className="text-base font-extrabold text-slate-800">Sección Descarga de la App</h3>
-              <p className="text-xs text-slate-400 mt-1">Dejá las URLs vacías para ocultar la sección de app stores en la landing.</p>
+              <h3 className="text-base font-extrabold text-slate-800">Sección Descarga de la App (Opcional)</h3>
+              <p className="text-xs text-slate-400 mt-1">Podés ocultar toda la sección o dejar los logos de Play Store / App Store opcionales mientras no tengan URL.</p>
             </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <label className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3.5 cursor-pointer">
+                <span className="text-xs font-bold text-slate-700">Mostrar sección App en Web</span>
+                <input
+                  type="checkbox"
+                  checked={data.apps?.enabled !== false}
+                  onChange={(e) => updateField('apps', 'enabled', e.target.checked)}
+                  className="h-4 w-4 accent-[#0a2a5b]"
+                />
+              </label>
+              <label className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3.5 cursor-pointer">
+                <span className="text-xs font-bold text-slate-700">Mostrar logo Google Play</span>
+                <input
+                  type="checkbox"
+                  checked={data.apps?.showPlayStore !== false}
+                  onChange={(e) => updateField('apps', 'showPlayStore', e.target.checked)}
+                  className="h-4 w-4 accent-[#0a2a5b]"
+                />
+              </label>
+              <label className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3.5 cursor-pointer">
+                <span className="text-xs font-bold text-slate-700">Mostrar logo App Store</span>
+                <input
+                  type="checkbox"
+                  checked={data.apps?.showAppStore !== false}
+                  onChange={(e) => updateField('apps', 'showAppStore', e.target.checked)}
+                  className="h-4 w-4 accent-[#0a2a5b]"
+                />
+              </label>
+            </div>
+
             <CMSInput label="Título de la Sección" value={data.apps?.titulo || ''} onChange={(val) => updateField('apps', 'titulo', val)} />
             <CMSTextarea label="Subtítulo / Descripción" value={data.apps?.subtitulo || ''} onChange={(val) => updateField('apps', 'subtitulo', val)} rows={2} />
             <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 p-5 space-y-4">
-              <p className="text-xs font-black text-slate-500 uppercase tracking-wider">URLs de Descarga</p>
+              <p className="text-xs font-black text-slate-500 uppercase tracking-wider">URLs de Descarga (si están vacías, el logo permanece oculto)</p>
               <CMSInput label="Google Play Store URL" value={data.apps?.playStoreUrl || ''} onChange={(val) => updateField('apps', 'playStoreUrl', val)} placeholder="https://play.google.com/store/apps/details?id=ar.travelapp" />
               <CMSInput label="Apple App Store URL" value={data.apps?.appStoreUrl || ''} onChange={(val) => updateField('apps', 'appStoreUrl', val)} placeholder="https://apps.apple.com/ar/app/travelapp/id..." />
-            </div>
-            <div className="rounded-xl bg-blue-50 border border-blue-200 p-3 text-xs text-blue-700">
-              <strong>Nota:</strong> Las URLs también están disponibles en el tab Hero para mostrar los badges directamente en el banner principal.
             </div>
           </div>
         )}
@@ -4154,20 +4267,224 @@ export default function CMSPage() {
 
             <div className="border-t border-slate-100 pt-4">
               <h3 className="text-sm font-extrabold text-slate-700 mb-2">Sellos Gubernamentales y de Registro</h3>
-              <p className="text-xs text-slate-400 mb-4">Configura el código QR de ARCA y el sello de Registro Nacional de Base de Datos para el pie de página de Ecosistema y Rewards (soporta código HTML/script o URL de imagen).</p>
+              <p className="text-xs text-slate-400 mb-4">Si un campo queda vacío, ese sello permanece oculto en el Footer. Cuando cargues el código o URL (ej: ARCA), aparece automáticamente.</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <CMSTextarea
                   label="Código o URL del Sello QR ARCA"
                   value={data.sellosLegales?.arcaQr || ''}
                   onChange={(val) => updateField('sellosLegales', 'arcaQr', val)}
-                  rows={3}
+                  rows={2}
                 />
                 <CMSTextarea
-                  label="Código o URL del Sello Registro Nacional de Base de Datos"
+                  label="Código o URL Sello Bases de Datos (Ley 25.326)"
                   value={data.sellosLegales?.baseDatosSello || ''}
                   onChange={(val) => updateField('sellosLegales', 'baseDatosSello', val)}
-                  rows={3}
+                  rows={2}
                 />
+                <CMSInput
+                  label="ATAVyT (Código o URL Logo)"
+                  value={data.sellosLegales?.atavyt || ''}
+                  onChange={(val) => updateField('sellosLegales', 'atavyt', val)}
+                />
+                <CMSInput
+                  label="FAEVYT (Código o URL Logo)"
+                  value={data.sellosLegales?.faevyt || ''}
+                  onChange={(val) => updateField('sellosLegales', 'faevyt', val)}
+                />
+                <CMSInput
+                  label="IATA Member (Código o URL Logo)"
+                  value={data.sellosLegales?.iata || ''}
+                  onChange={(val) => updateField('sellosLegales', 'iata', val)}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ECO: MARKETPLACE SLIDER & BOTONES RÁPIDOS */}
+        {selectedLanding === 'ecosistema' && activeTab === 'eco_marketplace' && data && (
+          <div className="space-y-6">
+            <div className="border-b border-slate-100 pb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-800">Slider de Cabecera & Botones de Marketplace</h3>
+                <p className="text-xs text-slate-400 mt-1">Configurá el slider principal de `/marketplace` y los botones destacados (ej: Verano 2027, Cupos Propios).</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <a href="/marketplace" target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-[#0a2a5b] hover:bg-slate-50">
+                  Ver Marketplace ↗
+                </a>
+                <a href="/travelapp" target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 rounded-lg bg-[#0a2a5b] text-white text-xs font-bold hover:bg-[#071f45]">
+                  Ir a Módulo TravelApp ↗
+                </a>
+              </div>
+            </div>
+
+            {/* Slider de cabecera */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-slate-700">Slides de Cabecera de Marketplace</h4>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setData((prev: any) => ({
+                      ...prev,
+                      marketplaceHeroSlider: [
+                        ...(prev.marketplaceHeroSlider || []),
+                        {
+                          id: `mkt-${Date.now()}`,
+                          mediaType: 'image',
+                          mediaUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1920&q=85',
+                          badge: '✦ DESTACADO',
+                          title: 'Nuevo Slide Marketplace',
+                          subtitle: 'Descripción comercial de la campaña o temporada.',
+                          ctaText: 'Ver Paquetes',
+                          ctaUrl: '#catalogo-marketplace',
+                        },
+                      ],
+                    }))
+                  }
+                  className="flex items-center gap-1 text-xs font-bold text-tech-blue border border-tech-blue/30 bg-tech-blue/5 px-3 py-1.5 rounded-lg hover:bg-tech-blue/10"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Agregar Slide
+                </button>
+              </div>
+
+              {(data.marketplaceHeroSlider || []).map((slide: any, idx: number) => (
+                <div key={slide.id || idx} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-[#0a2a5b]">Slide #{idx + 1}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setData((prev: any) => ({
+                          ...prev,
+                          marketplaceHeroSlider: (prev.marketplaceHeroSlider || []).filter((_: any, i: number) => i !== idx),
+                        }))
+                      }
+                      className="text-xs font-bold text-red-500 hover:text-red-700"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <CMSInput
+                      label="Título"
+                      value={slide.title || ''}
+                      onChange={(val) => {
+                        const updated = [...(data.marketplaceHeroSlider || [])];
+                        updated[idx] = { ...updated[idx], title: val };
+                        setData((prev: any) => ({ ...prev, marketplaceHeroSlider: updated }));
+                      }}
+                    />
+                    <CMSInput
+                      label="Badge Superior"
+                      value={slide.badge || ''}
+                      onChange={(val) => {
+                        const updated = [...(data.marketplaceHeroSlider || [])];
+                        updated[idx] = { ...updated[idx], badge: val };
+                        setData((prev: any) => ({ ...prev, marketplaceHeroSlider: updated }));
+                      }}
+                    />
+                    <CMSInput
+                      label="URL Imagen o Video (.mp4)"
+                      value={slide.mediaUrl || ''}
+                      onChange={(val) => {
+                        const updated = [...(data.marketplaceHeroSlider || [])];
+                        updated[idx] = {
+                          ...updated[idx],
+                          mediaUrl: val,
+                          mediaType: val.toLowerCase().endsWith('.mp4') ? 'video' : 'image',
+                        };
+                        setData((prev: any) => ({ ...prev, marketplaceHeroSlider: updated }));
+                      }}
+                    />
+                    <CMSInput
+                      label="Texto Botón CTA"
+                      value={slide.ctaText || ''}
+                      onChange={(val) => {
+                        const updated = [...(data.marketplaceHeroSlider || [])];
+                        updated[idx] = { ...updated[idx], ctaText: val };
+                        setData((prev: any) => ({ ...prev, marketplaceHeroSlider: updated }));
+                      }}
+                    />
+                  </div>
+                  <CMSTextarea
+                    label="Subtítulo"
+                    value={slide.subtitle || ''}
+                    onChange={(val) => {
+                      const updated = [...(data.marketplaceHeroSlider || [])];
+                      updated[idx] = { ...updated[idx], subtitle: val };
+                      setData((prev: any) => ({ ...prev, marketplaceHeroSlider: updated }));
+                    }}
+                    rows={2}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Botones rápidos / campañas */}
+            <div className="border-t border-slate-100 pt-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-700">Botones Rápidos de Campaña en Marketplace</h4>
+                  <p className="text-xs text-slate-400">Ej: Verano 2027, Cupos Propios, Escapadas. Filtran fichas que tengan esa etiqueta o palabra clave.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setData((prev: any) => ({
+                      ...prev,
+                      marketplaceQuickButtons: [
+                        ...(prev.marketplaceQuickButtons || []),
+                        { id: `btn-${Date.now()}`, label: 'Verano 2027', keyword: 'Verano 2027' },
+                      ],
+                    }))
+                  }
+                  className="flex items-center gap-1 text-xs font-bold text-tech-blue border border-tech-blue/30 bg-tech-blue/5 px-3 py-1.5 rounded-lg hover:bg-tech-blue/10"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Agregar Botón
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {(data.marketplaceQuickButtons || []).map((btn: any, idx: number) => (
+                  <div key={btn.id || idx} className="grid grid-cols-1 sm:grid-cols-5 gap-2 items-end bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <div className="sm:col-span-2">
+                      <CMSInput
+                        label="Texto del Botón"
+                        value={btn.label || ''}
+                        onChange={(val) => {
+                          const updated = [...(data.marketplaceQuickButtons || [])];
+                          updated[idx] = { ...updated[idx], label: val };
+                          setData((prev: any) => ({ ...prev, marketplaceQuickButtons: updated }));
+                        }}
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <CMSInput
+                        label="Palabra clave / Etiqueta de filtro"
+                        value={btn.keyword || ''}
+                        onChange={(val) => {
+                          const updated = [...(data.marketplaceQuickButtons || [])];
+                          updated[idx] = { ...updated[idx], keyword: val };
+                          setData((prev: any) => ({ ...prev, marketplaceQuickButtons: updated }));
+                        }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setData((prev: any) => ({
+                          ...prev,
+                          marketplaceQuickButtons: (prev.marketplaceQuickButtons || []).filter((_: any, i: number) => i !== idx),
+                        }))
+                      }
+                      className="p-2 text-red-500 hover:bg-red-50 rounded-lg justify-self-end"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -5998,6 +6315,9 @@ export default function CMSPage() {
           );
         })()}
 
+      </div>
+      </div>
+        </main>
       </div>
     </div>
   );

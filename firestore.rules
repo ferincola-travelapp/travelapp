@@ -319,5 +319,36 @@ service cloud.firestore {
       );
       allow update, delete: if isAdmin();
     }
+
+    // --- TRAVELAPP TURISMO EMISIVO & CRM ---
+    match /leads/{leadId} {
+      allow read, write: if isAdmin();
+    }
+    match /crm_leads/{leadId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+    match /scheduled_payments/{paymentId} {
+      allow read, write: if isAdmin();
+    }
+    match /tour_operators/{opId} {
+      allow read, write: if isAdmin();
+    }
+    match /providers/{provId} {
+      allow read, write: if isAdmin();
+    }
+    match /rooming_lists/{roomingId} {
+      allow read, write: if isAdmin();
+    }
+    match /travel_quotas/{quotaId} {
+      allow read, write: if isAdmin();
+    }
+    match /staff_users/{staffId} {
+      allow read: if isAuthenticated() && (resource.data.email == request.auth.token.email || isAdmin());
+      allow write: if isAdmin();
+    }
+    match /own_trip_quotes/{quoteId} {
+      allow read, write: if isAdmin();
+    }
   }
 }

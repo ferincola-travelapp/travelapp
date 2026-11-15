@@ -42,6 +42,10 @@ function AppShell({
     pathname.startsWith("/hr/") ||
     pathname === "/travelcab" ||
     pathname.startsWith("/travelcab/") ||
+    pathname === "/travelapp" ||
+    pathname.startsWith("/travelapp/") ||
+    pathname === "/cms" ||
+    pathname.startsWith("/cms/") ||
     pathname === "/login" ||
     pathname.startsWith("/login/") ||
     pathname === "/admin/login" ||

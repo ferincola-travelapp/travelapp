@@ -20,14 +20,20 @@ interface OtaAppSectionProps {
   showAppStore?: boolean;
   playStoreUrl?: string;
   appStoreUrl?: string;
+  titulo?: string;
+  subtitulo?: string;
 }
 
 export function OtaAppSection({
-  showPlayStore = true,
-  showAppStore = true,
-  playStoreUrl = "#",
-  appStoreUrl = "#",
+  showPlayStore = false,
+  showAppStore = false,
+  playStoreUrl = "",
+  appStoreUrl = "",
+  titulo,
+  subtitulo,
 }: OtaAppSectionProps) {
+  const hasPlayStore = Boolean(showPlayStore && playStoreUrl && playStoreUrl.trim() !== "" && playStoreUrl !== "#");
+  const hasAppStore = Boolean(showAppStore && appStoreUrl && appStoreUrl.trim() !== "" && appStoreUrl !== "#");
   return (
     <section id="app" className="py-14 sm:py-28 bg-white font-sans overflow-hidden border-t border-slate-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -41,11 +47,12 @@ export function OtaAppSection({
             </div>
 
             <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-slate-900 tracking-tight leading-tight">
-              Toda tu experiencia de viaje en la palma de tu mano
+              {titulo || "Toda tu experiencia de viaje en la palma de tu mano"}
             </h2>
 
             <p className="text-sm sm:text-lg text-slate-600 font-medium leading-relaxed">
-              Descargá la aplicación oficial de TravelApp. Pedí traslados en TravelCab en segundos, consultá tus vouchers de vuelo y hotel sin conexión a internet y canjeá tus puntos Rewards en comercios adheridos.
+              {subtitulo ||
+                "Descargá la aplicación oficial de TravelApp. Pedí traslados en TravelCab en segundos, consultá tus vouchers de vuelo y hotel sin conexión a internet y canjeá tus puntos Rewards en comercios adheridos."}
             </p>
 
             {/* Bullets de Valor */}
@@ -94,7 +101,7 @@ export function OtaAppSection({
             {/* Botones de Descarga y CTA de Registro */}
             <div className="pt-2 sm:pt-4 space-y-3 sm:space-y-4">
               <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-center sm:justify-start gap-2.5 sm:gap-3">
-                {showPlayStore && (
+                {hasPlayStore && (
                   <a
                     href={playStoreUrl}
                     target="_blank"
@@ -111,7 +118,7 @@ export function OtaAppSection({
                   </a>
                 )}
 
-                {showAppStore && (
+                {hasAppStore && (
                   <a
                     href={appStoreUrl}
                     target="_blank"
