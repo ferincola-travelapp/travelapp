@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Briefcase,
   Upload,
@@ -12,7 +12,7 @@ import {
   FileText,
   Send
 } from "lucide-react";
-import { collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, onSnapshot, query, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 export interface JobPosition {
@@ -35,6 +35,7 @@ const DEFAULT_POSITIONS: JobPosition[] = [
 
 export function OtaCareersSection({ positions = DEFAULT_POSITIONS }: OtaCareersSectionProps) {
   const [modalOpen, setModalOpen] = useState(false);
+  const [livePositions, setLivePositions] = useState<JobPosition[]>([]);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -46,22 +47,55 @@ export function OtaCareersSection({ positions = DEFAULT_POSITIONS }: OtaCareersS
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // Sincronización en vivo con puestos publicados desde el módulo RRHH (/hr -> job_openings)
+  useEffect(() => {
+    const q = query(collection(db, "job_openings"), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const list = snap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as any) }))
+          .filter((j) => j.active !== false && j.publishedOnWeb !== false)
+          .map((j) => ({
+            id: j.id,
+            title: j.title || "Puesto disponible",
+            area: j.area || "Operaciones",
+            type: j.modality || j.type || "Presencial / Híbrido",
+          }));
+        setLivePositions(list);
+      },
+      (err) => {
+        console.warn("Error leyendo job_openings:", err);
+      }
+    );
+    return () => unsub();
+  }, []);
+
+  const displayedPositions = livePositions.length > 0 ? livePositions : positions;
+
+  useEffect(() => {
+    if (displayedPositions.length > 0 && !displayedPositions.some((p) => p.title === formData.area)) {
+      setFormData((prev) => ({ ...prev, area: displayedPositions[0].title }));
+    }
+  }, [displayedPositions]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.phone) return;
 
     setSubmitting(true);
     try {
-      // Guardar en la colección de postulaciones de RRHH de Concorde 360
+      // Guardar en la colección de postulaciones de RRHH (/hr -> PostulacionesTab)
       await addDoc(collection(db, "job_applications"), {
         fullName: formData.name,
         email: formData.email,
         phone: formData.phone,
+        jobTitle: formData.area,
         positionTitle: formData.area,
         cvLink: formData.linkedinOrCvUrl || "",
         message: formData.message || "",
-        status: "Pendiente",
-        createdAt: new Date().toISOString(),
+        status: "Nueva",
+        createdAt: Date.now(),
         timestamp: Date.now()
       });
       setSubmitted(true);
@@ -76,12 +110,12 @@ export function OtaCareersSection({ positions = DEFAULT_POSITIONS }: OtaCareersS
   return (
     <section id="careers" className="py-14 sm:py-18 bg-slate-50 font-sans border-t border-slate-200/80">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200 shadow-sm flex flex-col lg:flex-row items-center justify-between gap-8">
+        <div className="bg-white rounded-sm p-6 sm:p-10 border border-slate-200 flex flex-col lg:flex-row items-center justify-between gap-8">
           
           {/* Lado Izquierdo: Textos y Puestos */}
           <div className="space-y-4 max-w-2xl text-center lg:text-left">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-tech-blue text-xs font-black uppercase tracking-wider">
-              <Briefcase className="w-3.5 h-3.5 text-[#FF5A19]" />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-sm bg-slate-100 border border-slate-200 text-[#0A2A5B] text-xs font-black uppercase tracking-wider">
+              <Briefcase className="w-3.5 h-3.5 text-[#0A2A5B]" />
               <span>Oportunidades Laborales</span>
             </div>
 
@@ -95,12 +129,12 @@ export function OtaCareersSection({ positions = DEFAULT_POSITIONS }: OtaCareersS
 
             {/* Chips de Puestos Disponibles */}
             <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2 pt-1">
-              {positions.map((pos, idx) => (
+              {displayedPositions.map((pos, idx) => (
                 <span
                   key={pos.id || idx}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  <span className="w-1.5 h-1.5 rounded-sm bg-[#0A2A5B]"></span>
                   {pos.title} <span className="text-[10px] text-slate-400 font-normal">({pos.type})</span>
                 </span>
               ))}
@@ -114,9 +148,9 @@ export function OtaCareersSection({ positions = DEFAULT_POSITIONS }: OtaCareersS
                 setModalOpen(true);
                 setSubmitted(false);
               }}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-6 sm:px-7 py-3.5 sm:py-4 rounded-2xl bg-[#0A2A5B] hover:bg-[#071d3f] text-white font-black text-xs sm:text-sm shadow-md transition-all cursor-pointer transform hover:scale-[1.02]"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-6 sm:px-7 py-3.5 sm:py-4 rounded-sm bg-[#0A2A5B] hover:bg-[#071d3f] text-white font-black text-xs sm:text-sm transition-colors cursor-pointer"
             >
-              <Upload className="w-4 h-4 text-[#FF7A00]" />
+              <Upload className="w-4 h-4 text-white" />
               <span>Cargá tu CV / Postulate</span>
             </button>
           </div>
@@ -126,17 +160,17 @@ export function OtaCareersSection({ positions = DEFAULT_POSITIONS }: OtaCareersS
       {/* Modal para Carga de CV / Postulación */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-8 shadow-2xl relative border border-slate-100 text-slate-800 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-sm max-w-lg w-full p-5 sm:p-8 shadow-2xl relative border border-slate-200 text-slate-800 max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setModalOpen(false)}
               aria-label="Cerrar modal"
-              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors"
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-sm hover:bg-slate-100 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-tech-blue text-xs font-bold uppercase mb-3">
-              <Briefcase className="w-3.5 h-3.5 text-[#FF5A19]" />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-sm bg-slate-100 border border-slate-200 text-[#0A2A5B] text-xs font-bold uppercase mb-3">
+              <Briefcase className="w-3.5 h-3.5 text-[#0A2A5B]" />
               <span>Trabajá con Nosotros</span>
             </div>
 
@@ -149,10 +183,10 @@ export function OtaCareersSection({ positions = DEFAULT_POSITIONS }: OtaCareersS
             </p>
 
             {submitted ? (
-              <div className="p-6 bg-emerald-50 border border-emerald-200 rounded-2xl text-center space-y-2">
-                <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
-                <h4 className="text-base font-black text-emerald-800">¡Postulación Enviada con Éxito!</h4>
-                <p className="text-xs text-emerald-700">Muchas gracias por tu interés en TravelApp. Nuestro equipo de selección revisará tu perfil.</p>
+              <div className="p-6 bg-slate-50 border border-slate-200 rounded-sm text-center space-y-2">
+                <CheckCircle2 className="w-10 h-10 text-[#0A2A5B] mx-auto" />
+                <h4 className="text-base font-black text-[#0A2A5B]">¡Postulación Enviada con Éxito!</h4>
+                <p className="text-xs text-slate-600">Muchas gracias por tu interés en TravelApp. Nuestro equipo de selección revisará tu perfil.</p>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-3.5 text-xs font-semibold">
@@ -164,7 +198,7 @@ export function OtaCareersSection({ positions = DEFAULT_POSITIONS }: OtaCareersS
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     placeholder="Ej. Juan Pérez"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-tech-blue"
+                    className="w-full px-3.5 py-2.5 rounded-sm border border-slate-200 outline-none focus:border-[#0A2A5B]"
                   />
                 </div>
 
@@ -177,7 +211,7 @@ export function OtaCareersSection({ positions = DEFAULT_POSITIONS }: OtaCareersS
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                       placeholder="correo@ejemplo.com"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-tech-blue"
+                      className="w-full px-3.5 py-2.5 rounded-sm border border-slate-200 outline-none focus:border-[#0A2A5B]"
                     />
                   </div>
                   <div>
@@ -188,7 +222,7 @@ export function OtaCareersSection({ positions = DEFAULT_POSITIONS }: OtaCareersS
                       value={formData.phone}
                       onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                       placeholder="+54 9 ..."
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-tech-blue"
+                      className="w-full px-3.5 py-2.5 rounded-sm border border-slate-200 outline-none focus:border-[#0A2A5B]"
                     />
                   </div>
                 </div>
@@ -198,9 +232,9 @@ export function OtaCareersSection({ positions = DEFAULT_POSITIONS }: OtaCareersS
                   <select
                     value={formData.area}
                     onChange={(e) => setFormData({ ...formData, area: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-tech-blue cursor-pointer"
+                    className="w-full px-3.5 py-2.5 rounded-sm border border-slate-200 outline-none focus:border-[#0A2A5B] cursor-pointer"
                   >
-                    {positions.map((p, idx) => (
+                    {displayedPositions.map((p, idx) => (
                       <option key={p.id || idx} value={p.title}>{p.title}</option>
                     ))}
                     <option value="Otra Postulación Espontánea">Otra Postulación Espontánea</option>
@@ -214,14 +248,14 @@ export function OtaCareersSection({ positions = DEFAULT_POSITIONS }: OtaCareersS
                     value={formData.linkedinOrCvUrl}
                     onChange={(e) => setFormData({ ...formData, linkedinOrCvUrl: e.target.value })}
                     placeholder="https://drive.google.com/... o https://linkedin.com/in/..."
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-tech-blue"
+                    className="w-full px-3.5 py-2.5 rounded-sm border border-slate-200 outline-none focus:border-[#0A2A5B]"
                   />
                 </div>
 
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full py-3 rounded-xl bg-tech-blue hover:bg-tech-blue/90 text-white font-black text-xs uppercase tracking-wider transition-all shadow-md disabled:opacity-50 cursor-pointer"
+                  className="w-full py-3 rounded-sm bg-[#0A2A5B] hover:bg-[#071d3f] text-white font-black text-xs uppercase tracking-wider transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   {submitting ? "Enviando..." : "Enviar Postulación"}
                 </button>

@@ -354,10 +354,10 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
 
       {/* Hero Slider Editable desde CMS */}
       <OtaHeroSlider slides={marketplaceSlides}>
-        <div className="max-w-5xl mx-auto bg-white p-2.5 sm:p-3 rounded-2xl shadow-2xl border border-slate-200 text-slate-800">
+        <div className="max-w-5xl mx-auto bg-white p-2.5 sm:p-3 rounded-sm shadow-xl border border-slate-200 text-slate-800">
           <div className="flex flex-col md:flex-row items-center gap-2">
-            <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-xl w-full">
-              <Search className="h-5 w-5 text-slate-400 shrink-0" />
+            <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-sm w-full border border-slate-200">
+              <Search className="h-5 w-5 text-[#0A2A5B] shrink-0" />
               <input
                 type="text"
                 placeholder="¿A dónde querés viajar? (ej. Cancún, Bariloche, Europa, Brasil...)"
@@ -376,7 +376,7 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
               <select
                 value={selectedDestinationFilter}
                 onChange={(e) => setSelectedDestinationFilter(e.target.value)}
-                className="bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 rounded-xl px-3 py-2.5 outline-none cursor-pointer w-full md:w-auto"
+                className="bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 rounded-sm px-3 py-2.5 outline-none cursor-pointer w-full md:w-auto"
               >
                 <option value="all">Todos los Destinos</option>
                 {availableDestinations.map((dest) => (
@@ -387,7 +387,7 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
               <select
                 value={selectedDeparture}
                 onChange={(e) => setSelectedDeparture(e.target.value)}
-                className="bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 rounded-xl px-3 py-2.5 outline-none cursor-pointer w-full md:w-auto"
+                className="bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 rounded-sm px-3 py-2.5 outline-none cursor-pointer w-full md:w-auto"
               >
                 <option value="all">Todas las Salidas</option>
                 {availableDepartures.map((dep) => (
@@ -398,7 +398,7 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
               <select
                 value={selectedTripKind}
                 onChange={(e) => setSelectedTripKind(e.target.value)}
-                className="bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 rounded-xl px-3 py-2.5 outline-none cursor-pointer w-full md:w-auto"
+                className="bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 rounded-sm px-3 py-2.5 outline-none cursor-pointer w-full md:w-auto"
               >
                 <option value="all">Tipo de Viaje</option>
                 <option value="Paquete Propio">Paquete Propio</option>
@@ -420,9 +420,9 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
             <button
               type="button"
               onClick={() => setSelectedRegion("all")}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-sm text-xs font-bold border transition-all cursor-pointer ${
                 selectedRegion === "all"
-                  ? "bg-[#0A2A5B] text-white border-[#0A2A5B] shadow-xs"
+                  ? "bg-[#0A2A5B] text-white border-[#0A2A5B]"
                   : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
               }`}
             >
@@ -433,9 +433,9 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
                 key={reg}
                 type="button"
                 onClick={() => setSelectedRegion(selectedRegion === reg ? "all" : reg)}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-sm text-xs font-bold border transition-all cursor-pointer ${
                   selectedRegion === reg
-                    ? "bg-[#0A2A5B] text-white border-[#0A2A5B] shadow-xs"
+                    ? "bg-[#0A2A5B] text-white border-[#0A2A5B]"
                     : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
                 }`}
               >
@@ -608,38 +608,30 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
               return (
                 <div
                   key={pkg.id}
-                  className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col group"
+                  className="bg-white rounded-sm border border-slate-200 overflow-hidden hover:border-[#0A2A5B]/50 hover:shadow-xl transition-all duration-300 flex flex-col group"
                 >
-                  {/* Imagen y Badges */}
-                  <div className="relative h-60 w-full overflow-hidden bg-slate-100">
+                  {/* Imagen Cuadrada 100% Pura y Limpia */}
+                  <div className="relative aspect-square w-full overflow-hidden bg-slate-100">
                     <img
                       src={pkg.imageUrl}
                       alt={pkg.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-black/30" />
 
-                    {/* Badges Superiores Izquierdos */}
+                    {/* Badges Superiores Izquierdos limpios */}
                     <div className="absolute top-3 left-3 flex flex-col gap-1.5 items-start">
-                      {/* Badge de Modalidad */}
-                      <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase px-2.5 py-1 rounded-lg backdrop-blur-md shadow-sm text-white ${
-                        isGrupal ? "bg-purple-600/90" : "bg-slate-800/90"
-                      }`}>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase px-2.5 py-1 rounded-sm bg-white/95 text-[#0A2A5B] border border-slate-200 shadow-sm">
                         <Users className="h-3 w-3" />
                         {isGrupal ? "Salida Grupal Acompañada" : "Viaje Individual"}
                       </span>
 
-                      {/* Badge de Origen / Operador: OMITIR nombre de mayorista, solo 'Operador Verificado' o 'Salida Propia' */}
-                      <span className={`inline-flex items-center gap-1 text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-lg backdrop-blur-md shadow-sm text-white ${
-                        isPropio ? "bg-emerald-600/95" : "bg-blue-600/95"
-                      }`}>
-                        {isPropio ? <Award className="h-3 w-3 text-amber-300" /> : <ShieldCheck className="h-3 w-3 text-sky-200" />}
-                        {isPropio ? "⭐ Salida Propia TravelApp" : "🛡️ Operador Verificado"}
+                      <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-sm bg-[#0A2A5B] text-white shadow-sm">
+                        {isPropio ? <Award className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />}
+                        {isPropio ? "Salida Propia TravelApp" : "Operador Verificado"}
                       </span>
 
-                      {/* Badge de Cupos: SÓLO para stock de salidas propias */}
                       {isPropio && pkg.stockBadge && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 shadow-md">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-sm bg-white text-[#0A2A5B] border border-slate-200 shadow-sm">
                           <Sparkles className="h-3 w-3" />
                           {pkg.stockBadge}
                         </span>
@@ -651,19 +643,19 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
                       type="button"
                       onClick={() => handleShare(pkg)}
                       title="Copiar enlace del viaje"
-                      className="absolute top-3 right-3 h-8 w-8 rounded-full bg-white/80 hover:bg-white text-slate-700 flex items-center justify-center transition-all shadow-md backdrop-blur-xs"
+                      className="absolute top-3 right-3 h-8 w-8 rounded-sm bg-white/95 hover:bg-white text-[#0A2A5B] border border-slate-200 flex items-center justify-center transition-colors shadow-sm cursor-pointer"
                     >
                       <Share2 className="h-4 w-4" />
                     </button>
 
-                    {/* Destino y Duración en la base de la foto */}
-                    <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-white text-xs">
-                      <span className="flex items-center gap-1 font-bold bg-black/50 px-2 py-0.5 rounded-md backdrop-blur-xs">
-                        <MapPin className="h-3.5 w-3.5 text-sky-300" />
+                    {/* Destino y Duración en badges limpios */}
+                    <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-xs">
+                      <span className="flex items-center gap-1 font-bold bg-white/95 text-[#0A2A5B] px-2.5 py-1 rounded-sm border border-slate-200 shadow-sm">
+                        <MapPin className="h-3.5 w-3.5 text-[#0A2A5B]" />
                         {pkg.destination}, {pkg.country}
                       </span>
-                      <span className="flex items-center gap-1 font-extrabold bg-black/50 px-2 py-0.5 rounded-md backdrop-blur-xs">
-                        <Clock className="h-3.5 w-3.5 text-amber-300" />
+                      <span className="flex items-center gap-1 font-extrabold bg-white/95 text-[#0A2A5B] px-2.5 py-1 rounded-sm border border-slate-200 shadow-sm">
+                        <Clock className="h-3.5 w-3.5 text-[#0A2A5B]" />
                         {pkg.durationDays}D / {pkg.durationNights}N
                       </span>
                     </div>

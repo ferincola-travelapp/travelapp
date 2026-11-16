@@ -4184,6 +4184,7 @@ export default function CMSPage() {
 
             <CMSInput label="Título de la Sección" value={data.apps?.titulo || ''} onChange={(val) => updateField('apps', 'titulo', val)} />
             <CMSTextarea label="Subtítulo / Descripción" value={data.apps?.subtitulo || ''} onChange={(val) => updateField('apps', 'subtitulo', val)} rows={2} />
+            <CMSInput label="Imagen Interna del Celular (Screenshot App Real - URL)" value={data.apps?.appPreviewImageUrl || ''} onChange={(val) => updateField('apps', 'appPreviewImageUrl', val)} placeholder="https://... o /assets/..." />
             <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 p-5 space-y-4">
               <p className="text-xs font-black text-slate-500 uppercase tracking-wider">URLs de Descarga (si están vacías, el logo permanece oculto)</p>
               <CMSInput label="Google Play Store URL" value={data.apps?.playStoreUrl || ''} onChange={(val) => updateField('apps', 'playStoreUrl', val)} placeholder="https://play.google.com/store/apps/details?id=ar.travelapp" />

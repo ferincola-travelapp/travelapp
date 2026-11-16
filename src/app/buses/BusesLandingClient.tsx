@@ -542,8 +542,8 @@ export default function BusesLandingClient({ initialCms }: { initialCms?: any })
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Selector sutil de vista si desea previsualizar los 3 sliders */}
           <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-xs font-bold text-white">
-              <Bus className="w-3.5 h-3.5 text-[#FF5A19]" />
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-sm bg-white/10 border border-white/20 text-xs font-bold text-white">
+              <Bus className="w-3.5 h-3.5 text-red-500" />
               <span>
                 {isLuna
                   ? "Luna Viajera · Conexión Valles Calchaquíes & Nacional"
@@ -557,44 +557,37 @@ export default function BusesLandingClient({ initialCms }: { initialCms?: any })
               <button
                 type="button"
                 onClick={() => setTravelCabModal(true)}
-                className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-extrabold transition cursor-pointer shadow-lg ${
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-sm text-xs font-extrabold transition cursor-pointer ${
                   isLuna
                     ? "bg-[#DFB15B] text-[#0A2E20] hover:bg-[#e8c16d]"
-                    : "bg-[#FF5A19] text-white hover:bg-[#e0480d]"
+                    : "bg-red-600 text-white hover:bg-red-700"
                 }`}
               >
                 <Car className="w-3.5 h-3.5" />
-                <span>🚕 Reservar TravelCab a la Terminal</span>
+                <span>Reservar TravelCab a la Terminal</span>
               </button>
             </div>
           </div>
 
           {/* GRILLA PRINCIPAL: IZQUIERDA SLIDER PERSONALIZADO (8 COLS) | DERECHA IFRAME CDP (4 COLS) */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
-            {/* COLUMNA IZQUIERDA: SLIDER DINÁMICO + PROPUESTA DE VALOR */}
-            <div className="lg:col-span-8 flex flex-col justify-between rounded-3xl overflow-hidden relative min-h-[494px] shadow-2xl border border-white/15 group">
-              {/* Imagen de fondo del slide activo */}
+            {/* COLUMNA IZQUIERDA: SLIDER DINÁMICO CON IMAGEN LIMPIA + TEXTO FLOTANTE */}
+            <div className="lg:col-span-8 flex flex-col justify-between rounded-sm overflow-hidden relative min-h-[494px] shadow-xl border border-white/20 group">
+              {/* Imagen pura y limpia del slide activo */}
               <div
-                className="absolute inset-0 bg-cover bg-center transition-all duration-700 scale-105 group-hover:scale-100"
+                className="absolute inset-0 bg-cover bg-center transition-all duration-700"
                 style={{ backgroundImage: `url(${currentSlideObj.imageUrl})` }}
-              />
-              <div
-                className={`absolute inset-0 ${
-                  isLuna
-                    ? "bg-gradient-to-t from-[#072118] via-[#072118]/75 to-[#0A2E20]/40"
-                    : "bg-gradient-to-t from-[#0A2A5B] via-[#0A2A5B]/75 to-black/35"
-                }`}
               />
 
               {/* Contenido superior del Slide */}
               <div className="relative z-10 p-6 sm:p-10 flex items-center justify-between">
                 <span
-                  className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[11px] font-black tracking-wider uppercase shadow-md ${
+                  className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-sm text-[11px] font-black tracking-wider uppercase shadow-md ${
                     isLuna
                       ? "bg-[#DFB15B] text-[#0A2E20]"
                       : isExperience
                       ? "bg-[#0071e3] text-white"
-                      : "bg-[#FF5A19] text-white"
+                      : "bg-[#0A2A5B] text-white"
                   }`}
                 >
                   {currentSlideObj.badge}
@@ -609,7 +602,7 @@ export default function BusesLandingClient({ initialCms }: { initialCms?: any })
                         (prev) => (prev - 1 + activeSlides.length) % activeSlides.length
                       )
                     }
-                    className="w-9 h-9 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center backdrop-blur-md border border-white/20 transition cursor-pointer"
+                    className="w-9 h-9 rounded-sm bg-white/90 hover:bg-white text-[#0A2A5B] flex items-center justify-center border border-slate-200 transition cursor-pointer"
                     aria-label="Anterior"
                   >
                     <ChevronLeft className="w-4 h-4" />
@@ -619,7 +612,7 @@ export default function BusesLandingClient({ initialCms }: { initialCms?: any })
                     onClick={() =>
                       setCurrentSlide((prev) => (prev + 1) % activeSlides.length)
                     }
-                    className="w-9 h-9 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center backdrop-blur-md border border-white/20 transition cursor-pointer"
+                    className="w-9 h-9 rounded-sm bg-white/90 hover:bg-white text-[#0A2A5B] flex items-center justify-center border border-slate-200 transition cursor-pointer"
                     aria-label="Siguiente"
                   >
                     <ChevronRight className="w-4 h-4" />

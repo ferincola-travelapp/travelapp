@@ -3,8 +3,9 @@
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot, collection, query, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { OtaPackage } from "@/types/ota";
 import {
   Compass,
   Gift,
@@ -302,9 +303,141 @@ export default function EcosistemaLandingClient({
     ? cms.unidades
     : DEFAULT_ECOSISTEMA_CMS.unidades;
 
+  // Estado del slide flagship del Hero
+  const [activeSlide, setActiveSlide] = useState(0);
+
+  // Paquetes reales del Marketplace desde Firestore (ota_packages)
+  const [livePackages, setLivePackages] = useState<OtaPackage[]>([]);
+  const [activeQuickFilter, setActiveQuickFilter] = useState<string>("Todos");
+
+  useEffect(() => {
+    const q = query(collection(db, "ota_packages"), limit(50));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const list = snap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as any) }) as OtaPackage)
+          .filter((p) => (p as any).status !== "pausado" && (p as any).status !== "inactivo");
+        list.sort((a: any, b: any) =>
+          String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || ""))
+        );
+        setLivePackages(list);
+      },
+      (err) => {
+        console.warn("Firestore ota_packages carousel err:", err);
+      }
+    );
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (heroSlides.length <= 1) return;
+    const interval = setInterval(() => {
+      setActiveSlide((prev) => (prev + 1) % heroSlides.length);
+    }, 6500);
+    return () => clearInterval(interval);
+  }, [heroSlides.length]);
+
+  const currentHero = heroSlides[activeSlide] || heroSlides[0];
+
+  // Filtros rápidos editables desde CMS (hasta 6)
+  const quickFilters: { label: string; href: string }[] =
+    Array.isArray(cms.quickFilters) && cms.quickFilters.length > 0
+      ? cms.quickFilters.slice(0, 6)
+      : [
+          { label: "Verano 2027", href: "/marketplace?q=Verano%202027" },
+          { label: "Argentina", href: "/marketplace?region=Argentina" },
+          { label: "Caribe", href: "/marketplace?region=Caribe" },
+          { label: "Viajes Grupales", href: "/marketplace?type=salida_grupal" },
+          { label: "Brasil", href: "/marketplace?region=Brasil" },
+          { label: "Escapadas", href: "/marketplace?type=escapada" },
+        ];
+
+  // Mapear y filtrar paquetes reales para el carrusel
+  const carouselItems: MarketplaceItem[] = React.useMemo(() => {
+    const source = livePackages;
+    const norm = (s: string) =>
+      (s || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+
+    const filtered =
+      activeQuickFilter === "Todos"
+        ? source
+        : source.filter((p) => {
+            const f = norm(activeQuickFilter);
+            const hay = norm(
+              [
+                p.title,
+                p.destination,
+                p.country,
+                p.region,
+                p.type,
+                p.tripKind,
+                p.modality,
+                p.description,
+                (p.departureDates || []).join(" "),
+                (p.customTags || []).join(" "),
+              ]
+                .filter(Boolean)
+                .join(" ")
+            );
+            if (f.includes("grupal")) {
+              return p.type === "salida_grupal" || p.modality === "Salida Grupal Acompañada" || hay.includes("grupal");
+            }
+            if (f.includes("escapada")) {
+              return p.type === "escapada" || hay.includes("escapada");
+            }
+            return hay.includes(f);
+          });
+
+    return filtered.map((p) => {
+      const priceArs = p.currency === "ARS" ? (p.price || p.priceArs || 0) : Math.round((p.price || p.priceUsd || 0) * 1250);
+      const priceUsd = p.currency === "USD" ? (p.price || p.priceUsd || 0) : Math.round((p.price || p.priceArs || 0) / 1250);
+      const isBus = p.transportType === "Bus" || p.transportType === "Bus Cama" || p.transportType === "Bus Semicama";
+      const isAir = p.transportType === "Aéreo" || p.transportType === "Avión";
+      const servicesList = [
+        isAir
+          ? (p.airline ? `Aéreo con ${p.airline}` : "Aéreos incluidos")
+          : isBus
+          ? `Bus ${p.busType || (p.transportType === "Bus Cama" ? "Cama" : "Semicama")}`
+          : p.transportType && p.transportType !== "Sin Transporte"
+          ? `Transporte: ${p.transportType}`
+          : "Traslados según itinerario",
+        p.hotelName
+          ? `${p.hotelName}${p.hotelStars ? ` ${p.hotelStars}★` : ""}`
+          : "Alojamiento seleccionado",
+        p.foodPlan || "Régimen según itinerario",
+      ];
+
+      return {
+        id: p.id,
+        title: p.title,
+        category: p.region || "Turismo Emisivo",
+        destination: p.country ? `${p.destination}, ${p.country}` : p.destination,
+        duration:
+          p.durationDays && p.durationNights
+            ? `${p.durationDays} Días / ${p.durationNights} Noches`
+            : "Consultar duración",
+        imageUrl:
+          p.imageUrl ||
+          "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=90",
+        priceArs,
+        priceUsd,
+        pointsEarned: p.rewardsPointsEarned || Math.round(priceArs / 100),
+        badge:
+          p.stockBadge ||
+          (p.type === "salida_grupal" || p.modality === "Salida Grupal Acompañada" ? "Salida Grupal" : undefined),
+        includedServices: servicesList,
+        installmentsText: p.financingText || p.installments,
+        url: `/marketplace?id=${encodeURIComponent(p.id)}`,
+      };
+    });
+  }, [livePackages, activeQuickFilter]);
+
   return (
-    <div className="min-h-screen bg-white text-slate-800 font-sans flex flex-col selection:bg-tech-blue selection:text-white w-full overflow-x-hidden">
-      
+    <div className="min-h-screen bg-white text-slate-900 font-sans flex flex-col selection:bg-[#0A2A5B] selection:text-white w-full overflow-x-hidden">
       {/* 1. Header Oficial: Sincronizado con teléfono y redes del CMS */}
       <OtaHeader
         phone={officialPhone}
@@ -312,38 +445,146 @@ export default function EcosistemaLandingClient({
         onOpenContacto={() => setContactoModal(true)}
       />
 
-      {/* 2. Hero Slider Ultra HD con Buscador Multiproducto sincronizado con CMS */}
-      <OtaHeroSlider slides={heroSlides}>
-        <OtaSearchEngine enabledTabs={cms.enabledSearchTabs} />
-      </OtaHeroSlider>
+      {/* 2. Slider Hero con imágenes 100% puras y limpias (sin capa oscura) */}
+      <section className="relative w-full bg-white overflow-hidden">
+        <div className="relative w-full h-[420px] sm:h-[540px] lg:h-[600px] overflow-hidden bg-slate-100">
+          {currentHero?.mediaType === "video" ? (
+            <video
+              key={currentHero.mediaUrl}
+              src={currentHero.mediaUrl}
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <img
+              key={currentHero?.mediaUrl}
+              src={currentHero?.mediaUrl}
+              alt={currentHero?.title || "TravelApp"}
+              className="w-full h-full object-cover"
+            />
+          )}
 
-      {/* 3. Barra Flotante de Promociones & Financiación en Carrusel */}
-      <OtaFloatingPromos />
-
-      {/* 4. Carrusel de Viajes Destacados (Hasta 10 tarjetas + botón "Ver más") */}
-      <OtaMarketplaceCarousel
-        currency={currency}
-        items={cms.marketplaceDestacados}
-      />
-
-      {/* 5. Sección Institucional: El Ecosistema Integrado (Unidades dinámicas desde el CMS) */}
-      <section id="ecosistema" className="py-12 sm:py-24 bg-slate-50 font-sans border-t border-slate-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-10 sm:mb-14">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-50 text-[#0A2A5B] text-xs font-black uppercase tracking-wider mb-3">
-              <Building2 className="w-3.5 h-3.5 text-[#FF5A19]" />
-              <span>Conocé el Ecosistema</span>
+          {/* Texto flotante directo sobre la imagen limpia y llamados a la acción centrados */}
+          <div className="absolute inset-0 z-10 flex items-center justify-center px-4 sm:px-8">
+            <div className="max-w-3xl text-center">
+              <span className="inline-block text-[11px] sm:text-xs font-extrabold uppercase tracking-[0.2em] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.65)] mb-3">
+                {currentHero?.badge || "TRAVELAPP ECOSYSTEM"}
+              </span>
+              <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-tight text-white whitespace-pre-line mb-3 drop-shadow-[0_3px_14px_rgba(0,0,0,0.6)]">
+                {currentHero?.title}
+              </h1>
+              <p className="text-xs sm:text-base text-white font-semibold leading-relaxed mb-6 max-w-2xl mx-auto drop-shadow-[0_2px_10px_rgba(0,0,0,0.65)]">
+                {currentHero?.subtitle}
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <Link
+                  href={currentHero?.ctaUrl || "/marketplace"}
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-sm bg-[#0A2A5B] text-white text-xs sm:text-sm font-bold hover:bg-slate-900 transition-colors shadow-lg"
+                >
+                  <span>{currentHero?.ctaText || "Explorar Paquetes"}</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+                <a
+                  href={cms.hero?.whatsappUrl || "https://wa.me/5493812000712"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-sm border border-white bg-white/95 text-[#0A2A5B] text-xs sm:text-sm font-bold hover:bg-white transition-colors shadow-lg"
+                >
+                  <span>{cms.hero?.whatsappText || "Hablá con Nosotros"}</span>
+                </a>
+              </div>
             </div>
-            <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-slate-900 tracking-tight leading-tight mb-3 sm:mb-4">
-              La Red Integrada de Turismo y Movilidad de Argentina
-            </h2>
-            <p className="text-sm sm:text-lg text-slate-600 font-medium leading-relaxed">
-              Combinamos tecnología de vanguardia, pasarelas de pago seguras y coordinación en territorio para brindarte una solución integral en cada etapa de tu viaje.
-            </p>
           </div>
 
-          {/* Grid de las Unidades del Ecosistema desde el CMS */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+          {/* Indicadores rectos de slides */}
+          {heroSlides.length > 1 && (
+            <div className="absolute bottom-4 right-6 z-20 flex items-center gap-2">
+              {heroSlides.map((s, idx) => (
+                <button
+                  key={s.id || idx}
+                  type="button"
+                  onClick={() => setActiveSlide(idx)}
+                  aria-label={`Slide ${idx + 1}`}
+                  className={`h-1.5 transition-all cursor-pointer ${
+                    idx === activeSlide ? "w-8 bg-[#0A2A5B]" : "w-3 bg-white/80 hover:bg-white"
+                  }`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* 3. Buscador Multimodal Profesional (entre el Slider y la barra de promociones) */}
+      <section className="relative z-20 bg-slate-50 border-y border-slate-200 py-6 sm:py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <OtaSearchEngine enabledTabs={cms.enabledSearchTabs} />
+        </div>
+      </section>
+
+      {/* 4. Barra de Promociones Bancarias y Financiación (libre escritura desde el CMS) */}
+      <OtaFloatingPromos />
+
+      {/* 5. Filtros Rápidos Editables desde el CMS + Carrusel de Tarjetas Cuadradas enlazado al Marketplace real */}
+      <section className="bg-white pt-10 sm:pt-14 pb-4 border-t border-slate-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-2">
+              Explorar por:
+            </span>
+            <button
+              type="button"
+              onClick={() => setActiveQuickFilter("Todos")}
+              className={`px-4 py-2 rounded-sm border text-xs font-bold transition-colors cursor-pointer ${
+                activeQuickFilter === "Todos"
+                  ? "bg-[#0A2A5B] text-white border-[#0A2A5B]"
+                  : "border-slate-300 bg-white text-slate-800 hover:border-[#0A2A5B]"
+              }`}
+            >
+              Todos
+            </button>
+            {quickFilters.map((f, i) => {
+              const isSelected = activeQuickFilter === f.label;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setActiveQuickFilter(isSelected ? "Todos" : f.label)}
+                  className={`px-4 py-2 rounded-sm border text-xs font-bold transition-colors cursor-pointer ${
+                    isSelected
+                      ? "bg-[#0A2A5B] text-white border-[#0A2A5B]"
+                      : "border-slate-300 bg-white text-slate-800 hover:bg-[#0A2A5B] hover:text-white hover:border-[#0A2A5B]"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <OtaMarketplaceCarousel
+        currency={currency}
+        items={carouselItems}
+      />
+
+      {/* 6. Unidades de Negocio (Formato Editorial Motorola: fotos cuadradas y grandes, puras y limpias) */}
+      <section id="ecosistema" className="py-14 sm:py-24 bg-slate-50 border-t border-slate-200 font-sans">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="mb-12 sm:mb-16 max-w-2xl">
+            <p className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-[#0A2A5B] mb-2">
+              NUESTRAS UNIDADES DE NEGOCIO
+            </p>
+            <h2 className="text-3xl sm:text-5xl font-black text-slate-900 tracking-tight leading-tight">
+              Todo el ecosistema TravelApp en un mismo lugar
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 sm:gap-10">
             {ecosystemUnits.map((unit: any, idx: number) => {
               const unitUrl = unit.url || (
                 unit.id === 'emisivo' ? '/marketplace' :
@@ -351,45 +592,45 @@ export default function EcosistemaLandingClient({
                 unit.id === 'travelcab' ? '/landing/travelcab' :
                 unit.id === 'rewards' ? '/landing/rewards' : '/marketplace'
               );
-              const accentColor = unit.accent || (
-                idx === 0 ? 'text-blue-600 bg-blue-50' :
-                idx === 1 ? 'text-red-500 bg-red-50' :
-                idx === 2 ? 'text-[#FF5A19] bg-orange-50' : 'text-amber-600 bg-amber-50'
-              );
 
               return (
                 <Link
                   key={unit.id || idx}
                   href={unitUrl}
-                  className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200/80 shadow-xs hover:shadow-xl transition-all duration-300 group flex flex-col justify-between"
+                  className="group bg-white border border-slate-200 rounded-sm overflow-hidden flex flex-col hover:border-[#0A2A5B] transition-colors"
                 >
-                  <div>
+                  {/* Foto Cuadrada y Grande, 100% pura y limpia sin capa oscura */}
+                  <div className="relative w-full aspect-square overflow-hidden bg-slate-100">
                     {unit.imagenUrl ? (
-                      <div className="w-full h-32 rounded-2xl overflow-hidden mb-4 relative bg-slate-100">
-                        <img
-                          src={unit.imagenUrl}
-                          alt={unit.nombre}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        />
-                        <span className="absolute top-2 left-2 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-black/60 text-white backdrop-blur-xs">
-                          {unit.tag || "Unidad Oficial"}
-                        </span>
-                      </div>
+                      <img
+                        src={unit.imagenUrl}
+                        alt={unit.nombre}
+                        className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
+                      />
                     ) : (
-                      <div className={`w-12 h-12 rounded-2xl ${accentColor} flex items-center justify-center mb-5 group-hover:scale-110 transition-transform`}>
-                        <Compass className="w-6 h-6" />
+                      <div className="w-full h-full flex items-center justify-center bg-slate-100 text-[#0A2A5B]">
+                        <Compass className="w-16 h-16" />
                       </div>
                     )}
-                    <h3 className="text-lg font-black text-slate-900 mb-2 group-hover:text-tech-blue transition-colors">
-                      {unit.nombre}
-                    </h3>
-                    <p className="text-xs sm:text-sm text-slate-500 font-medium leading-relaxed mb-4 line-clamp-3">
-                      {unit.descripcionBreve || unit.descripcion}
-                    </p>
                   </div>
-                  <div className="flex items-center gap-1.5 text-xs font-black text-tech-blue pt-3 border-t border-slate-100">
-                    <span>{unit.cta || "Explorar Unidad"}</span>
-                    <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+
+                  {/* Bloque editorial limpio debajo de la foto */}
+                  <div className="p-6 sm:p-8 flex-1 flex flex-col justify-between bg-white">
+                    <div>
+                      <span className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#0A2A5B] block mb-2">
+                        {unit.tag || "Unidad Oficial"}
+                      </span>
+                      <h3 className="text-2xl font-black text-slate-900 mb-2 group-hover:text-[#0A2A5B] transition-colors">
+                        {unit.nombre}
+                      </h3>
+                      <p className="text-sm text-slate-600 font-medium leading-relaxed mb-6">
+                        {unit.descripcionBreve || unit.descripcion}
+                      </p>
+                    </div>
+                    <div className="inline-flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-[#0A2A5B] pt-4 border-t border-slate-100">
+                      <span>{unit.cta || "Explorar Unidad"}</span>
+                      <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    </div>
                   </div>
                 </Link>
               );
@@ -398,10 +639,10 @@ export default function EcosistemaLandingClient({
 
           {/* Métricas / Stats del CMS si están activadas */}
           {cms.showStats === true && Array.isArray(cms.stats) && cms.stats.length > 0 && (
-            <div className="mt-14 pt-10 border-t border-slate-200/60 grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div className="mt-14 pt-10 border-t border-slate-200 grid grid-cols-2 md:grid-cols-4 gap-6">
               {cms.stats.map((st: any, i: number) => (
-                <div key={i} className="text-center p-4 rounded-2xl bg-white border border-slate-200/70 shadow-xs">
-                  <div className="text-2xl sm:text-3xl font-black text-slate-900 mb-1 tracking-tight">
+                <div key={i} className="text-left p-5 bg-white border border-slate-200 rounded-sm">
+                  <div className="text-2xl sm:text-3xl font-black text-[#0A2A5B] mb-1 tracking-tight">
                     {st.valor || st.number}
                   </div>
                   <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
@@ -419,6 +660,7 @@ export default function EcosistemaLandingClient({
         <OtaAppSection
           titulo={cms.apps?.titulo}
           subtitulo={cms.apps?.subtitulo}
+          appPreviewImageUrl={cms.apps?.appPreviewImageUrl || ""}
           showPlayStore={Boolean(cms.apps?.showPlayStore !== false && cms.apps?.playStoreUrl?.trim())}
           showAppStore={Boolean(cms.apps?.showAppStore !== false && cms.apps?.appStoreUrl?.trim())}
           playStoreUrl={cms.apps?.playStoreUrl?.trim() || ""}

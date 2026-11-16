@@ -58,28 +58,28 @@ export function OtaSearchEngine({ enabledTabs, onSearch }: OtaSearchEngineProps)
     return enabledTabs[tab] !== false;
   };
 
-  const allTabs: { id: OtaSearchTab; label: string; icon: React.ReactNode; badge?: string }[] = [
+  const allTabs: { id: OtaSearchTab; label: string; icon: (active: boolean) => React.ReactNode; badge?: string }[] = [
     {
       id: "paquetes",
       label: "Paquetes",
-      icon: <Palmtree className="w-4 h-4 text-[#FF5A19]" />,
+      icon: (active) => <Palmtree className={`w-4 h-4 ${active ? "text-white" : "text-[#0A2A5B]"}`} />,
     },
-    { id: "vuelos", label: "Vuelos", icon: <Plane className="w-4 h-4" /> },
-    { id: "hoteles", label: "Hoteles", icon: <Building2 className="w-4 h-4" /> },
-    { id: "buses", label: "Buses", icon: <Bus className="w-4 h-4" /> },
+    { id: "vuelos", label: "Vuelos", icon: (active) => <Plane className={`w-4 h-4 ${active ? "text-white" : "text-[#0A2A5B]"}`} /> },
+    { id: "hoteles", label: "Hoteles", icon: (active) => <Building2 className={`w-4 h-4 ${active ? "text-white" : "text-[#0A2A5B]"}`} /> },
+    { id: "buses", label: "Buses", icon: (active) => <Bus className={`w-4 h-4 ${active ? "text-white" : "text-[#0A2A5B]"}`} /> },
     {
       id: "actividades",
       label: "Actividades",
-      icon: <Compass className="w-4 h-4 text-[#FF4F5A]" />,
+      icon: (active) => <Compass className={`w-4 h-4 ${active ? "text-white" : "text-[#0A2A5B]"}`} />,
     },
     {
       id: "traslados",
       label: "Traslados",
-      icon: <Car className="w-4 h-4 text-[#FF5A19]" />,
+      icon: (active) => <Car className={`w-4 h-4 ${active ? "text-white" : "text-[#0A2A5B]"}`} />,
     },
-    { id: "autos", label: "Autos", icon: <Key className="w-4 h-4 text-emerald-500" /> },
-    { id: "asistencia", label: "Asistencia al Viajero", icon: <ShieldCheck className="w-4 h-4 text-blue-500" /> },
-    { id: "parques", label: "Parques", icon: <Ticket className="w-4 h-4 text-amber-500" /> },
+    { id: "autos", label: "Autos", icon: (active) => <Key className={`w-4 h-4 ${active ? "text-white" : "text-[#0A2A5B]"}`} /> },
+    { id: "asistencia", label: "Asistencia al Viajero", icon: (active) => <ShieldCheck className={`w-4 h-4 ${active ? "text-white" : "text-[#0A2A5B]"}`} /> },
+    { id: "parques", label: "Parques", icon: (active) => <Ticket className={`w-4 h-4 ${active ? "text-white" : "text-[#0A2A5B]"}`} /> },
   ];
 
   // Filtrar solo las pestañas habilitadas mediante switch
@@ -141,7 +141,7 @@ export function OtaSearchEngine({ enabledTabs, onSearch }: OtaSearchEngineProps)
   };
 
   return (
-    <div className="w-full bg-white/95 backdrop-blur-md rounded-2xl sm:rounded-3xl p-3.5 sm:p-6 shadow-2xl border border-white/60 font-sans text-slate-800">
+    <div className="w-full bg-white rounded-sm p-4 sm:p-6 shadow-md border border-slate-200 font-sans text-slate-800">
       
       {/* Pestañas de Servicios (Hasta 8 activables por switch) */}
       <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-2 sm:pb-3 scrollbar-none overscroll-x-contain select-none flex-nowrap border-b border-slate-100">
@@ -158,17 +158,17 @@ export function OtaSearchEngine({ enabledTabs, onSearch }: OtaSearchEngineProps)
                 }
                 setActiveTab(tab.id);
               }}
-              className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all duration-200 cursor-pointer ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-sm text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all duration-200 cursor-pointer ${
                 isActive
-                  ? "bg-[#0A2A5B] text-white shadow-md shadow-blue-950/20 scale-[1.02]"
-                  : "bg-slate-100/90 hover:bg-slate-200 text-slate-700 hover:text-slate-900"
+                  ? "bg-[#0A2A5B] text-white shadow-sm"
+                  : "bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-[#0A2A5B]"
               }`}
             >
-              {tab.icon}
+              {tab.icon(isActive)}
               <span>{tab.label}</span>
               {tab.badge && (
                 <span
-                  className={`text-[9px] px-1.5 py-0.5 rounded-full font-black ${
+                  className={`text-[9px] px-1.5 py-0.5 rounded-sm font-black ${
                     isActive
                       ? "bg-white/20 text-white"
                       : "bg-slate-200 text-slate-800"
@@ -184,14 +184,14 @@ export function OtaSearchEngine({ enabledTabs, onSearch }: OtaSearchEngineProps)
 
       {/* Formulario de Búsqueda Adaptativo */}
       {activeTab === "buses" ? (
-        <div className="mt-3.5 sm:mt-5 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-[#0A2A5B] to-[#103b7c] text-white flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg">
+        <div className="mt-3.5 sm:mt-5 p-4 sm:p-5 rounded-sm bg-[#0A2A5B] text-white flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-[#FF5A19] flex items-center justify-center shrink-0 shadow-md">
+            <div className="w-12 h-12 rounded-sm bg-red-600 flex items-center justify-center shrink-0">
               <Bus className="w-6 h-6 text-white" />
             </div>
             <div>
-              <span className="text-[10px] font-black uppercase tracking-wider text-amber-300 block">
-                ✦ Boletería Oficial Habilitada · Central de Pasajes
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-200 block">
+                Boletería Oficial Habilitada · Central de Pasajes
               </span>
               <h4 className="text-sm sm:text-base font-black">
                 Pasajes Nacionales en Micro a +1.600 Destinos + Puntos Rewards
@@ -204,7 +204,7 @@ export function OtaSearchEngine({ enabledTabs, onSearch }: OtaSearchEngineProps)
           <button
             type="button"
             onClick={() => router.push("/buses?brand=ecosistema")}
-            className="w-full sm:w-auto px-5 py-3 rounded-xl bg-[#FF5A19] hover:bg-[#e04c10] text-white font-black text-xs sm:text-sm whitespace-nowrap transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shrink-0"
+            className="w-full sm:w-auto px-5 py-3 rounded-sm bg-red-600 hover:bg-red-700 text-white font-black text-xs sm:text-sm whitespace-nowrap transition flex items-center justify-center gap-2 cursor-pointer shrink-0"
           >
             <span>Ir a Boletería de Buses</span>
             <ArrowRight className="w-4 h-4" />
@@ -219,8 +219,8 @@ export function OtaSearchEngine({ enabledTabs, onSearch }: OtaSearchEngineProps)
             <label className="block text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
               {activeTab === "hoteles" || activeTab === "actividades" || activeTab === "parques" ? "Destino o Ciudad" : "Origen / Partida"}
             </label>
-            <div className="flex items-center gap-2 sm:gap-2.5 px-3 sm:px-3.5 py-2.5 rounded-xl sm:rounded-2xl bg-slate-50 hover:bg-slate-100/80 border border-slate-200 focus-within:border-[#0A2A5B] focus-within:bg-white transition-all">
-              <MapPin className="w-4 h-4 text-slate-400 shrink-0 group-hover:text-[#FF5A19]" />
+            <div className="flex items-center gap-2 sm:gap-2.5 px-3 sm:px-3.5 py-2.5 rounded-sm bg-slate-50 hover:bg-slate-100/80 border border-slate-200 focus-within:border-[#0A2A5B] focus-within:bg-white transition-all">
+              <MapPin className="w-4 h-4 text-[#0A2A5B] shrink-0" />
               <input
                 type="text"
                 value={origin}
@@ -236,8 +236,8 @@ export function OtaSearchEngine({ enabledTabs, onSearch }: OtaSearchEngineProps)
             <label className="block text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
               {activeTab === "hoteles" ? "Alojamiento / Hotel" : activeTab === "actividades" ? "Tour o Excursión" : activeTab === "parques" ? "Parque Temático" : activeTab === "paquetes" ? "Destino del Paquete" : "Destino / Llegada"}
             </label>
-            <div className="flex items-center gap-2 sm:gap-2.5 px-3 sm:px-3.5 py-2.5 rounded-xl sm:rounded-2xl bg-slate-50 hover:bg-slate-100/80 border border-slate-200 focus-within:border-[#0A2A5B] focus-within:bg-white transition-all">
-              <MapPin className="w-4 h-4 text-slate-400 shrink-0 group-hover:text-[#0A2A5B]" />
+            <div className="flex items-center gap-2 sm:gap-2.5 px-3 sm:px-3.5 py-2.5 rounded-sm bg-slate-50 hover:bg-slate-100/80 border border-slate-200 focus-within:border-[#0A2A5B] focus-within:bg-white transition-all">
+              <MapPin className="w-4 h-4 text-[#0A2A5B] shrink-0" />
               <input
                 type="text"
                 value={destination}
@@ -253,9 +253,9 @@ export function OtaSearchEngine({ enabledTabs, onSearch }: OtaSearchEngineProps)
             <label className="block text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
               Fechas de Viaje (Ida / Vuelta)
             </label>
-            <div className="grid grid-cols-2 gap-1 px-2.5 sm:px-3 py-2 rounded-xl sm:rounded-2xl bg-slate-50 hover:bg-slate-100/80 border border-slate-200 focus-within:border-[#0A2A5B] focus-within:bg-white transition-all">
+            <div className="grid grid-cols-2 gap-1 px-2.5 sm:px-3 py-2 rounded-sm bg-slate-50 hover:bg-slate-100/80 border border-slate-200 focus-within:border-[#0A2A5B] focus-within:bg-white transition-all">
               <div className="flex items-center gap-1 min-w-0">
-                <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <Calendar className="w-3.5 h-3.5 text-[#0A2A5B] shrink-0" />
                 <input
                   type="date"
                   value={departureDate}
@@ -280,8 +280,8 @@ export function OtaSearchEngine({ enabledTabs, onSearch }: OtaSearchEngineProps)
               <label className="block text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                 Pasajeros / Cupos
               </label>
-              <div className="flex items-center gap-2 px-3 sm:px-3.5 py-2.5 rounded-xl sm:rounded-2xl bg-slate-50 hover:bg-slate-100/80 border border-slate-200 focus-within:border-[#0A2A5B] focus-within:bg-white transition-all">
-                <Users className="w-4 h-4 text-slate-400 shrink-0" />
+              <div className="flex items-center gap-2 px-3 sm:px-3.5 py-2.5 rounded-sm bg-slate-50 hover:bg-slate-100/80 border border-slate-200 focus-within:border-[#0A2A5B] focus-within:bg-white transition-all">
+                <Users className="w-4 h-4 text-[#0A2A5B] shrink-0" />
                 <select
                   value={passengers}
                   onChange={(e) => setPassengers(e.target.value)}
@@ -297,7 +297,7 @@ export function OtaSearchEngine({ enabledTabs, onSearch }: OtaSearchEngineProps)
 
             <button
               type="submit"
-              className="w-full sm:w-auto px-5 sm:px-6 py-3 sm:py-2.5 rounded-xl sm:rounded-2xl bg-[#FF5A19] hover:bg-[#e04c10] text-white font-black text-xs sm:text-sm shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 transition-all flex items-center justify-center gap-2 shrink-0 h-[44px] cursor-pointer"
+              className="w-full sm:w-auto px-5 sm:px-6 py-3 sm:py-2.5 rounded-sm bg-[#0A2A5B] hover:bg-[#071d3f] text-white font-black text-xs sm:text-sm transition-colors flex items-center justify-center gap-2 shrink-0 h-[44px] cursor-pointer"
             >
               <Search className="w-4 h-4" />
               <span>Buscar</span>
@@ -310,16 +310,16 @@ export function OtaSearchEngine({ enabledTabs, onSearch }: OtaSearchEngineProps)
       {/* Modal de Cotización Asistida para Autos, Asistencia y Parques */}
       {assistedQuoteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl relative border border-slate-100 text-slate-800">
+          <div className="bg-white rounded-sm max-w-lg w-full p-6 sm:p-8 shadow-2xl relative border border-slate-200 text-slate-800">
             <button
               onClick={() => setAssistedQuoteModal(false)}
-              className="absolute top-5 right-5 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors"
+              className="absolute top-5 right-5 p-2 text-slate-400 hover:text-slate-600 rounded-sm hover:bg-slate-100 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-[#0A2A5B] text-xs font-bold uppercase mb-3">
-              <Sparkles className="w-3.5 h-3.5 text-[#FF5A19]" />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-sm bg-slate-100 text-[#0A2A5B] text-xs font-bold uppercase mb-3">
+              <Sparkles className="w-3.5 h-3.5 text-[#0A2A5B]" />
               <span>Cotización Inmediata TravelApp</span>
             </div>
 
@@ -331,7 +331,7 @@ export function OtaSearchEngine({ enabledTabs, onSearch }: OtaSearchEngineProps)
               Te conectamos directamente con nuestro equipo de emisión para congelar tarifa, confirmar cupos y ofrecerte financiación en cuotas fijas.
             </p>
 
-            <div className="bg-slate-50 rounded-2xl p-4 mb-6 border border-slate-100 text-xs space-y-1.5 text-slate-700">
+            <div className="bg-slate-50 rounded-sm p-4 mb-6 border border-slate-200 text-xs space-y-1.5 text-slate-700">
               <div className="flex justify-between">
                 <span className="font-bold">Servicio:</span>
                 <span className="font-extrabold uppercase text-[#0A2A5B]">{activeTab}</span>
@@ -355,7 +355,7 @@ export function OtaSearchEngine({ enabledTabs, onSearch }: OtaSearchEngineProps)
                 href={getWhatsAppQuoteUrl()}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md"
+                className="flex-1 py-3 px-4 rounded-sm bg-[#0A2A5B] hover:bg-[#071d3f] text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors"
               >
                 <MessageSquare className="w-4 h-4" />
                 <span>Consultar por WhatsApp</span>
@@ -363,7 +363,7 @@ export function OtaSearchEngine({ enabledTabs, onSearch }: OtaSearchEngineProps)
               <button
                 type="button"
                 onClick={() => setAssistedQuoteModal(false)}
-                className="py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors"
+                className="py-3 px-4 rounded-sm bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors"
               >
                 Volver
               </button>

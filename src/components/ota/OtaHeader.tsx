@@ -136,7 +136,7 @@ export function OtaHeader({
               </button>
 
               {quienesSomosOpen && (
-                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-slate-100 py-2 z-50 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
+                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-sm shadow-2xl border border-slate-200 py-2 z-50 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
                   <a
                     href="#vision"
                     onClick={(e) => {
@@ -148,7 +148,7 @@ export function OtaHeader({
                     }}
                     className="flex items-center gap-3 px-4 py-2.5 text-xs font-bold hover:bg-slate-50 transition-colors group"
                   >
-                    <div className="w-7 h-7 rounded-lg bg-blue-50 text-tech-blue flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <div className="w-7 h-7 rounded-sm bg-slate-100 text-[#0A2A5B] flex items-center justify-center">
                       <Eye className="w-4 h-4" />
                     </div>
                     <div>
@@ -168,7 +168,7 @@ export function OtaHeader({
                     }}
                     className="flex items-center gap-3 px-4 py-2.5 text-xs font-bold hover:bg-slate-50 transition-colors group"
                   >
-                    <div className="w-7 h-7 rounded-lg bg-orange-50 text-[#FF5A19] flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <div className="w-7 h-7 rounded-sm bg-slate-100 text-[#0A2A5B] flex items-center justify-center">
                       <Target className="w-4 h-4" />
                     </div>
                     <div>
@@ -188,7 +188,7 @@ export function OtaHeader({
                     }}
                     className="flex items-center gap-3 px-4 py-2.5 text-xs font-bold hover:bg-slate-50 transition-colors group"
                   >
-                    <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <div className="w-7 h-7 rounded-sm bg-slate-100 text-[#0A2A5B] flex items-center justify-center">
                       <HeartHandshake className="w-4 h-4" />
                     </div>
                     <div>
@@ -209,7 +209,7 @@ export function OtaHeader({
                   setQuienesSomosOpen(false);
                   setMarketplaceOpen(false);
                 }}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-sm text-xs font-bold transition-all ${
                   ecosistemaOpen 
                     ? "bg-white/15 text-white" 
                     : "text-slate-200 hover:text-white hover:bg-white/10"
@@ -220,14 +220,14 @@ export function OtaHeader({
               </button>
 
               {ecosistemaOpen && (
-                <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-slate-100 py-2 z-50 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
+                <div className="absolute top-full left-0 mt-2 w-72 bg-white rounded-sm shadow-2xl border border-slate-200 py-2 z-50 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
                   <Link
                     href="/landing/ecosistema"
                     onClick={() => setEcosistemaOpen(false)}
                     className="flex items-center gap-3 px-4 py-2.5 text-xs font-bold hover:bg-slate-50 transition-colors group"
                   >
-                    <div className="w-7 h-7 rounded-lg bg-blue-50 text-tech-blue flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <Globe className="w-4 h-4" />
+                    <div className="w-9 h-7 rounded-sm bg-slate-50 border border-slate-200 flex items-center justify-center p-1 shrink-0">
+                      <Image src="/assets/travelapp_original.svg" alt="TravelApp" width={28} height={20} className="object-contain" />
                     </div>
                     <div>
                       <span className="block text-slate-800">TravelApp Institucional</span>
@@ -240,8 +240,8 @@ export function OtaHeader({
                     onClick={() => setEcosistemaOpen(false)}
                     className="flex items-center gap-3 px-4 py-2.5 text-xs font-bold hover:bg-slate-50 transition-colors group"
                   >
-                    <div className="w-7 h-7 rounded-lg bg-red-50 text-[#FF4F5A] flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <Compass className="w-4 h-4" />
+                    <div className="w-9 h-7 rounded-sm bg-slate-50 border border-slate-200 flex items-center justify-center p-1 shrink-0">
+                      <Image src="/assets/experience_original.svg" alt="TravelApp Experience" width={28} height={20} className="object-contain" />
                     </div>
                     <div>
                       <span className="block text-slate-800">TravelApp Experience</span>
@@ -254,8 +254,8 @@ export function OtaHeader({
                     onClick={() => setEcosistemaOpen(false)}
                     className="flex items-center gap-3 px-4 py-2.5 text-xs font-bold hover:bg-slate-50 transition-colors group"
                   >
-                    <div className="w-7 h-7 rounded-lg bg-orange-50 text-[#FF5A19] flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <Car className="w-4 h-4" />
+                    <div className="w-9 h-7 rounded-sm bg-slate-50 border border-slate-200 flex items-center justify-center p-1 shrink-0">
+                      <Image src="/assets/travelcab_original.svg" alt="TravelCab" width={28} height={20} className="object-contain" />
                     </div>
                     <div>
                       <span className="block text-slate-800">TravelCab</span>
@@ -268,8 +268,8 @@ export function OtaHeader({
                     onClick={() => setEcosistemaOpen(false)}
                     className="flex items-center gap-3 px-4 py-2.5 text-xs font-bold hover:bg-slate-50 transition-colors group"
                   >
-                    <div className="w-7 h-7 rounded-lg bg-amber-50 text-[#E5A93B] flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <Gift className="w-4 h-4" />
+                    <div className="w-9 h-7 rounded-sm bg-slate-50 border border-slate-200 flex items-center justify-center p-1 shrink-0">
+                      <Image src="/assets/rewards_original.svg" alt="TravelApp Rewards" width={28} height={20} className="object-contain" />
                     </div>
                     <div>
                       <span className="block text-slate-800">TravelApp Rewards</span>
@@ -282,7 +282,7 @@ export function OtaHeader({
                     onClick={() => setEcosistemaOpen(false)}
                     className="flex items-center gap-3 px-4 py-2.5 text-xs font-bold hover:bg-slate-50 transition-colors group"
                   >
-                    <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <div className="w-9 h-7 rounded-sm bg-slate-100 text-[#0A2A5B] flex items-center justify-center shrink-0">
                       <Users className="w-4 h-4" />
                     </div>
                     <div>
@@ -303,7 +303,7 @@ export function OtaHeader({
                   setQuienesSomosOpen(false);
                   setEcosistemaOpen(false);
                 }}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-sm text-xs font-bold transition-all ${
                   marketplaceOpen 
                     ? "bg-white/15 text-white" 
                     : "text-slate-200 hover:text-white hover:bg-white/10"
@@ -314,13 +314,13 @@ export function OtaHeader({
               </button>
 
               {marketplaceOpen && (
-                <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-slate-100 py-2 z-50 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
+                <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-sm shadow-2xl border border-slate-200 py-2 z-50 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
                   <Link
                     href="/marketplace"
                     onClick={() => setMarketplaceOpen(false)}
                     className="flex items-center gap-3 px-4 py-2.5 text-xs font-bold hover:bg-slate-50 transition-colors group"
                   >
-                    <div className="w-7 h-7 rounded-lg bg-blue-50 text-tech-blue flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <div className="w-7 h-7 rounded-sm bg-slate-100 text-[#0A2A5B] flex items-center justify-center">
                       <Plane className="w-4 h-4" />
                     </div>
                     <div>
@@ -334,7 +334,7 @@ export function OtaHeader({
                     onClick={() => setMarketplaceOpen(false)}
                     className="flex items-center gap-3 px-4 py-2.5 text-xs font-bold hover:bg-slate-50 transition-colors group"
                   >
-                    <div className="w-7 h-7 rounded-lg bg-red-50 text-[#FF4F5A] flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <div className="w-7 h-7 rounded-sm bg-slate-100 text-[#0A2A5B] flex items-center justify-center">
                       <Compass className="w-4 h-4" />
                     </div>
                     <div>
@@ -348,7 +348,7 @@ export function OtaHeader({
                     onClick={() => setMarketplaceOpen(false)}
                     className="flex items-center gap-3 px-4 py-2.5 text-xs font-bold hover:bg-slate-50 transition-colors group"
                   >
-                    <div className="w-7 h-7 rounded-lg bg-orange-50 text-[#FF5A19] flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <div className="w-7 h-7 rounded-sm bg-red-50 text-red-600 flex items-center justify-center">
                       <Bus className="w-4 h-4" />
                     </div>
                     <div>
@@ -360,12 +360,12 @@ export function OtaHeader({
               )}
             </div>
 
-            {/* BOTÓN DIRECTO PASajes EN BUS */}
+            {/* BOTÓN DIRECTO PASAJES EN BUS (Único botón en rojo) */}
             <Link
               href="/buses?brand=ecosistema"
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-white/10 transition-all"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-sm text-xs font-bold bg-red-600 hover:bg-red-700 text-white transition-colors"
             >
-              <Bus className="w-3.5 h-3.5 text-[#FF5A19]" />
+              <Bus className="w-3.5 h-3.5 text-white" />
               <span>Pasajes en Bus</span>
             </Link>
 
@@ -378,7 +378,7 @@ export function OtaHeader({
                   onOpenContacto();
                 }
               }}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-white/10 transition-all"
+              className="px-3.5 py-2 rounded-sm text-xs font-bold text-slate-200 hover:text-white hover:bg-white/10 transition-all"
             >
               Contacto
             </a>
@@ -390,9 +390,9 @@ export function OtaHeader({
             {/* Teléfono 0810-220-0018 */}
             <a
               href={`tel:${phone.replace(/[^0-9]/g, "")}`}
-              className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 text-white transition-all text-xs font-black shadow-xs"
+              className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-sm bg-white/10 hover:bg-white/15 border border-white/20 text-white transition-all text-xs font-black"
             >
-              <Phone className="w-3.5 h-3.5 text-[#FF7A00]" />
+              <Phone className="w-3.5 h-3.5 text-white" />
               <span className="tracking-wide">{phone}</span>
             </a>
 
@@ -402,9 +402,9 @@ export function OtaHeader({
                 <button
                   type="button"
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white transition-all text-xs font-bold"
+                  className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-sm bg-white/10 hover:bg-white/20 border border-white/20 text-white transition-all text-xs font-bold"
                 >
-                  <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-white">
+                  <div className="w-6 h-6 rounded-sm bg-white/20 flex items-center justify-center text-white">
                     <UserIcon className="w-3.5 h-3.5" />
                   </div>
                   <span className="max-w-[100px] truncate">{user.displayName || user.email?.split("@")[0]}</span>
@@ -412,10 +412,10 @@ export function OtaHeader({
                 </button>
 
                 {userMenuOpen && (
-                  <div className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-2xl border border-slate-100 py-2 z-50 text-slate-800 animate-in fade-in zoom-in-95 duration-150 divide-y divide-slate-100">
+                  <div className="absolute right-0 mt-2 w-52 bg-white rounded-sm shadow-2xl border border-slate-200 py-2 z-50 text-slate-800 animate-in fade-in zoom-in-95 duration-150 divide-y divide-slate-100">
                     <div className="px-4 py-2">
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mi Cuenta</p>
-                      <p className="text-xs font-black text-tech-blue truncate">{user.displayName || user.email}</p>
+                      <p className="text-xs font-black text-[#0A2A5B] truncate">{user.displayName || user.email}</p>
                     </div>
                     <div className="py-1">
                       <Link
@@ -423,7 +423,7 @@ export function OtaHeader({
                         onClick={() => setUserMenuOpen(false)}
                         className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
                       >
-                        <Plane className="w-3.5 h-3.5 text-tech-blue" />
+                        <Plane className="w-3.5 h-3.5 text-[#0A2A5B]" />
                         <span>Mis Viajes & Reservas</span>
                       </Link>
                       <Link
@@ -431,7 +431,7 @@ export function OtaHeader({
                         onClick={() => setUserMenuOpen(false)}
                         className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
                       >
-                        <Gift className="w-3.5 h-3.5 text-amber-500" />
+                        <Gift className="w-3.5 h-3.5 text-[#0A2A5B]" />
                         <span>Puntos TravelRewards</span>
                       </Link>
                     </div>
@@ -455,13 +455,13 @@ export function OtaHeader({
               <div className="flex items-center gap-1 sm:gap-2">
                 <Link
                   href="/login"
-                  className="px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold text-white hover:bg-white/10 transition-all border border-white/20 bg-white/5 whitespace-nowrap"
+                  className="px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-sm text-[11px] sm:text-xs font-bold text-white hover:bg-white/10 transition-all border border-white/25 bg-white/5 whitespace-nowrap"
                 >
                   Ingresar
                 </Link>
                 <Link
                   href="/registro"
-                  className="px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-black bg-[#FF5A19] hover:bg-[#e04c10] text-white shadow-md shadow-orange-900/30 hover:shadow-orange-900/50 transition-all transform hover:scale-[1.02] whitespace-nowrap"
+                  className="px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-sm text-[11px] sm:text-xs font-black bg-white hover:bg-slate-100 text-[#0A2A5B] transition-colors whitespace-nowrap"
                 >
                   Registro
                 </Link>
@@ -473,7 +473,7 @@ export function OtaHeader({
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               aria-label="Abrir menú"
-              className="lg:hidden p-1.5 sm:p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white shrink-0"
+              className="lg:hidden p-1.5 sm:p-2 rounded-sm bg-white/10 hover:bg-white/20 text-white shrink-0"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
@@ -486,72 +486,82 @@ export function OtaHeader({
             {/* Teléfono Mobile */}
             <a
               href={`tel:${phone.replace(/[^0-9]/g, "")}`}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-black"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-sm bg-white/10 border border-white/20 text-white text-xs font-black"
             >
-              <Phone className="w-4 h-4 text-[#FF7A00]" />
+              <Phone className="w-4 h-4 text-white" />
               <span>{phone}</span>
             </a>
 
             {/* Links Mobile */}
             <div className="space-y-1 text-xs font-bold">
-              <div className="px-3 py-1.5 text-[11px] font-black uppercase text-blue-300">travelmarket</div>
+              <div className="px-3 py-1.5 text-[11px] font-black uppercase text-slate-300">travelmarket</div>
               <Link
                 href="/marketplace"
                 onClick={() => setMobileMenuOpen(false)}
-                className="block px-4 py-2 rounded-xl hover:bg-white/10"
+                className="flex items-center gap-2 px-4 py-2 rounded-sm hover:bg-white/10 text-white"
               >
-                ✈️ Turismo Emisivo
+                <Plane className="w-3.5 h-3.5 text-white" />
+                <span>Turismo Emisivo</span>
               </Link>
               <Link
                 href="/landing/experience/marketplace"
                 onClick={() => setMobileMenuOpen(false)}
-                className="block px-4 py-2 rounded-xl hover:bg-white/10 text-red-300"
+                className="flex items-center gap-2 px-4 py-2 rounded-sm hover:bg-white/10 text-white"
               >
-                🏔️ Turismo Receptivo
+                <Compass className="w-3.5 h-3.5 text-white" />
+                <span>Turismo Receptivo</span>
+              </Link>
+              <Link
+                href="/buses?brand=ecosistema"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-2 px-4 py-2 rounded-sm bg-red-600 hover:bg-red-700 text-white"
+              >
+                <Bus className="w-3.5 h-3.5 text-white" />
+                <span>Pasajes en Bus</span>
               </Link>
 
-              <div className="px-3 pt-3 pb-1 text-[11px] font-black uppercase text-blue-300">Ecosistema</div>
+              <div className="px-3 pt-3 pb-1 text-[11px] font-black uppercase text-slate-300">Ecosistema</div>
               <Link
                 href="/landing/experience"
                 onClick={() => setMobileMenuOpen(false)}
-                className="block px-4 py-2 rounded-xl hover:bg-white/10"
+                className="flex items-center gap-2 px-4 py-2 rounded-sm hover:bg-white/10 text-white"
               >
-                🌴 TravelApp Experience
+                <span>TravelApp Experience</span>
               </Link>
               <Link
                 href="/landing/travelcab"
                 onClick={() => setMobileMenuOpen(false)}
-                className="block px-4 py-2 rounded-xl hover:bg-white/10"
+                className="flex items-center gap-2 px-4 py-2 rounded-sm hover:bg-white/10 text-white"
               >
-                🚗 TravelCab Movilidad
+                <span>TravelCab Movilidad</span>
               </Link>
               <Link
                 href="/landing/rewards"
                 onClick={() => setMobileMenuOpen(false)}
-                className="block px-4 py-2 rounded-xl hover:bg-white/10"
+                className="flex items-center gap-2 px-4 py-2 rounded-sm hover:bg-white/10 text-white"
               >
-                🎁 TravelApp Rewards
+                <span>TravelApp Rewards</span>
               </Link>
               <Link
                 href="/landing/afiliados"
                 onClick={() => setMobileMenuOpen(false)}
-                className="block px-4 py-2 rounded-xl hover:bg-white/10"
+                className="flex items-center gap-2 px-4 py-2 rounded-sm hover:bg-white/10 text-white"
               >
-                ⭐ Red de Afiliados
+                <span>Red de Afiliados</span>
               </Link>
 
-              <div className="px-3 pt-3 pb-1 text-[11px] font-black uppercase text-blue-300">Institucional</div>
+              <div className="px-3 pt-3 pb-1 text-[11px] font-black uppercase text-slate-300">Institucional</div>
               <a
                 href="#vision"
                 onClick={() => setMobileMenuOpen(false)}
-                className="block px-4 py-2 rounded-xl hover:bg-white/10"
+                className="block px-4 py-2 rounded-sm hover:bg-white/10"
               >
                 Visión, Misión y Valores
               </a>
               <a
                 href="#contacto"
                 onClick={() => setMobileMenuOpen(false)}
-                className="block px-4 py-2 rounded-xl hover:bg-white/10"
+                className="block px-4 py-2 rounded-sm hover:bg-white/10"
               >
                 Contacto Directo
               </a>
