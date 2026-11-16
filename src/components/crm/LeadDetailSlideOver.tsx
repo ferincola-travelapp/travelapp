@@ -1,8 +1,9 @@
 import React from 'react';
 import { X, Video, Mail, Phone, CalendarCheck, Bot, RefreshCw } from 'lucide-react';
-import { Lead, LeadStatus } from '@/types/crm';
+import { Lead, LeadStatus, Unit } from '@/types/crm';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { BUSINESS_UNITS_CONFIG, ALL_SECTORS_BY_UNIT, normalizeBusinessUnit } from '@/lib/permissions';
 
 interface LeadDetailSlideOverProps {
   lead: Lead | null;
@@ -24,6 +25,21 @@ export const LeadDetailSlideOver: React.FC<LeadDetailSlideOverProps> = ({ lead, 
     } catch (error) {
       console.error("Error al actualizar estado:", error);
       alert("Hubo un error al actualizar el estado.");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleUnitSectorChange = async (newUnit: string, newSector: string) => {
+    setIsUpdating(true);
+    try {
+      await updateDoc(doc(db, 'leads', lead.id), {
+        businessUnit: newUnit as Unit,
+        sector: newSector || null,
+      });
+    } catch (error) {
+      console.error("Error al actualizar unidad/sector:", error);
+      alert("Hubo un error al actualizar la unidad o sector.");
     } finally {
       setIsUpdating(false);
     }
@@ -68,13 +84,18 @@ export const LeadDetailSlideOver: React.FC<LeadDetailSlideOverProps> = ({ lead, 
         <div className="flex items-center justify-between border-b border-slate-200 p-6">
           <div>
             <h2 className="text-xl font-bold text-tech-blue">{lead.customerName}</h2>
-            <div className="mt-2 flex gap-2">
+            <div className="mt-2 flex flex-wrap gap-2">
               <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${currentSourceStyle}`}>
                 {lead.origin}
               </span>
               <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${currentUnitStyle}`}>
                 {lead.businessUnit}
               </span>
+              {lead.sector && (
+                <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                  {lead.sector}
+                </span>
+              )}
             </div>
           </div>
           <button 
@@ -89,15 +110,16 @@ export const LeadDetailSlideOver: React.FC<LeadDetailSlideOverProps> = ({ lead, 
         <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
 
           {/* Status Selector */}
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium text-slate-500">Etapa del Embudo</h3>
-              {isUpdating && <RefreshCw className="h-4 w-4 animate-spin text-tech-blue" />}
-            </div>
-            <select
-              value={lead.status}
-              onChange={(e) => handleStatusChange(e.target.value as LeadStatus)}
-              disabled={isUpdating}
+          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+            <div>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-slate-500">Etapa del Embudo</h3>
+                {isUpdating && <RefreshCw className="h-4 w-4 animate-spin text-tech-blue" />}
+              </div>
+              <select
+                value={lead.status}
+                onChange={(e) => handleStatusChange(e.target.value as LeadStatus)}
+                disabled={isUpdating}
               className="mt-3 block w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-tech-blue focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
             >
               <option value="Nuevos">Nuevos (Travis)</option>
@@ -105,6 +127,37 @@ export const LeadDetailSlideOver: React.FC<LeadDetailSlideOverProps> = ({ lead, 
               <option value="En Negociación">En Negociación</option>
               <option value="Ganados/Perdidos">Ganados / Perdidos</option>
             </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1">Unidad de Negocio</label>
+                <select
+                  value={normalizeBusinessUnit(lead.businessUnit)}
+                  onChange={(e) => handleUnitSectorChange(e.target.value, '')}
+                  disabled={isUpdating}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700 outline-none focus:border-tech-blue"
+                >
+                  {BUSINESS_UNITS_CONFIG.map(u => (
+                    <option key={u.id} value={u.id}>{u.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1">Sector / Área</label>
+                <select
+                  value={lead.sector || ''}
+                  onChange={(e) => handleUnitSectorChange(normalizeBusinessUnit(lead.businessUnit), e.target.value)}
+                  disabled={isUpdating}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700 outline-none focus:border-tech-blue"
+                >
+                  <option value="">Sin sector</option>
+                  {(ALL_SECTORS_BY_UNIT[normalizeBusinessUnit(lead.businessUnit)] || []).map(sec => (
+                    <option key={sec} value={sec}>{sec}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
           
           {/* Lead Info */}

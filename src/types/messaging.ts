@@ -54,6 +54,7 @@ export interface ConversationMetadata {
   driverName?: string;
   passengerName?: string;
   businessUnit?: BusinessUnit;
+  sector?: string;
 }
 
 export interface Conversation {
@@ -185,7 +186,22 @@ export interface TravisKnowledgeEntry {
   id: string;
   title: string;
   content: string;    // Markdown
-  category: 'TravelCab' | 'Experiences' | 'Rewards' | 'General' | 'Drivers';
+  category:
+    | 'TravelApp'
+    | 'TravelApp Experience'
+    | 'TravelApp Rewards'
+    | 'TravelCab'
+    | 'Experiences'
+    | 'Rewards'
+    | 'General'
+    | 'Drivers';
+  sector?: string;
+  sourceType?: 'manual' | 'pdf' | 'url' | 'file';
+  sourceUrl?: string;
+  fileName?: string;
+  includeNotes?: string;       // Qué información SÍ tomar/priorizar de esta fuente
+  excludeNotes?: string;       // Qué información NO mencionar al cliente
+  allowClosingSale?: boolean;  // true = autorizado a cerrar venta en este servicio; false/undefined = asesora y deriva a humano
   createdAt: number;
 }
 
@@ -232,6 +248,7 @@ export interface TravisConfig {
   activeChannels: TravisChannelStatus;
   autoReplyEnabled: boolean;
   handoffTriggers: string[];  // Palabras que escalan al humano
+  unitGreetings?: Partial<Record<'TravelApp' | 'TravelApp Experience' | 'TravelApp Rewards' | 'TravelCab', string>>;
   workingHours?: { start: string; end: string; timezone: string };
   outOfHoursMessage: string;
   updatedAt: number;
@@ -404,4 +421,37 @@ export interface BroadcastCampaign {
   stats: BroadcastStats;
   createdBy: string;
   createdAt: number;
+}
+
+// -----------------------------------------------------------------------------
+// Telefonía Anura & Grabaciones de Llamadas
+// -----------------------------------------------------------------------------
+
+export type CallAttentionStatus =
+  | 'pendiente_atencion'
+  | 'pendiente_respuesta'
+  | 'en_curso'
+  | 'resuelta';
+
+export interface CallRecord {
+  id: string;
+  callId: string;
+  callerPhone: string;
+  callerName: string;
+  extension?: string;
+  dnis?: string;
+  direction: 'inbound' | 'outbound';
+  callStatus: string;
+  durationSeconds?: number;
+  recordingUrl?: string;
+  attentionStatus: CallAttentionStatus;
+  businessUnit: BusinessUnit;
+  sector?: string;
+  notes?: string;
+  assignedOperatorName?: string;
+  conversationId?: string;
+  whatsappAutoReplySent?: boolean;
+  isOutOfHours?: boolean;
+  createdAt: number;
+  updatedAt: number;
 }

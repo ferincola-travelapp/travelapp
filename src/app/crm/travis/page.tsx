@@ -8,11 +8,17 @@ import {
   MessageChannel, CommentAutomationRule, DEFAULT_COMMENT_RULES, BusinessUnit,
 } from '@/types/messaging';
 import {
+  BUSINESS_UNITS_CONFIG,
+  ALL_SECTORS_BY_UNIT,
+  OfficialBusinessUnit,
+  normalizeBusinessUnit,
+} from '@/lib/permissions';
+import {
   Bot, Save, RefreshCw, Send, Plus, Edit2, Trash2, Check, X,
   AlertCircle, Zap, BookOpen,
   Settings, MessageSquare, Phone, Globe,
   ThumbsUp, ThumbsDown, Sparkles,
-  ToggleLeft, ToggleRight, Clock,
+  ToggleLeft, ToggleRight, Clock, Upload, Link2, ShieldAlert,
 } from 'lucide-react';
 
 // Inline SVG para íconos de redes sociales no disponibles en lucide-react v1.x
@@ -45,17 +51,29 @@ type TravisTab = 'prompt' | 'knowledge' | 'comments' | 'channels' | 'training';
 function SystemPromptTab({ config, onSave }: { config: TravisConfig; onSave: (partial: Partial<TravisConfig>) => Promise<void> }) {
   const [prompt, setPrompt] = useState(config.systemPrompt);
   const [context, setContext] = useState(config.businessContext);
+  const [unitGreetings, setUnitGreetings] = useState<Record<OfficialBusinessUnit, string>>({
+    TravelApp: config.unitGreetings?.TravelApp || '',
+    'TravelApp Experience': config.unitGreetings?.['TravelApp Experience'] || '',
+    'TravelApp Rewards': config.unitGreetings?.['TravelApp Rewards'] || '',
+    TravelCab: config.unitGreetings?.TravelCab || '',
+  });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     setPrompt(config.systemPrompt);
     setContext(config.businessContext);
-  }, [config.systemPrompt, config.businessContext]);
+    setUnitGreetings({
+      TravelApp: config.unitGreetings?.TravelApp || '',
+      'TravelApp Experience': config.unitGreetings?.['TravelApp Experience'] || '',
+      'TravelApp Rewards': config.unitGreetings?.['TravelApp Rewards'] || '',
+      TravelCab: config.unitGreetings?.TravelCab || '',
+    });
+  }, [config.systemPrompt, config.businessContext, config.unitGreetings]);
 
   const handleSave = async () => {
     setSaving(true);
-    await onSave({ systemPrompt: prompt, businessContext: context });
+    await onSave({ systemPrompt: prompt, businessContext: context, unitGreetings });
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
@@ -121,6 +139,44 @@ function SystemPromptTab({ config, onSave }: { config: TravisConfig; onSave: (pa
         />
       </div>
 
+      {/* Regla comercial + Saludos Estandarizados por Unidad */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-800 space-y-1">
+        <p className="font-bold flex items-center gap-1.5">
+          <ShieldAlert className="h-4 w-4 text-amber-600" />
+          Regla Comercial Activa por Defecto
+        </p>
+        <p>
+          Travis actúa como el mejor vendedor consultivo, pero <strong>no cierra ventas ni cobra</strong> salvo en los servicios/artículos de la Base de Conocimiento donde marques explícitamente <em>&quot;Autorizar cierre de venta&quot;</em>. En todo lo demás, asesora y deriva al operador humano.
+        </p>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+        <div>
+          <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+            Saludos Estandarizados por Unidad de Negocio
+          </h4>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Configurá el saludo oficial que Travis utilizará al iniciar una conversación según la unidad de negocio detectada.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {BUSINESS_UNITS_CONFIG.map(unit => (
+            <div key={unit.id} className="space-y-1">
+              <label className="block text-xs font-bold text-slate-700">
+                {unit.label} <span className="font-normal text-slate-400">({unit.subtitle})</span>
+              </label>
+              <textarea
+                rows={2}
+                value={unitGreetings[unit.id] || ''}
+                onChange={e => setUnitGreetings(prev => ({ ...prev, [unit.id]: e.target.value }))}
+                placeholder={`¡Hola! Bienvenido a ${unit.label}...`}
+                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-tech-blue/20 resize-none"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
       <button
         onClick={handleSave}
         disabled={saving || saved}
@@ -139,7 +195,21 @@ function KnowledgeBaseTab({ config, onSave }: { config: TravisConfig; onSave: (p
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
-  const [editCategory, setEditCategory] = useState<TravisKnowledgeEntry['category']>('General');
+  const [editCategory, setEditCategory] = useState<TravisKnowledgeEntry['category']>('TravelApp');
+  const [editSector, setEditSector] = useState<string>('');
+  const [editSourceType, setEditSourceType] = useState<'manual' | 'pdf' | 'url' | 'file'>('manual');
+  const [editSourceUrl, setEditSourceUrl] = useState('');
+  const [editFileName, setEditFileName] = useState('');
+  const [editIncludeNotes, setEditIncludeNotes] = useState('');
+  const [editExcludeNotes, setEditExcludeNotes] = useState('');
+  const [editAllowClosingSale, setEditAllowClosingSale] = useState(false);
+
+  const [importUrl, setImportUrl] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [filterUnit, setFilterUnit] = useState<string>('all');
   const [addingNew, setAddingNew] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -147,36 +217,133 @@ function KnowledgeBaseTab({ config, onSave }: { config: TravisConfig; onSave: (p
     setEntries(config.knowledgeBase || []);
   }, [config.knowledgeBase]);
 
-  const CATEGORIES: TravisKnowledgeEntry['category'][] = ['TravelCab', 'Experiences', 'Rewards', 'General', 'Drivers'];
+  const CATEGORIES: TravisKnowledgeEntry['category'][] = [
+    'TravelApp',
+    'TravelApp Experience',
+    'TravelApp Rewards',
+    'TravelCab',
+    'General',
+  ];
   const CATEGORY_COLORS: Record<string, string> = {
-    TravelCab: 'bg-blue-100 text-blue-700',
+    TravelApp: 'bg-blue-100 text-blue-700',
+    'TravelApp Experience': 'bg-orange-100 text-orange-700',
+    'TravelApp Rewards': 'bg-purple-100 text-purple-700',
+    TravelCab: 'bg-indigo-100 text-indigo-700',
     Experiences: 'bg-emerald-100 text-emerald-700',
     Rewards: 'bg-amber-100 text-amber-700',
     General: 'bg-slate-100 text-slate-600',
     Drivers: 'bg-orange-100 text-orange-700',
   };
 
+  const resetForm = () => {
+    setEditTitle('');
+    setEditContent('');
+    setEditCategory('TravelApp');
+    setEditSector('');
+    setEditSourceType('manual');
+    setEditSourceUrl('');
+    setEditFileName('');
+    setEditIncludeNotes('');
+    setEditExcludeNotes('');
+    setEditAllowClosingSale(false);
+  };
+
+  const handleImportUrl = async () => {
+    if (!importUrl.trim()) return;
+    setImporting(true);
+    setImportError(null);
+    try {
+      const res = await fetch('/api/travis/ingest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: importUrl.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'No se pudo importar la URL');
+      }
+      resetForm();
+      setEditTitle(data.title || importUrl.trim());
+      setEditContent(data.content || '');
+      setEditSourceType('url');
+      setEditSourceUrl(data.sourceUrl || importUrl.trim());
+      setAddingNew(true);
+      setEditingId(null);
+      setImportUrl('');
+    } catch (err: any) {
+      setImportError(err.message || 'Error importando URL');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportError(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/travis/ingest', {
+        method: 'POST',
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'No se pudo procesar el archivo');
+      }
+      resetForm();
+      setEditTitle(data.title || file.name);
+      setEditContent(data.content || '');
+      setEditSourceType(data.sourceType || 'pdf');
+      setEditFileName(data.fileName || file.name);
+      setAddingNew(true);
+      setEditingId(null);
+    } catch (err: any) {
+      setImportError(err.message || 'Error procesando archivo');
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const saveEntry = async (isNew: boolean) => {
     setSaving(true);
     let updated: TravisKnowledgeEntry[];
+    const baseFields: Partial<TravisKnowledgeEntry> = {
+      title: editTitle,
+      content: editContent,
+      category: editCategory,
+      sector: editSector || undefined,
+      sourceType: editSourceType,
+      sourceUrl: editSourceUrl || undefined,
+      fileName: editFileName || undefined,
+      includeNotes: editIncludeNotes.trim() || undefined,
+      excludeNotes: editExcludeNotes.trim() || undefined,
+      allowClosingSale: editAllowClosingSale,
+    };
+
     if (isNew) {
       const newEntry: TravisKnowledgeEntry = {
         id: `kb_${Date.now()}`,
         title: editTitle,
         content: editContent,
         category: editCategory,
+        ...baseFields,
         createdAt: Date.now(),
       };
       updated = [...entries, newEntry];
     } else {
-      updated = entries.map(e => e.id === editingId ? { ...e, title: editTitle, content: editContent, category: editCategory } : e);
+      updated = entries.map(e =>
+        e.id === editingId ? { ...e, ...baseFields } : e
+      );
     }
     await onSave({ knowledgeBase: updated });
     setEntries(updated);
     setEditingId(null);
     setAddingNew(false);
-    setEditTitle('');
-    setEditContent('');
+    resetForm();
     setSaving(false);
   };
 
@@ -188,18 +355,79 @@ function KnowledgeBaseTab({ config, onSave }: { config: TravisConfig; onSave: (p
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm text-slate-500">
-            Agregá artículos de conocimiento para que Travis pueda responder con información específica y precisa sobre TravelApp.
+            Cargá artículos manuales, <strong>PDFs</strong>, archivos de texto o <strong>URLs</strong>, e indicá exactamente qué información tomar y qué no decirle al cliente.
           </p>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.txt,.md,.csv"
+            onChange={handleImportFile}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-bold rounded-lg disabled:opacity-50"
+          >
+            <Upload className="h-3.5 w-3.5" /> {importing ? 'Procesando...' : 'Subir PDF / Archivo'}
+          </button>
+          <button
+            onClick={() => { resetForm(); setAddingNew(true); setEditingId(null); }}
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-tech-blue text-white text-xs font-bold rounded-lg"
+          >
+            <Plus className="h-3.5 w-3.5" /> Nuevo Artículo
+          </button>
+        </div>
+      </div>
+
+      {/* Import from URL bar */}
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+        <div className="flex items-center gap-2 flex-1">
+          <Link2 className="h-4 w-4 text-slate-400 flex-shrink-0" />
+          <input
+            type="url"
+            value={importUrl}
+            onChange={e => setImportUrl(e.target.value)}
+            placeholder="Pegá una URL (ej: https://travelapp.ar/terminos o página de un servicio)..."
+            className="flex-1 bg-white px-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-tech-blue/20"
+          />
+        </div>
         <button
-          onClick={() => { setAddingNew(true); setEditTitle(''); setEditContent(''); setEditCategory('General'); }}
-          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-tech-blue text-white text-xs font-bold rounded-lg"
+          type="button"
+          onClick={handleImportUrl}
+          disabled={importing || !importUrl.trim()}
+          className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg disabled:opacity-50"
         >
-          <Plus className="h-3.5 w-3.5" /> Nuevo Artículo
+          {importing ? 'Extrayendo...' : 'Importar URL'}
         </button>
+      </div>
+
+      {importError && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg px-3 py-2 flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+          <span>{importError}</span>
+        </div>
+      )}
+
+      {/* Filter by unit */}
+      <div className="flex flex-wrap gap-1.5">
+        {['all', ...CATEGORIES].map(u => (
+          <button
+            key={u}
+            onClick={() => setFilterUnit(u)}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+              filterUnit === u ? 'bg-tech-blue text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            {u === 'all' ? 'Todas las Unidades' : u}
+          </button>
+        ))}
       </div>
 
       {/* New/Edit form */}
@@ -216,13 +444,28 @@ function KnowledgeBaseTab({ config, onSave }: { config: TravisConfig; onSave: (p
             {CATEGORIES.map(cat => (
               <button
                 key={cat}
-                onClick={() => setEditCategory(cat)}
+                onClick={() => { setEditCategory(cat); setEditSector(''); }}
                 className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all border ${editCategory === cat ? 'border-tech-blue bg-tech-blue/10 text-tech-blue' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
               >
                 {cat}
               </button>
             ))}
           </div>
+          {editCategory !== 'General' && (
+            <div>
+              <label className="block text-[11px] font-bold text-slate-500 mb-1">Sector / Área (opcional)</label>
+              <select
+                value={editSector}
+                onChange={e => setEditSector(e.target.value)}
+                className="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-white text-slate-700"
+              >
+                <option value="">Todos los sectores de {editCategory}</option>
+                {(ALL_SECTORS_BY_UNIT[normalizeBusinessUnit(editCategory) as OfficialBusinessUnit] || []).map(sec => (
+                  <option key={sec} value={sec}>{sec}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <textarea
             value={editContent}
             onChange={e => setEditContent(e.target.value)}
@@ -230,6 +473,46 @@ function KnowledgeBaseTab({ config, onSave }: { config: TravisConfig; onSave: (p
             placeholder="Contenido del artículo. Podés usar Markdown (**negrita**, listas, etc.)"
             className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-tech-blue/20 resize-none font-mono"
           />
+
+          {/* Reglas de filtrado y cierre para Travis */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-50 border border-slate-200 rounded-xl p-3">
+            <div>
+              <label className="block text-[11px] font-bold text-emerald-700 mb-1">
+                Qué información SÍ tomar / priorizar (opcional)
+              </label>
+              <textarea
+                rows={2}
+                value={editIncludeNotes}
+                onChange={e => setEditIncludeNotes(e.target.value)}
+                placeholder="Ej: Destacar beneficios, requisitos y horarios disponibles..."
+                className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white resize-none"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-rose-700 mb-1">
+                Qué información NO decirle al cliente (opcional)
+              </label>
+              <textarea
+                rows={2}
+                value={editExcludeNotes}
+                onChange={e => setEditExcludeNotes(e.target.value)}
+                placeholder="Ej: No mencionar costos internos, márgenes ni teléfonos privados..."
+                className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white resize-none"
+              />
+            </div>
+            <label className="md:col-span-2 flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer pt-1">
+              <input
+                type="checkbox"
+                checked={editAllowClosingSale}
+                onChange={e => setEditAllowClosingSale(e.target.checked)}
+                className="rounded border-slate-300 text-tech-blue"
+              />
+              <span>
+                Autorizar a Travis a cerrar la venta directamente en este servicio
+                <span className="font-normal text-slate-400"> (si está desmarcado, asesora como vendedor y deriva el cierre a un humano)</span>
+              </span>
+            </label>
+          </div>
           <div className="flex gap-2">
             <button
               onClick={() => saveEntry(addingNew)}
@@ -254,7 +537,9 @@ function KnowledgeBaseTab({ config, onSave }: { config: TravisConfig; onSave: (p
         </div>
       ) : (
         <div className="space-y-2">
-          {entries.map(entry => (
+          {entries
+            .filter(entry => filterUnit === 'all' || entry.category === filterUnit || normalizeBusinessUnit(entry.category) === filterUnit)
+            .map(entry => (
             <div key={entry.id} className="bg-white border border-slate-200 rounded-xl p-3 hover:border-slate-300 transition-colors">
               <div className="flex items-start gap-3">
                 <div className="flex-1 min-w-0">
@@ -263,12 +548,38 @@ function KnowledgeBaseTab({ config, onSave }: { config: TravisConfig; onSave: (p
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${CATEGORY_COLORS[entry.category] || 'bg-slate-100 text-slate-500'}`}>
                       {entry.category}
                     </span>
+                    {entry.sector && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                        {entry.sector}
+                      </span>
+                    )}
+                    {entry.sourceType && entry.sourceType !== 'manual' && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-sky-50 text-sky-700 border border-sky-200 uppercase">
+                        {entry.sourceType}
+                      </span>
+                    )}
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${entry.allowClosingSale ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                      {entry.allowClosingSale ? 'Cierre Autónomo' : 'Cierre Humano'}
+                    </span>
                   </div>
                   <p className="text-xs text-slate-400 mt-1 line-clamp-2">{entry.content}</p>
                 </div>
                 <div className="flex gap-1 flex-shrink-0">
                   <button
-                    onClick={() => { setEditingId(entry.id); setAddingNew(false); setEditTitle(entry.title); setEditContent(entry.content); setEditCategory(entry.category); }}
+                    onClick={() => {
+                      setEditingId(entry.id);
+                      setAddingNew(false);
+                      setEditTitle(entry.title);
+                      setEditContent(entry.content);
+                      setEditCategory(entry.category);
+                      setEditSector(entry.sector || '');
+                      setEditSourceType(entry.sourceType || 'manual');
+                      setEditSourceUrl(entry.sourceUrl || '');
+                      setEditFileName(entry.fileName || '');
+                      setEditIncludeNotes(entry.includeNotes || '');
+                      setEditExcludeNotes(entry.excludeNotes || '');
+                      setEditAllowClosingSale(Boolean(entry.allowClosingSale));
+                    }}
                     className="p-1.5 hover:bg-slate-100 rounded-lg"
                   >
                     <Edit2 className="h-3.5 w-3.5 text-slate-400" />

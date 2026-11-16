@@ -9,10 +9,20 @@ import { db } from '@/lib/firebase';
 import {
   Conversation, Message, AutomatedMessage, BroadcastCampaign,
   MessageChannel, AUTOMATED_TRIGGER_LABELS, DEFAULT_AUTOMATED_MESSAGES,
-  AutomatedTrigger, NotificationAudioType, NotificationCategory,
+  AutomatedTrigger, NotificationAudioType, NotificationCategory, CallRecord,
 } from '@/types/messaging';
+import { CallsPanel } from '@/components/messaging/CallsPanel';
 import { LeadDetailSlideOver } from '@/components/crm/LeadDetailSlideOver';
 import { Lead } from '@/types/crm';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  canAccessRecord,
+  getUserScopeLabel,
+  BUSINESS_UNITS_CONFIG,
+  ALL_SECTORS_BY_UNIT,
+  normalizeBusinessUnit,
+  isSuperAdmin,
+} from '@/lib/permissions';
 import {
   MessageSquare, Send, Bot, Users, Zap, Megaphone, Search,
   Phone, Globe, X, Check,
@@ -1118,23 +1128,39 @@ function ContactPanel({
   );
   const main = conversation.participants.find(p => p.role === 'customer' || p.role === 'driver');
 
-  const handleUpdateBusinessUnit = async (unit: 'TravelCab' | 'Experiences' | 'Rewards' | 'General') => {
+  const handleUpdateBusinessUnit = async (unit: string) => {
     try {
       await updateDoc(doc(db, 'conversations', conversation.id), {
-        'metadata.businessUnit': unit
+        'metadata.businessUnit': unit,
+        'metadata.sector': ''
       });
       const q = query(collection(db, 'leads'), where('conversationId', '==', conversation.id), limit(1));
       const snap = await getDocs(q);
       if (!snap.empty) {
-        const leadUnit = unit === 'Experiences' ? 'Experiencias' : unit;
-        if (leadUnit !== 'General') {
-          await updateDoc(doc(db, 'leads', snap.docs[0].id), {
-            businessUnit: leadUnit
-          });
-        }
+        await updateDoc(doc(db, 'leads', snap.docs[0].id), {
+          businessUnit: unit,
+          sector: ''
+        });
       }
     } catch (error) {
       console.error("Error al actualizar unidad:", error);
+    }
+  };
+
+  const handleUpdateSector = async (sector: string) => {
+    try {
+      await updateDoc(doc(db, 'conversations', conversation.id), {
+        'metadata.sector': sector
+      });
+      const q = query(collection(db, 'leads'), where('conversationId', '==', conversation.id), limit(1));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        await updateDoc(doc(db, 'leads', snap.docs[0].id), {
+          sector
+        });
+      }
+    } catch (error) {
+      console.error("Error al actualizar sector:", error);
     }
   };
 
@@ -1194,14 +1220,27 @@ function ContactPanel({
         <div className="space-y-1">
           <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Unidad de Negocio</label>
           <select 
-            value={conversation.metadata?.businessUnit || 'General'}
-            onChange={(e) => handleUpdateBusinessUnit(e.target.value as any)}
-            className="w-full text-xs bg-white border border-slate-202 rounded-lg p-1.5 focus:outline-none focus:ring-1 focus:ring-tech-blue text-slate-800"
+            value={normalizeBusinessUnit(conversation.metadata?.businessUnit)}
+            onChange={(e) => handleUpdateBusinessUnit(e.target.value)}
+            className="w-full text-xs bg-white border border-slate-200 rounded-lg p-1.5 focus:outline-none focus:ring-1 focus:ring-tech-blue text-slate-800"
           >
-            <option value="General">General (Ecosistema)</option>
-            <option value="TravelCab">TravelCab (Movilidad)</option>
-            <option value="Experiences">Experiences (Tours)</option>
-            <option value="Rewards">Rewards (Lealtad)</option>
+            {BUSINESS_UNITS_CONFIG.map(u => (
+              <option key={u.id} value={u.id}>{u.label} ({u.subtitle})</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sector / Área</label>
+          <select 
+            value={conversation.metadata?.sector || ''}
+            onChange={(e) => handleUpdateSector(e.target.value)}
+            className="w-full text-xs bg-white border border-slate-200 rounded-lg p-1.5 focus:outline-none focus:ring-1 focus:ring-tech-blue text-slate-800"
+          >
+            <option value="">Sin sector asignado</option>
+            {(ALL_SECTORS_BY_UNIT[normalizeBusinessUnit(conversation.metadata?.businessUnit)] || []).map(sec => (
+              <option key={sec} value={sec}>{sec}</option>
+            ))}
           </select>
         </div>
 
@@ -1264,11 +1303,13 @@ function ContactPanel({
 }
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-type Tab = 'conversations' | 'automated' | 'broadcast';
+type Tab = 'conversations' | 'calls' | 'automated' | 'broadcast';
 
 export default function MessagesPage() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('conversations');
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [calls, setCalls] = useState<CallRecord[]>([]);
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
@@ -1323,13 +1364,35 @@ export default function MessagesPage() {
     return () => unsub();
   }, [activeConversation?.id]);
 
+  // Real-time calls listener (Anura)
+  useEffect(() => {
+    const q = query(collection(db, 'calls'), orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(q, snap => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as CallRecord));
+      setCalls(list);
+    });
+    return () => unsub();
+  }, []);
+
   const TABS = [
-    { key: 'conversations' as Tab, label: 'Conversaciones', icon: MessageSquare },
+    { key: 'conversations' as Tab, label: 'Chats', icon: MessageSquare },
+    { key: 'calls' as Tab, label: 'Llamadas', icon: Phone },
     { key: 'automated' as Tab, label: 'Automáticos', icon: Zap },
     { key: 'broadcast' as Tab, label: 'Broadcast', icon: Megaphone },
   ];
 
-  const totalUnread = conversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
+  // Filtrado estricto por Unidad de Negocio y Sector del usuario (Super Admin ve todo)
+  const authorizedConversations = conversations.filter(c =>
+    canAccessRecord(user, c.metadata?.businessUnit, c.metadata?.sector)
+  );
+  const authorizedCalls = calls.filter(c =>
+    canAccessRecord(user, c.businessUnit, c.sector)
+  );
+
+  const totalUnread = authorizedConversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
+  const pendingCallsCount = authorizedCalls.filter(
+    c => c.attentionStatus === 'pendiente_atencion' || c.attentionStatus === 'pendiente_respuesta'
+  ).length;
 
   return (
     <div className="flex h-[calc(100vh-4rem)] bg-slate-50 overflow-hidden">
@@ -1346,6 +1409,9 @@ export default function MessagesPage() {
               <span className="bg-tech-blue text-white text-xs font-bold px-2 py-0.5 rounded-full">{totalUnread}</span>
             )}
           </div>
+          <p className={`mt-1 text-[10px] font-semibold truncate ${isSuperAdmin(user) ? 'text-purple-600' : 'text-slate-500'}`} title={getUserScopeLabel(user)}>
+            {getUserScopeLabel(user)}
+          </p>
           {/* Tabs */}
           <div className="flex gap-0.5 mt-3 bg-slate-100 p-0.5 rounded-lg">
             {TABS.map(t => {
@@ -1358,6 +1424,9 @@ export default function MessagesPage() {
                 >
                   <Icon className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">{t.label}</span>
+                  {t.key === 'calls' && pendingCallsCount > 0 && (
+                    <span className="ml-0.5 bg-rose-500 text-white text-[9px] px-1.5 rounded-full">{pendingCallsCount}</span>
+                  )}
                 </button>
               );
             })}
@@ -1371,7 +1440,7 @@ export default function MessagesPage() {
               <div className="flex items-center justify-center h-40 text-slate-400 text-sm">Cargando...</div>
             ) : (
               <ConversationList
-                conversations={conversations}
+                conversations={authorizedConversations}
                 activeId={activeConversation?.id || null}
                 onSelect={setActiveConversation}
                 filter={filter}
@@ -1381,15 +1450,38 @@ export default function MessagesPage() {
               />
             )
           )}
+          {activeTab === 'calls' && (
+            <div className="p-4 text-xs text-slate-500 space-y-2">
+              <p className="font-semibold text-slate-700">Bandeja Telefónica Anura</p>
+              <p>Visualizá las llamadas entrantes/salientes, escuchá grabaciones pendientes y actualizá su estado.</p>
+              <div className="pt-2 border-t border-slate-100 space-y-1">
+                <p>Pendientes: <strong className="text-rose-600">{pendingCallsCount}</strong></p>
+                <p>Total autorizadas: <strong>{authorizedCalls.length}</strong></p>
+              </div>
+            </div>
+          )}
           {activeTab === 'automated' && <AutomatedMessagesPanel />}
           {activeTab === 'broadcast' && <BroadcastPanel />}
         </div>
       </div>
 
-      {/* ── Center: Chat Window ── */}
+      {/* ── Center: Chat Window or Calls Panel ── */}
       <div className="flex-1 flex flex-col min-w-0">
-        {activeConversation && activeTab === 'conversations' ? (
-          <ChatWindow conversation={activeConversation} operatorName="Operador TravelApp" />
+        {activeTab === 'calls' ? (
+          <CallsPanel
+            calls={authorizedCalls}
+            operatorName={user?.displayName || 'Operador TravelApp'}
+            onOpenConversation={(convId) => {
+              if (!convId) return;
+              const target = authorizedConversations.find(c => c.id === convId);
+              if (target) {
+                setActiveConversation(target);
+              }
+              setActiveTab('conversations');
+            }}
+          />
+        ) : activeConversation && activeTab === 'conversations' ? (
+          <ChatWindow conversation={activeConversation} operatorName={user?.displayName || 'Operador TravelApp'} />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-3">
             <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-tech-blue/10 to-indigo-600/10 flex items-center justify-center">

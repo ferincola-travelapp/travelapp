@@ -6,10 +6,11 @@ interface LeadCardProps {
   customerName: string;
   origin: Source;
   businessUnit: Unit;
+  sector?: string;
   onClick?: () => void;
 }
 
-export const LeadCard: React.FC<LeadCardProps> = ({ customerName, origin, businessUnit, onClick }) => {
+export const LeadCard: React.FC<LeadCardProps> = ({ customerName, origin, businessUnit, sector, onClick }) => {
   const normOrigin = (origin || 'Web').toLowerCase();
   const normUnit = businessUnit || 'TravelApp';
 
@@ -97,7 +98,7 @@ export const LeadCard: React.FC<LeadCardProps> = ({ customerName, origin, busine
           </div>
           <div>
             <h4 className="text-sm font-semibold text-tech-blue">{customerName}</h4>
-            <div className="mt-1 flex gap-2">
+            <div className="mt-1 flex flex-wrap gap-1.5">
               <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${srcBadge.style}`}>
                 {srcBadge.icon}
                 {srcBadge.label}
@@ -105,6 +106,11 @@ export const LeadCard: React.FC<LeadCardProps> = ({ customerName, origin, busine
               <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${unitBadge.style}`}>
                 {unitBadge.label}
               </span>
+              {sector && (
+                <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                  {sector}
+                </span>
+              )}
             </div>
           </div>
         </div>

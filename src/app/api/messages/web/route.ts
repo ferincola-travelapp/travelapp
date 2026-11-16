@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { serverAddDoc, serverGetDoc, serverSetDoc, serverGetDocs, serverUpdateDoc } from '@/lib/firestore-server';
-import { processTravisMessage, detectDetailedBusinessUnit } from '@/app/api/travis/chat/route';
+import { processTravisMessage, detectDetailedBusinessUnit, detectSectorForUnit } from '@/app/api/travis/chat/route';
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,6 +14,7 @@ export async function POST(req: NextRequest) {
     const id = conversationId || `web_chat_${Date.now()}`;
     const timestamp = Date.now();
     const detectedUnit = detectDetailedBusinessUnit(userMessage);
+    const detectedSector = detectSectorForUnit(userMessage, detectedUnit);
 
     // 1. Ensure conversation document exists
     let convDoc = await serverGetDoc('conversations', id);
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
         unreadCount: 1,
         metadata: {
           businessUnit: detectedUnit,
+          sector: detectedSector,
           passengerName: userName,
         },
         createdAt: timestamp,
@@ -49,6 +51,7 @@ export async function POST(req: NextRequest) {
           customerStatus: 'Prospecto',
           customerLevel: 1,
           businessUnit: detectedUnit,
+          sector: detectedSector,
           chatHistory: [{ sender: 'Client', message: userMessage, timestamp }],
           conversationId: id,
           createdAt: timestamp,

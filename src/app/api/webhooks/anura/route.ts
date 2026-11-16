@@ -5,8 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { serverGetDoc, serverAddDoc, serverSetDoc } from '@/lib/firestore-server';
-import { TravisConfig, DEFAULT_TRAVIS_CONFIG } from '@/types/messaging';
+import { TravisConfig, DEFAULT_TRAVIS_CONFIG, CallAttentionStatus, BusinessUnit } from '@/types/messaging';
 import { sendWhatsAppInteractiveButtons } from '@/lib/meta-whatsapp';
+import { normalizeBusinessUnit } from '@/lib/permissions';
 
 /**
  * Normaliza un número telefónico argentino recibido desde Anura (ANI) al formato internacional WhatsApp (549...)
@@ -51,7 +52,31 @@ async function processAnuraCallEvent(params: Record<string, any>) {
   ).toUpperCase();
 
   const callId = String(params.call_id || params.uniqueid || params.id || `anura_${Date.now()}`);
-  const extension = String(params.extension || params.agent || params.dnis || '');
+  const safeCallDocId = callId.replace(/[/\\#?]/g, '_');
+  const extension = String(params.extension || params.agent || params.interno || '');
+  const dnis = String(params.dnis || params.did || params.called || '');
+  const directionRaw = String(params.direction || params.tipo || 'inbound').toLowerCase();
+  const direction: 'inbound' | 'outbound' = directionRaw.includes('out') || directionRaw.includes('saliente') ? 'outbound' : 'inbound';
+
+  const recordingUrl = String(
+    params.recording_url ||
+    params.recordingUrl ||
+    params.recording ||
+    params.grabacion ||
+    params.url_grabacion ||
+    params.audio_url ||
+    params.media_url ||
+    ''
+  ).trim();
+
+  const durationRaw = params.duration ?? params.billsec ?? params.duracion;
+  const durationSeconds = durationRaw !== undefined && durationRaw !== '' ? Number(durationRaw) || 0 : undefined;
+
+  // Unidad de negocio y sector (configurable por parámetro o inferido por defecto)
+  const rawUnit = params.businessUnit || params.unit || params.unidad || 'TravelCab';
+  const businessUnit: BusinessUnit = normalizeBusinessUnit(String(rawUnit));
+  const defaultSector = businessUnit === 'TravelCab' ? 'Atención Usuarios' : 'Atención al Cliente';
+  const sector = String(params.sector || params.area || defaultSector);
 
   const cleanPhone = normalizeArgentinaPhoneForWhatsApp(String(rawCaller));
   if (!cleanPhone || cleanPhone.length < 10) {
@@ -105,13 +130,24 @@ async function processAnuraCallEvent(params: Record<string, any>) {
     callStatus.includes('ANSWERED') ||
     (isOutOfHours && anuraCfg.autoWhatsAppOnOutOfHours);
 
-  let whatsappSent = false;
+  // Verificar si ya existe registro previo para este callId (evitar duplicar WhatsApp en evento de fin de llamada)
+  let existingCall: Record<string, any> | null = null;
+  try {
+    const existingSnap = await serverGetDoc('calls', safeCallDocId);
+    if (existingSnap.exists) {
+      existingCall = existingSnap.data() || null;
+    }
+  } catch {
+    // ignore
+  }
+
+  let whatsappSent = Boolean(existingCall?.whatsappAutoReplySent);
   let whatsappDetail: any = null;
   const welcomeMessage =
     anuraCfg.missedCallWhatsAppMessage ||
     DEFAULT_TRAVIS_CONFIG.anuraConfig!.missedCallWhatsAppMessage;
 
-  if (anuraCfg.autoWhatsAppOnMissedCall && isMissedOrTrigger) {
+  if (!whatsappSent && anuraCfg.autoWhatsAppOnMissedCall && isMissedOrTrigger) {
     const waRes = await sendWhatsAppInteractiveButtons(
       cleanPhone,
       welcomeMessage,
@@ -133,73 +169,110 @@ async function processAnuraCallEvent(params: Record<string, any>) {
   try {
     const now = Date.now();
     const conversationId = `wa_${cleanPhone}`;
-    const callerLabel = `Llamada Anura (${cleanPhone})`;
+    const callerLabel = existingCall?.callerName || `Llamada Anura (${cleanPhone})`;
 
-    await serverAddDoc(`conversations/${conversationId}/messages`, {
-      conversationId,
-      sender: { id: 'system', name: 'Central Anura', role: 'system' },
-      content: `📞 Llamada telefónica recibida en Anura (Estado: ${callStatus}${extension ? ` • Interno: ${extension}` : ''} • ID: ${callId})`,
-      timestamp: now,
-      type: 'system',
-      channel: 'whatsapp',
-      isRead: false,
-    });
-
-    if (whatsappSent) {
-      await serverAddDoc(`conversations/${conversationId}/messages`, {
-        conversationId,
-        sender: { id: 'travis', name: 'Travis IA', role: 'travis' },
-        content: welcomeMessage,
-        timestamp: now + 1,
-        type: 'text',
-        channel: 'whatsapp',
-        isRead: false,
-      });
+    // Determinar estado de atención de la llamada/grabación
+    let attentionStatus: CallAttentionStatus = existingCall?.attentionStatus || 'pendiente_atencion';
+    if (!existingCall?.attentionStatus) {
+      if (recordingUrl || !wasAnsweredByHumanOperator || isOutOfHours) {
+        attentionStatus = whatsappSent ? 'pendiente_respuesta' : 'pendiente_atencion';
+      } else {
+        attentionStatus = 'en_curso';
+      }
     }
 
-    await serverSetDoc('conversations', conversationId, {
-      type: 'customer_support',
-      channel: 'whatsapp',
-      status: 'bot',
-      customerName: callerLabel,
-      externalId: cleanPhone,
-      participants: [
-        { id: cleanPhone, name: callerLabel, role: 'customer', phone: cleanPhone },
-        { id: 'travis', name: 'Travis IA', role: 'travis' },
-      ],
-      lastMessage: whatsappSent
-        ? `📞→📱 Travis envió WhatsApp tras llamada en Anura`
-        : `📞 Llamada en Anura (${callStatus})`,
-      lastMessageAt: now,
-      unreadCount: 1,
-      metadata: {
-        businessUnit: 'TravelCab (Usuario)',
-        passengerName: callerLabel,
-      },
-      createdAt: now,
+    // Guardar/actualizar documento dedicado en colección 'calls' (con grabación si existe)
+    await serverSetDoc('calls', safeCallDocId, {
+      callId,
+      callerPhone: cleanPhone,
+      callerName: callerLabel,
+      extension: extension || existingCall?.extension || '',
+      dnis: dnis || existingCall?.dnis || '',
+      direction,
+      callStatus,
+      ...(durationSeconds !== undefined ? { durationSeconds } : {}),
+      ...(recordingUrl ? { recordingUrl } : existingCall?.recordingUrl ? { recordingUrl: existingCall.recordingUrl } : {}),
+      attentionStatus,
+      businessUnit: existingCall?.businessUnit || businessUnit,
+      sector: existingCall?.sector || sector,
+      conversationId,
+      whatsappAutoReplySent: whatsappSent,
+      isOutOfHours,
+      createdAt: existingCall?.createdAt || now,
       updatedAt: now,
     });
 
-    await serverAddDoc('leads', {
-      customerName: callerLabel,
-      phone: cleanPhone,
-      origin: 'WhatsApp',
-      status: 'Nuevos',
-      customerStatus: 'Prospecto',
-      customerLevel: 1,
-      businessUnit: 'TravelCab (Usuario)',
-      conversationId,
-      createdAt: now,
-      lastInteraction: now,
-    });
+    if (!existingCall) {
+      await serverAddDoc(`conversations/${conversationId}/messages`, {
+        conversationId,
+        sender: { id: 'system', name: 'Central Anura', role: 'system' },
+        content: `📞 Llamada telefónica recibida en Anura (Estado: ${callStatus}${extension ? ` • Interno: ${extension}` : ''} • ID: ${callId})`,
+        timestamp: now,
+        type: 'system',
+        channel: 'whatsapp',
+        isRead: false,
+      });
+
+      if (whatsappSent) {
+        await serverAddDoc(`conversations/${conversationId}/messages`, {
+          conversationId,
+          sender: { id: 'travis', name: 'Travis IA', role: 'travis' },
+          content: welcomeMessage,
+          timestamp: now + 1,
+          type: 'text',
+          channel: 'whatsapp',
+          isRead: false,
+        });
+      }
+
+      await serverSetDoc('conversations', conversationId, {
+        type: 'customer_support',
+        channel: 'whatsapp',
+        status: 'bot',
+        customerName: callerLabel,
+        externalId: cleanPhone,
+        participants: [
+          { id: cleanPhone, name: callerLabel, role: 'customer', phone: cleanPhone },
+          { id: 'travis', name: 'Travis IA', role: 'travis' },
+        ],
+        lastMessage: whatsappSent
+          ? `📞→📱 Travis envió WhatsApp tras llamada en Anura`
+          : `📞 Llamada en Anura (${callStatus})`,
+        lastMessageAt: now,
+        unreadCount: 1,
+        metadata: {
+          businessUnit,
+          sector,
+          passengerName: callerLabel,
+        },
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await serverAddDoc('leads', {
+        customerName: callerLabel,
+        phone: cleanPhone,
+        origin: 'WhatsApp',
+        status: 'Nuevos',
+        customerStatus: 'Prospecto',
+        customerLevel: 1,
+        businessUnit,
+        sector,
+        conversationId,
+        createdAt: now,
+        lastInteraction: now,
+      });
+    }
   } catch (err) {
     console.warn('[Anura Webhook] Error guardando registro en Firestore:', err);
   }
 
   return NextResponse.json({
     success: true,
+    callId: safeCallDocId,
     caller: cleanPhone,
     callStatus,
+    recordingSaved: Boolean(recordingUrl),
     whatsappAutoReplySent: whatsappSent,
     whatsappDetail,
   });

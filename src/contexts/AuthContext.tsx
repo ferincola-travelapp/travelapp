@@ -16,17 +16,20 @@ import {
   User,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { UserRole, OfficialBusinessUnit } from "@/lib/permissions";
 
 // ---------------------------------------------------------
 // Types
 // ---------------------------------------------------------
-export type UserRole = "admin" | "operator" | "viewer";
+export type { UserRole };
 
 export interface AuthUser {
   uid: string;
   email: string | null;
   displayName: string | null;
   role: UserRole;
+  allowedUnits?: OfficialBusinessUnit[];
+  allowedSectors?: string[];
 }
 
 interface AuthContextValue {
@@ -47,11 +50,11 @@ interface AuthContextValue {
  * Currently we default every authenticated user to 'admin' for the MVP.
  */
 function deriveRole(user: User): UserRole {
-  // Lista de correos con permisos de Administrador Global
-  const adminEmails = ["fernando@travelapp.ar", "ferincola@gmail.com"];
+  // Lista de correos con permisos de Super Administrador Global
+  const superAdminEmails = ["fernando@travelapp.ar", "ferincola@gmail.com"];
   
-  if (user.email && adminEmails.includes(user.email.toLowerCase())) {
-    return "admin";
+  if (user.email && superAdminEmails.includes(user.email.toLowerCase())) {
+    return "super_admin";
   }
   
   // Por defecto, cualquier otro usuario ingresa como operator
@@ -105,15 +108,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         let role = deriveRole(firebaseUser);
         let active = true;
         let displayName = firebaseUser.displayName || 'Usuario';
+        let allowedUnits: OfficialBusinessUnit[] = [];
+        let allowedSectors: string[] = [];
         
         try {
           const q = query(collection(db, 'staff_users'), where('email', '==', firebaseUser.email));
           const snap = await getDocs(q);
           if (!snap.empty) {
             const data = snap.docs[0].data();
-            role = data.role || role;
+            // Mantener super_admin si está en la lista maestra, salvo que en Firestore sea explícitamente otro
+            if (role !== 'super_admin' || data.role === 'super_admin') {
+              role = data.role || role;
+            }
             active = data.active !== undefined ? data.active : true;
             displayName = data.name || displayName;
+            allowedUnits = Array.isArray(data.allowedUnits) ? data.allowedUnits : [];
+            allowedSectors = Array.isArray(data.allowedSectors) ? data.allowedSectors : [];
           }
         } catch (err) {
           console.error("Error looking up user profile in Firestore:", err);
@@ -131,6 +141,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             email: firebaseUser.email,
             displayName,
             role,
+            allowedUnits,
+            allowedSectors,
           };
           setUser(authUserData);
           // Persistir en localStorage y cookie de 1 año

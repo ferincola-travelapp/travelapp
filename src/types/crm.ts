@@ -131,6 +131,7 @@ export interface Lead {
   customerLevel: CustomerLevel;  // 1 = Basic, 2 = VIP
   origin: Source;
   businessUnit: Unit;
+  sector?: string;
   chatHistory: ChatMessage[];
   loyaltyPoints?: number;
   pointsHistory?: PointTransaction[];
@@ -158,13 +159,24 @@ export interface Lead {
   profileCompletedPercentage?: number;
 }
 
+export type CalendarEventType = 'Entrevista' | 'Llamada' | 'Videollamada';
+export type CalendarEventStatus = 'Programada' | 'Completada' | 'Cancelada';
+
 export interface CalendarEvent {
   id?: string;
   title: string;
   time: string;             // e.g., '09:00 AM'
   date: string;             // e.g., 'YYYY-MM-DD'
   type: string;
+  eventType?: CalendarEventType;
+  status?: CalendarEventStatus;
   duration: string;
   color: string;
   leadId?: string;
+  businessUnit?: Unit;
+  sector?: string;
+  meetingLink?: string;
+  phone?: string;
+  assignedTo?: string;
+  notes?: string;
 }

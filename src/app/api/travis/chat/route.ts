@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { serverGetDoc, serverGetDocs, serverAddDoc, serverUpdateDoc } from '@/lib/firestore-server';
 import { TravisConfig, DEFAULT_TRAVIS_CONFIG, BusinessUnit } from '@/types/messaging';
 import { queryExternalServiceProviders, formatExternalProvidersForPrompt } from '@/lib/external-providers';
+import { normalizeBusinessUnit } from '@/lib/permissions';
 
 // -----------------------------------------------------------------------------
 // HELPER: Detector de Unidades de Negocio (6 Unidades Oficiales)
@@ -120,6 +121,106 @@ export function detectDetailedBusinessUnit(
   }
 
   return 'TravelApp';
+}
+
+/**
+ * Detecta automáticamente el Sector / Área operativa dentro de la unidad de negocio
+ * según la intención del mensaje recibido.
+ */
+export function detectSectorForUnit(message: string, unit: string): string {
+  const msg = (message || '').toLowerCase();
+  const isCab = unit.toLowerCase().includes('travelcab') || unit.toLowerCase().includes('conductor');
+  const isDriver = unit.toLowerCase().includes('conductor');
+  const isRewards = unit.toLowerCase().includes('reward');
+  const isExperience = unit.toLowerCase().includes('experience');
+
+  // Reclamos / Quejas
+  if (
+    msg.includes('reclamo') ||
+    msg.includes('queja') ||
+    msg.includes('reembolso') ||
+    msg.includes('devolucion') ||
+    msg.includes('cobro mal') ||
+    msg.includes('cobro de mas') ||
+    msg.includes('me cobraron') ||
+    msg.includes('estafa') ||
+    msg.includes('denuncia')
+  ) {
+    return 'Reclamos';
+  }
+
+  // Guardia / Emergencias / Urgencias
+  if (
+    msg.includes('emergencia') ||
+    msg.includes('accidente') ||
+    msg.includes('guardia') ||
+    msg.includes('urgente') ||
+    msg.includes('varado')
+  ) {
+    if (isCab) return isDriver ? 'Ayuda Conductores' : 'Ayuda Usuario';
+    return 'Guardia';
+  }
+
+  // Recursos Humanos / Postulaciones / Empleo
+  if (
+    msg.includes('curriculum') ||
+    msg.includes('cv') ||
+    msg.includes('trabajar con ustedes') ||
+    msg.includes('entrevista') ||
+    msg.includes('rrhh') ||
+    msg.includes('postulacion')
+  ) {
+    return isCab ? 'Atención Conductores' : 'Recursos Humanos';
+  }
+
+  // Soporte Técnico / App
+  if (
+    msg.includes('error') ||
+    msg.includes('no anda') ||
+    msg.includes('no funciona') ||
+    msg.includes('bug') ||
+    msg.includes('se cierra') ||
+    msg.includes('no puedo entrar') ||
+    msg.includes('soporte') ||
+    msg.includes('contraseña') ||
+    msg.includes('clave')
+  ) {
+    if (isRewards) return 'Atención al Cliente';
+    if (isExperience) return 'Atención al Cliente';
+    return 'Soporte';
+  }
+
+  // Ayuda
+  if (msg.includes('ayuda') || msg.includes('como hago') || msg.includes('no entiendo')) {
+    if (isCab) return isDriver ? 'Ayuda Conductores' : 'Ayuda Usuario';
+    if (!isRewards && !isExperience) return 'Ayuda';
+  }
+
+  // Ventas / Cotizaciones / Reservas
+  if (
+    msg.includes('comprar') ||
+    msg.includes('reservar') ||
+    msg.includes('cotizar') ||
+    msg.includes('precio') ||
+    msg.includes('presupuesto') ||
+    msg.includes('pagar')
+  ) {
+    if (!isCab && !isRewards) return 'Ventas';
+  }
+
+  // Partners / Comercios en Rewards
+  if (
+    isRewards &&
+    (msg.includes('comercio') || msg.includes('partner') || msg.includes('adherir') || msg.includes('local'))
+  ) {
+    return 'Atención a Partners';
+  }
+
+  if (isCab) {
+    return isDriver ? 'Atención Conductores' : 'Atención Usuarios';
+  }
+
+  return 'Atención al Cliente';
 }
 
 // -----------------------------------------------------------------------------
@@ -364,7 +465,35 @@ export async function processTravisMessage(
   let aiResponse = '';
   let isMock = true;
 
-  const knowledgeBaseSerialized = (config.knowledgeBase?.map(k => `## [Artículo: ${k.category}] ${k.title}\n${k.content}`).join('\n\n') || '') + '\n' + catalogs;
+  const officialUnit = normalizeBusinessUnit(businessUnit);
+  const unitGreeting = config.unitGreetings?.[officialUnit];
+
+  const knowledgeBaseSerialized =
+    (config.knowledgeBase
+      ?.map((k) => {
+        const rules: string[] = [];
+        rules.push(
+          k.allowClosingSale
+            ? 'REGLA DE CIERRE: AUTORIZADO A CERRAR VENTA directamente en este servicio.'
+            : 'REGLA DE CIERRE: NO CERRAR VENTA — Asesorá al cliente con excelencia, resolvé dudas, calificá su necesidad y derivá/agendá con un operador humano para el cierre.'
+        );
+        if (k.includeNotes?.trim()) {
+          rules.push(`QUÉ INFORMACIÓN SÍ TOMAR / PRIORIZAR: ${k.includeNotes.trim()}`);
+        }
+        if (k.excludeNotes?.trim()) {
+          rules.push(`PROHIBIDO DECIRLE AL CLIENTE (OMITIR SIEMPRE): ${k.excludeNotes.trim()}`);
+        }
+        return `## [Artículo: ${k.category}${k.sector ? ` | Sector: ${k.sector}` : ''}${k.sourceType ? ` | Fuente: ${k.sourceType.toUpperCase()}` : ''}] ${k.title}\n${rules.join('\n')}\n\n${k.content}`;
+      })
+      .join('\n\n---\n\n') || '') +
+    '\n' +
+    catalogs;
+
+  const salesAndGreetingPolicy = `\n\nPOLÍTICA COMERCIAL Y SALUDO OFICIAL:\n- Sos el mejor vendedor y asesor consultivo del ecosistema, pero POR REGLA GENERAL NO CERRÁS LA VENTA NI COBRÁS VOS: tu objetivo es enamorar al cliente, resolver sus dudas, tomar sus datos y derivar o agendar el cierre con un operador humano (salvo en los servicios/artículos donde se indique explícitamente "AUTORIZADO A CERRAR VENTA").\n- Respetá estrictamente las indicaciones de "QUÉ INFORMACIÓN SÍ TOMAR" y "PROHIBIDO DECIRLE AL CLIENTE" de cada documento/URL de la Base de Conocimientos.${
+    unitGreeting?.trim()
+      ? `\n- SALUDO ESTANDARIZADO PARA ${officialUnit}: Si estás iniciando la conversación o saludando por primera vez, usá este saludo oficial adaptado al cliente:\n"${unitGreeting.trim()}"`
+      : ''
+  }`;
 
   if (geminiKey && !geminiKey.includes('TU_')) {
     try {
@@ -401,7 +530,7 @@ export async function processTravisMessage(
         });
       }
 
-      const fullPrompt = `${systemPrompt}\n\nBASE DE CONOCIMIENTOS DE LA EMPRESA (RAG):\n${knowledgeBaseSerialized}${externalProvidersPrompt}`;
+      const fullPrompt = `${systemPrompt}${salesAndGreetingPolicy}\n\nBASE DE CONOCIMIENTOS DE LA EMPRESA (RAG):\n${knowledgeBaseSerialized}${externalProvidersPrompt}`;
 
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
         method: 'POST',

@@ -7,14 +7,17 @@ import {
 } from 'lucide-react';
 import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { BUSINESS_UNITS_CONFIG, OfficialBusinessUnit, UserRole } from '@/lib/permissions';
 
 interface StaffUser {
   id: string;
   name: string;
   email: string;
-  role: 'admin' | 'operator' | 'viewer';
+  role: UserRole;
   branchId: string;
   branchName: string;
+  allowedUnits?: OfficialBusinessUnit[];
+  allowedSectors?: string[];
   active: boolean;
   createdAt: string;
 }
@@ -143,7 +146,7 @@ const MODULE_FEATURES = [
 
 export default function StaffUsersPage() {
   const [activeTab, setActiveTab] = useState<'users' | 'permissions'>('users');
-  const [selectedRole, setSelectedRole] = useState<'admin' | 'operator' | 'viewer'>('operator');
+  const [selectedRole, setSelectedRole] = useState<UserRole>('operator');
 
   const [staff, setStaff] = useState<StaffUser[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -153,6 +156,7 @@ export default function StaffUsersPage() {
 
   // Permissions state from firestore
   const [rolePermissions, setRolePermissions] = useState<Record<string, Record<string, boolean>>>({
+    super_admin: {},
     admin: {},
     operator: {},
     viewer: {}
@@ -164,8 +168,10 @@ export default function StaffUsersPage() {
   const [form, setForm] = useState({
     name: '',
     email: '',
-    role: 'operator' as 'admin' | 'operator' | 'viewer',
+    role: 'operator' as UserRole,
     branchId: '1',
+    allowedUnits: [] as OfficialBusinessUnit[],
+    allowedSectors: [] as string[],
     active: true
   });
 
@@ -201,6 +207,8 @@ export default function StaffUsersPage() {
             role: data.role || 'operator',
             branchId: data.branchId || '1',
             branchName: data.branchName || 'Sucursal',
+            allowedUnits: Array.isArray(data.allowedUnits) ? data.allowedUnits : [],
+            allowedSectors: Array.isArray(data.allowedSectors) ? data.allowedSectors : [],
             active: data.active !== undefined ? data.active : true,
             createdAt: data.createdAt || new Date().toISOString().split('T')[0]
           };
@@ -242,10 +250,12 @@ export default function StaffUsersPage() {
 
     const payload = {
       name: form.name,
-      email: form.email,
+      email: form.email.trim().toLowerCase(),
       role: form.role,
       branchId: form.branchId,
       branchName,
+      allowedUnits: form.role === 'super_admin' ? [] : form.allowedUnits,
+      allowedSectors: form.role === 'super_admin' ? [] : form.allowedSectors,
       active: form.active,
       createdAt: editingId ? (staff.find(s => s.id === editingId)?.createdAt || new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0]
     };
@@ -254,7 +264,7 @@ export default function StaffUsersPage() {
       await setDoc(doc(db, 'staff_users', id), payload);
       setShowModal(false);
       setEditingId(null);
-      setForm({ name: '', email: '', role: 'operator', branchId: '1', active: true });
+      setForm({ name: '', email: '', role: 'operator', branchId: '1', allowedUnits: [], allowedSectors: [], active: true });
     } catch (err) {
       console.error("Error saving staff user:", err);
     }
@@ -267,6 +277,8 @@ export default function StaffUsersPage() {
       email: user.email,
       role: user.role,
       branchId: user.branchId,
+      allowedUnits: user.allowedUnits || [],
+      allowedSectors: user.allowedSectors || [],
       active: user.active
     });
     setShowModal(true);
@@ -302,7 +314,7 @@ export default function StaffUsersPage() {
     return matchSearch && matchRole;
   });
 
-  const admins = staff.filter(u => u.role === 'admin').length;
+  const admins = staff.filter(u => u.role === 'admin' || u.role === 'super_admin').length;
   const operators = staff.filter(u => u.role === 'operator').length;
   const viewers = staff.filter(u => u.role === 'viewer').length;
 
@@ -322,7 +334,7 @@ export default function StaffUsersPage() {
           <button
             onClick={() => {
               setEditingId(null);
-              setForm({ name: '', email: '', role: 'operator', branchId: '1', active: true });
+              setForm({ name: '', email: '', role: 'operator', branchId: '1', allowedUnits: [], allowedSectors: [], active: true });
               setShowModal(true);
             }}
             className="inline-flex items-center justify-center space-x-2 rounded-xl bg-tech-blue px-4 py-2.5 text-sm font-bold text-white hover:bg-tech-blue/90 shadow-sm transition-all"
@@ -396,6 +408,7 @@ export default function StaffUsersPage() {
                 className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm outline-none font-medium"
               >
                 <option value="all">Todos los Roles</option>
+                <option value="super_admin">Super Admin (Acceso Total)</option>
                 <option value="admin">Administrador</option>
                 <option value="operator">Operador</option>
                 <option value="viewer">Lector (Viewer)</option>
@@ -412,7 +425,8 @@ export default function StaffUsersPage() {
                     <th className="px-4 py-3 text-left">Personal</th>
                     <th className="px-4 py-3 text-left">Email / Contacto</th>
                     <th className="px-4 py-3 text-left">Rol de Acceso</th>
-                    <th className="px-4 py-3 text-left">Sucursal Asignada</th>
+                    <th className="px-4 py-3 text-left">Unidad &amp; Sectores</th>
+                    <th className="px-4 py-3 text-left">Sucursal</th>
                     <th className="px-4 py-3 text-left">Estado</th>
                     <th className="px-4 py-3 text-right">Acciones</th>
                   </tr>
@@ -435,7 +449,11 @@ export default function StaffUsersPage() {
                         <p className="flex items-center gap-1"><Mail className="h-3.5 w-3.5 text-slate-400" /> {user.email}</p>
                       </td>
                       <td className="px-4 py-3">
-                        {user.role === 'admin' ? (
+                        {user.role === 'super_admin' ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 border border-purple-200 px-2 py-0.5 font-bold text-purple-700">
+                            Super Admin
+                          </span>
+                        ) : user.role === 'admin' ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 border border-rose-200 px-2 py-0.5 font-bold text-rose-700">
                             Administrador
                           </span>
@@ -447,6 +465,36 @@ export default function StaffUsersPage() {
                           <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 font-bold text-blue-700">
                             Lector (Viewer)
                           </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {user.role === 'super_admin' ? (
+                          <span className="inline-flex items-center rounded-md bg-purple-50 px-2 py-0.5 text-[10px] font-bold text-purple-700 border border-purple-200">
+                            Todo el Ecosistema (Global)
+                          </span>
+                        ) : (
+                          <div className="flex flex-col gap-1">
+                            <div className="flex flex-wrap gap-1">
+                              {(user.allowedUnits && user.allowedUnits.length > 0) ? (
+                                user.allowedUnits.map(u => (
+                                  <span key={u} className="inline-flex items-center rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 border border-sky-200">
+                                    {u}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-[10px] text-rose-500 font-semibold">Sin unidad asignada</span>
+                              )}
+                            </div>
+                            {user.allowedSectors && user.allowedSectors.length > 0 && (
+                              <div className="flex flex-wrap gap-1">
+                                {user.allowedSectors.map(s => (
+                                  <span key={s} className="inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                                    {s}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="px-4 py-3 text-slate-650">
@@ -494,10 +542,10 @@ export default function StaffUsersPage() {
           {/* Roles selection */}
           <div className="lg:col-span-1 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
             <h3 className="text-xs font-black text-slate-450 uppercase tracking-wider mb-2">Seleccionar Rol</h3>
-            {['admin', 'operator', 'viewer'].map(role => (
+            {['super_admin', 'admin', 'operator', 'viewer'].map(role => (
               <button
                 key={role}
-                onClick={() => setSelectedRole(role as any)}
+                onClick={() => setSelectedRole(role as UserRole)}
                 className={`w-full text-left p-3 rounded-xl border transition-all text-xs font-bold uppercase tracking-wider flex items-center justify-between ${
                   selectedRole === role
                     ? 'bg-tech-blue border-tech-blue text-white shadow-md'
@@ -505,7 +553,7 @@ export default function StaffUsersPage() {
                 }`}
               >
                 <span>
-                  {role === 'admin' ? 'Administrador' : role === 'operator' ? 'Operador' : 'Lector (Viewer)'}
+                  {role === 'super_admin' ? 'Super Admin' : role === 'admin' ? 'Administrador' : role === 'operator' ? 'Operador' : 'Lector (Viewer)'}
                 </span>
                 <ArrowRight className="h-4 w-4" />
               </button>
@@ -518,7 +566,7 @@ export default function StaffUsersPage() {
               <div>
                 <h3 className="font-bold text-tech-blue text-sm">
                   Configuración de Accesos para: <span className="uppercase text-vial-orange font-black">
-                    {selectedRole === 'admin' ? 'Administrador' : selectedRole === 'operator' ? 'Operador' : 'Lector (Viewer)'}
+                    {selectedRole === 'super_admin' ? 'Super Admin' : selectedRole === 'admin' ? 'Administrador' : selectedRole === 'operator' ? 'Operador' : 'Lector (Viewer)'}
                   </span>
                 </h3>
                 <p className="text-[11px] text-slate-400 font-medium mt-0.5">Tilda los botones que este rol podrá visualizar y operar en su sidebar vertical.</p>
@@ -533,7 +581,7 @@ export default function StaffUsersPage() {
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                       {mod.items.map(feat => {
-                        const isGranted = selectedRole === 'admin' 
+                        const isGranted = (selectedRole === 'admin' || selectedRole === 'super_admin')
                           ? (rolePermissions[selectedRole]?.[feat.id] !== false) 
                           : (rolePermissions[selectedRole]?.[feat.id] === true);
 
@@ -571,14 +619,14 @@ export default function StaffUsersPage() {
       {/* Editor Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden">
-            <div className="bg-slate-50 p-5 border-b border-slate-100">
+          <div className="w-full max-w-lg max-h-[90vh] flex flex-col rounded-2xl bg-white shadow-2xl overflow-hidden">
+            <div className="bg-slate-50 p-5 border-b border-slate-100 flex-shrink-0">
               <h2 className="text-lg font-bold text-slate-800">
                 {editingId ? 'Editar Usuario Interno' : 'Nuevo Usuario Interno'}
               </h2>
             </div>
 
-            <form onSubmit={handleSave} className="p-5 space-y-4">
+            <form onSubmit={handleSave} className="p-5 space-y-4 overflow-y-auto custom-scrollbar">
               <div>
                 <label className="block text-xs font-bold text-slate-500 mb-1">Nombre Completo *</label>
                 <input
@@ -608,9 +656,10 @@ export default function StaffUsersPage() {
                   <label className="block text-xs font-bold text-slate-500 mb-1">Rol de Acceso</label>
                   <select
                     value={form.role}
-                    onChange={e => setForm(p => ({ ...p, role: e.target.value as any }))}
+                    onChange={e => setForm(p => ({ ...p, role: e.target.value as UserRole }))}
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none bg-white focus:border-tech-blue font-semibold"
                   >
+                    <option value="super_admin">Super Admin (Acceso Total)</option>
                     <option value="admin">Administrador</option>
                     <option value="operator">Operador</option>
                     <option value="viewer">Lector (Viewer)</option>
@@ -629,6 +678,91 @@ export default function StaffUsersPage() {
                   </select>
                 </div>
               </div>
+
+              {form.role === 'super_admin' ? (
+                <div className="rounded-xl border border-purple-200 bg-purple-50/70 p-3 text-xs text-purple-800 font-medium">
+                  El rol <strong>Super Admin</strong> tiene visibilidad global sobre todas las unidades de negocio, sectores, mensajes y grabaciones de llamadas.
+                </div>
+              ) : (
+                <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5">Unidades de Negocio Autorizadas</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {BUSINESS_UNITS_CONFIG.map(unit => {
+                        const checked = form.allowedUnits.includes(unit.id);
+                        return (
+                          <label
+                            key={unit.id}
+                            className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-xs font-semibold cursor-pointer transition-all ${
+                              checked ? 'bg-sky-50 border-tech-blue/40 text-tech-blue' : 'bg-white border-slate-200 text-slate-600'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                setForm(p => {
+                                  const nextUnits = checked
+                                    ? p.allowedUnits.filter(u => u !== unit.id)
+                                    : [...p.allowedUnits, unit.id];
+                                  return { ...p, allowedUnits: nextUnits };
+                                });
+                              }}
+                              className="h-3.5 w-3.5 rounded border-slate-300 text-tech-blue"
+                            />
+                            <span className="truncate">{unit.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {form.allowedUnits.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1.5">
+                        Sectores / Áreas <span className="font-normal text-slate-400">(vacío = todos los de la unidad)</span>
+                      </label>
+                      <div className="space-y-2.5 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
+                        {BUSINESS_UNITS_CONFIG.filter(u => form.allowedUnits.includes(u.id)).map(unit => (
+                          <div key={unit.id} className="space-y-1">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{unit.label}</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {unit.sectors.map(sector => {
+                                const isSectorChecked = form.allowedSectors.includes(sector);
+                                return (
+                                  <label
+                                    key={`${unit.id}-${sector}`}
+                                    className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium cursor-pointer transition-all ${
+                                      isSectorChecked
+                                        ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isSectorChecked}
+                                      onChange={() => {
+                                        setForm(p => ({
+                                          ...p,
+                                          allowedSectors: isSectorChecked
+                                            ? p.allowedSectors.filter(s => s !== sector)
+                                            : [...p.allowedSectors, sector]
+                                        }));
+                                      }}
+                                      className="h-3 w-3 rounded border-slate-300 text-emerald-600"
+                                    />
+                                    <span>{sector}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-center gap-2 pt-2">
                 <input

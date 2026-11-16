@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { PlusCircle, Tag, Activity, Cloud, Database, ShieldCheck } from 'lucide-react';
+import { PlusCircle, Tag, Activity, Cloud, Database, ShieldCheck, Home } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -65,7 +65,7 @@ export const Sidebar = () => {
     if (!user) return false;
     const val = permissions[item.id];
     if (val !== undefined) return val;
-    if (user.role === 'admin') return true;
+    if (user.role === 'admin' || user.role === 'super_admin') return true;
     return false; // secure by default for non-admins
   });
 
@@ -137,7 +137,16 @@ export const Sidebar = () => {
       </div>
 
       {/* MONITOR DE ESTABILIDAD DEL SISTEMA (Firebase & Google Cloud) */}
-      <div className="mt-auto pt-6 border-t border-slate-200">
+      <div className="mt-auto pt-4 border-t border-slate-200 space-y-4">
+        <Link
+          href="/"
+          className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-bold text-tech-blue hover:bg-tech-blue hover:text-white transition-colors shadow-xs"
+        >
+          <Home className="h-4 w-4 shrink-0" />
+          <span>Volver al Home</span>
+        </Link>
+
+        <div>
         <p className="text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-3 flex items-center gap-1.5 px-3">
           <Activity className="h-3 w-3 text-emerald-500 animate-pulse" /> Estabilidad
         </p>
@@ -163,6 +172,7 @@ export const Sidebar = () => {
             </div>
             <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
           </div>
+        </div>
         </div>
       </div>
     </aside>
