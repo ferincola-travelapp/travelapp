@@ -33,32 +33,32 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/descargar/usuario',
-        destination: 'https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-usuario.apk?alt=media&token=37935279-e972-46f4-96ad-efc841a1c7ee',
+        destination: 'https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-usuario.apk?alt=media&token=70b98484-96a1-4d63-b918-b34de9153fdb',
         permanent: false,
       },
       {
         source: '/descargar/conductor',
-        destination: 'https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-conductor.apk?alt=media&token=de915007-552a-4f06-88a4-a3ae6bcaea90',
+        destination: 'https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-conductor.apk?alt=media&token=9a248fe8-f5a9-411b-8828-ec5d5fd012b2',
         permanent: false,
       },
       {
         source: '/descargar/supervisor',
-        destination: 'https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-supervisor.apk?alt=media&token=82a48a99-ee4e-4693-bbe3-9848c99d36cd',
+        destination: 'https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-supervisor.apk?alt=media&token=bb0c2ba9-adfe-42f7-8339-ea4872eaa207',
         permanent: false,
       },
       {
         source: '/apk/usuario',
-        destination: 'https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-usuario.apk?alt=media&token=37935279-e972-46f4-96ad-efc841a1c7ee',
+        destination: 'https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-usuario.apk?alt=media&token=70b98484-96a1-4d63-b918-b34de9153fdb',
         permanent: false,
       },
       {
         source: '/apk/conductor',
-        destination: 'https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-conductor.apk?alt=media&token=de915007-552a-4f06-88a4-a3ae6bcaea90',
+        destination: 'https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-conductor.apk?alt=media&token=9a248fe8-f5a9-411b-8828-ec5d5fd012b2',
         permanent: false,
       },
       {
         source: '/apk/supervisor',
-        destination: 'https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-supervisor.apk?alt=media&token=82a48a99-ee4e-4693-bbe3-9848c99d36cd',
+        destination: 'https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-supervisor.apk?alt=media&token=bb0c2ba9-adfe-42f7-8339-ea4872eaa207',
         permanent: false,
       },
     ];
