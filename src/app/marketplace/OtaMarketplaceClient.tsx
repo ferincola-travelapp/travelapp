@@ -840,8 +840,9 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
 
                         {actions.includes("whatsapp") && (
                           <a
-                            href={`https://wa.me/5493812000712?text=${encodeURIComponent(
-                              `Hola TravelApp! Me interesa consultar por el viaje "${pkg.title}" (${pkg.id}) con destino a ${pkg.destination}. ¿Tienen disponibilidad y opciones de pago?`
+                            href={`https://wa.me/${(pkg.whatsappNumber || "5493812000712").replace(/\D/g, "") || "5493812000712"}?text=${encodeURIComponent(
+                              pkg.travisPrompt ||
+                                `Hola TravelApp! Me interesa consultar por el viaje "${pkg.title}" (${pkg.id}) con destino a ${pkg.destination}. ¿Tienen disponibilidad y opciones de pago?`
                             )}`}
                             target="_blank"
                             rel="noopener noreferrer"
@@ -849,6 +850,16 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
                           >
                             <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
                           </a>
+                        )}
+
+                        {actions.includes("consultar") && (
+                          <button
+                            type="button"
+                            onClick={() => openModalWithAction(pkg, "reserva")}
+                            className="py-2.5 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-black transition-all text-center flex items-center justify-center gap-1 shadow-sm"
+                          >
+                            <MessageCircle className="h-3.5 w-3.5" /> Consultar
+                          </button>
                         )}
 
                         {actions.includes("reservar") && (

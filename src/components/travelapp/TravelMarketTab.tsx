@@ -33,6 +33,8 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@/lib/firebase';
 import type {
   OtaActionType,
+  OtaBusType,
+  OtaFoodPlan,
   OtaInquiryChannel,
   OtaMediaItem,
   OtaPackageType,
@@ -81,16 +83,46 @@ interface TourOperator {
   name: string;
 }
 
+const DEFAULT_WHATSAPP_NUMBER = '+54 9 3812 00-0712';
+
 const PRESET_SERVICES = [
   'Traslados IN/OUT',
+  'Solo Alojamiento',
   'Desayuno',
   'Media Pensión',
+  'Pensión Completa',
   'All Inclusive',
   'Asistencia al Viajero',
   'Excursiones',
   'Coordinador en Destino',
   'Equipaje en Bodega',
 ];
+
+const FOOD_PLAN_OPTIONS: OtaFoodPlan[] = [
+  'Solo Alojamiento',
+  'Desayuno',
+  'Media Pensión',
+  'Pensión Completa',
+  'All Inclusive',
+];
+
+const BUS_TYPE_OPTIONS: OtaBusType[] = [
+  'Semicama',
+  'Cama',
+  'Cama Ejecutivo',
+  'Suite',
+];
+
+const MARKETPLACE_ACTION_OPTIONS: { value: OtaActionType; label: string }[] = [
+  { value: 'ver_detalle', label: 'Ver Detalle' },
+  { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'consultar', label: 'Consultar' },
+  { value: 'reservar', label: 'Reservar' },
+  { value: 'senar', label: 'Señar Cupo' },
+  { value: 'pagar', label: 'Pagar Viaje' },
+];
+
+const ALL_MARKETPLACE_ACTIONS: OtaActionType[] = MARKETPLACE_ACTION_OPTIONS.map((a) => a.value);
 
 const TRANSPORT_OPTIONS: { label: string; value: OtaTransportType }[] = [
   { label: 'Avión', value: 'Avión' },
@@ -170,6 +202,10 @@ export function TravelMarketTab() {
   const [durationDays, setDurationDays] = useState('7');
   const [durationNights, setDurationNights] = useState('6');
   const [transportType, setTransportType] = useState<OtaTransportType>('Avión');
+  const [busType, setBusType] = useState<OtaBusType>('Semicama');
+  const [hotelName, setHotelName] = useState('');
+  const [hotelStars, setHotelStars] = useState('3');
+  const [foodPlan, setFoodPlan] = useState<OtaFoodPlan>('Desayuno');
   const [title, setTitle] = useState('');
   const [includedServices, setIncludedServices] = useState<string[]>(['Traslados IN/OUT', 'Desayuno']);
   const [customService, setCustomService] = useState('');
@@ -183,10 +219,11 @@ export function TravelMarketTab() {
 
   // Selector para publicar + Seña + Travis
   const [publishAction, setPublishAction] = useState<PublishAction>('reservar');
+  const [enabledActions, setEnabledActions] = useState<OtaActionType[]>(['ver_detalle', 'reservar']);
   const [depositType, setDepositType] = useState<'percentage' | 'fixed'>('percentage');
   const [depositValue, setDepositValue] = useState('30');
   const [inquiryChannel, setInquiryChannel] = useState<OtaInquiryChannel>('both');
-  const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [whatsappNumber, setWhatsappNumber] = useState(DEFAULT_WHATSAPP_NUMBER);
   const [travisPrompt, setTravisPrompt] = useState('');
   const [status, setStatus] = useState<'published' | 'draft'>('published');
 
@@ -250,6 +287,10 @@ export function TravelMarketTab() {
     setDurationDays('7');
     setDurationNights('6');
     setTransportType('Avión');
+    setBusType('Semicama');
+    setHotelName('');
+    setHotelStars('3');
+    setFoodPlan('Desayuno');
     setTitle('');
     setIncludedServices(['Traslados IN/OUT', 'Desayuno']);
     setCustomService('');
@@ -259,10 +300,11 @@ export function TravelMarketTab() {
     setRewardsDiscountPercent('10');
     setRewardsPointsEarned('500');
     setPublishAction('reservar');
+    setEnabledActions(['ver_detalle', 'reservar']);
     setDepositType('percentage');
     setDepositValue('30');
     setInquiryChannel('both');
-    setWhatsappNumber('');
+    setWhatsappNumber(DEFAULT_WHATSAPP_NUMBER);
     setTravisPrompt('');
     setStatus('published');
     setImageUrl('');
@@ -277,9 +319,32 @@ export function TravelMarketTab() {
   };
 
   const toggleService = (service: string) => {
-    setIncludedServices((prev) =>
-      prev.includes(service) ? prev.filter((s) => s !== service) : [...prev, service]
-    );
+    setIncludedServices((prev) => {
+      const exists = prev.includes(service);
+      if (!exists && FOOD_PLAN_OPTIONS.includes(service as OtaFoodPlan)) {
+        setFoodPlan(service as OtaFoodPlan);
+      }
+      return exists ? prev.filter((s) => s !== service) : [...prev, service];
+    });
+  };
+
+  const toggleEnabledAction = (action: OtaActionType) => {
+    setEnabledActions((prev) => {
+      const next = prev.includes(action)
+        ? prev.filter((a) => a !== action)
+        : [...prev, action];
+      return next.length > 0 ? next : ['ver_detalle'];
+    });
+  };
+
+  const selectPublishAction = (action: PublishAction) => {
+    setPublishAction(action);
+    const mapped = mapPublishActionToEnabled(action);
+    setEnabledActions((prev) => {
+      const merged = new Set<OtaActionType>(prev);
+      mapped.forEach((a) => merged.add(a));
+      return Array.from(merged);
+    });
   };
 
   const handleAddCustomService = () => {
@@ -357,6 +422,10 @@ export function TravelMarketTab() {
     setDurationDays(String(pkg.durationDays || 7));
     setDurationNights(String(pkg.durationNights || pkg.nights || 6));
     setTransportType((pkg.transportType as OtaTransportType) || 'Avión');
+    setBusType((pkg.busType as OtaBusType) || 'Semicama');
+    setHotelName(pkg.hotelName || '');
+    setHotelStars(pkg.hotelStars ? String(pkg.hotelStars) : '3');
+    setFoodPlan((pkg.foodPlan as OtaFoodPlan) || 'Desayuno');
     setTitle(pkg.title || '');
     setIncludedServices(Array.isArray(pkg.includedServices) ? pkg.includedServices : []);
     setDescription(pkg.description || '');
@@ -364,11 +433,17 @@ export function TravelMarketTab() {
     setPublicPrice(String(pkg.price || ''));
     setRewardsDiscountPercent(String(pkg.rewardsDiscountPercent ?? 10));
     setRewardsPointsEarned(String(pkg.rewardsPointsEarned ?? 0));
-    setPublishAction((pkg.publishAction as PublishAction) || 'reservar');
+    const parsedAction = (pkg.publishAction as PublishAction) || 'reservar';
+    setPublishAction(parsedAction);
+    setEnabledActions(
+      Array.isArray(pkg.enabledActions) && pkg.enabledActions.length > 0
+        ? pkg.enabledActions
+        : mapPublishActionToEnabled(parsedAction)
+    );
     setDepositType(pkg.depositType === 'fixed' ? 'fixed' : 'percentage');
     setDepositValue(String(pkg.depositValue ?? 30));
     setInquiryChannel((pkg.inquiryChannel as OtaInquiryChannel) || 'both');
-    setWhatsappNumber(pkg.whatsappNumber || '');
+    setWhatsappNumber(pkg.whatsappNumber || DEFAULT_WHATSAPP_NUMBER);
     setTravisPrompt(pkg.travisPrompt || '');
     setStatus(pkg.status === 'draft' ? 'draft' : 'published');
     setImageUrl(pkg.imageUrl || '');
@@ -417,7 +492,10 @@ export function TravelMarketTab() {
       nights: Math.max(0, Number(durationNights) || 0),
       departureDates,
       transportType,
-      foodPlan: 'Desayuno' as const,
+      busType: transportType === 'Bus' ? busType : null,
+      hotelName: hotelName.trim(),
+      hotelStars: hotelStars ? Number(hotelStars) : null,
+      foodPlan,
       title: title.trim(),
       includedServices,
       description: description.trim(),
@@ -427,13 +505,17 @@ export function TravelMarketTab() {
       memberPrice: calculatedMemberPrice,
       rewardsPointsEarned: Math.max(0, Number(rewardsPointsEarned) || 0),
       publishAction,
-      enabledActions: mapPublishActionToEnabled(publishAction),
-      depositType: publishAction === 'senar' ? depositType : null,
-      depositValue: publishAction === 'senar' ? Math.max(0, Number(depositValue) || 0) : null,
-      inquiryChannel: publishAction === 'consultar' ? inquiryChannel : null,
-      whatsappNumber: publishAction === 'consultar' ? whatsappNumber.trim() : '',
+      enabledActions: enabledActions.length > 0 ? enabledActions : mapPublishActionToEnabled(publishAction),
+      depositType: enabledActions.includes('senar') || publishAction === 'senar' ? depositType : null,
+      depositValue:
+        enabledActions.includes('senar') || publishAction === 'senar'
+          ? Math.max(0, Number(depositValue) || 0)
+          : null,
+      inquiryChannel:
+        enabledActions.includes('consultar') || publishAction === 'consultar' ? inquiryChannel : null,
+      whatsappNumber: whatsappNumber.trim() || DEFAULT_WHATSAPP_NUMBER,
       travisPrompt:
-        publishAction === 'consultar'
+        enabledActions.includes('consultar') || publishAction === 'consultar'
           ? travisPrompt.trim() || `Quiero consultar por ${title.trim()} (${code})`
           : '',
       imageUrl: imageUrl.trim(),
@@ -735,6 +817,69 @@ export function TravelMarketTab() {
                   </button>
                 ))}
               </div>
+              {transportType === 'Bus' && (
+                <div className="mt-2.5">
+                  <label className={labelClass}>Categoría de Bus</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {BUS_TYPE_OPTIONS.map((bt) => (
+                      <button
+                        key={bt}
+                        type="button"
+                        onClick={() => setBusType(bt)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors ${
+                          busType === bt
+                            ? 'bg-amber-600 text-white border-amber-600'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        Bus {bt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className={labelClass}>Nombre del Hotel (opcional)</label>
+              <input
+                value={hotelName}
+                onChange={(e) => setHotelName(e.target.value)}
+                placeholder="Ej: Hotel Nevada / Resort All Inclusive"
+                className={inputClass}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className={labelClass}>Categoría Hotel</label>
+                <select
+                  value={hotelStars}
+                  onChange={(e) => setHotelStars(e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">Sin especificar</option>
+                  <option value="1">1 ★</option>
+                  <option value="2">2 ★</option>
+                  <option value="3">3 ★</option>
+                  <option value="4">4 ★</option>
+                  <option value="5">5 ★</option>
+                </select>
+              </div>
+              <div>
+                <label className={labelClass}>Régimen de Comidas</label>
+                <select
+                  value={foodPlan}
+                  onChange={(e) => setFoodPlan(e.target.value as OtaFoodPlan)}
+                  className={inputClass}
+                >
+                  {FOOD_PLAN_OPTIONS.map((fp) => (
+                    <option key={fp} value={fp}>
+                      {fp}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
@@ -876,27 +1021,72 @@ export function TravelMarketTab() {
             </div>
           </div>
 
-          {/* 5. Selector para Publicar + Seña editable + Conexión Travis */}
-          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
-            <label className={labelClass}>Selector para Publicar (Acción principal en Marketplace)</label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {PUBLISH_ACTIONS.map((act) => (
+          {/* 5. Selector para Publicar + Botones habilitados + Seña editable + Conexión Travis */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <label className={`${labelClass} mb-0`}>
+                  Botones habilitados en Marketplace (uno, varios o todos)
+                </label>
                 <button
-                  key={act.value}
                   type="button"
-                  onClick={() => setPublishAction(act.value)}
-                  className={`py-2 px-3 rounded-lg text-xs font-bold border cursor-pointer transition-colors ${
-                    publishAction === act.value
-                      ? 'bg-[#0a2a5b] text-white border-[#0a2a5b]'
-                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                  }`}
+                  onClick={() =>
+                    setEnabledActions(
+                      enabledActions.length === ALL_MARKETPLACE_ACTIONS.length
+                        ? ['ver_detalle', 'reservar']
+                        : ALL_MARKETPLACE_ACTIONS
+                    )
+                  }
+                  className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-[#0a2a5b]/10 text-[#0a2a5b] hover:bg-[#0a2a5b]/20 cursor-pointer"
                 >
-                  {act.label}
+                  {enabledActions.length === ALL_MARKETPLACE_ACTIONS.length
+                    ? 'Dejar solo básicos'
+                    : 'Habilitar todos los botones'}
                 </button>
-              ))}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {MARKETPLACE_ACTION_OPTIONS.map((act) => {
+                  const active = enabledActions.includes(act.value);
+                  return (
+                    <button
+                      key={act.value}
+                      type="button"
+                      onClick={() => toggleEnabledAction(act.value)}
+                      className={`py-2 px-3 rounded-lg text-xs font-bold border cursor-pointer transition-colors flex items-center justify-center gap-1.5 ${
+                        active
+                          ? 'bg-emerald-600 text-white border-emerald-600'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {active && <Check className="w-3.5 h-3.5" />}
+                      {act.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            {publishAction === 'senar' && (
+            <div>
+              <label className={labelClass}>Acción principal destacada</label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {PUBLISH_ACTIONS.map((act) => (
+                  <button
+                    key={act.value}
+                    type="button"
+                    onClick={() => selectPublishAction(act.value)}
+                    className={`py-2 px-3 rounded-lg text-xs font-bold border cursor-pointer transition-colors ${
+                      publishAction === act.value
+                        ? 'bg-[#0a2a5b] text-white border-[#0a2a5b]'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {act.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {(enabledActions.includes('senar') || publishAction === 'senar') && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-200">
                 <div>
                   <label className={labelClass}>Modalidad de Seña</label>
@@ -930,11 +1120,11 @@ export function TravelMarketTab() {
               </div>
             )}
 
-            {publishAction === 'consultar' && (
-              <div className="space-y-3 pt-2 border-t border-slate-200">
-                <label className={`${labelClass} flex items-center gap-1.5 text-[#0a2a5b]`}>
-                  <Bot className="w-4 h-4" /> Conexión a Travis al Consultar
-                </label>
+            <div className="space-y-3 pt-2 border-t border-slate-200">
+              <label className={`${labelClass} flex items-center gap-1.5 text-[#0a2a5b]`}>
+                <Bot className="w-4 h-4" /> WhatsApp oficial y Conexión a Travis
+              </label>
+              {(enabledActions.includes('consultar') || publishAction === 'consultar') && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {[
                     { id: 'travis_webchat', label: 'Web Chat Travis' },
@@ -955,30 +1145,28 @@ export function TravelMarketTab() {
                     </button>
                   ))}
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {(inquiryChannel === 'whatsapp' || inquiryChannel === 'both') && (
-                    <div>
-                      <label className={labelClass}>WhatsApp de atención (opcional)</label>
-                      <input
-                        value={whatsappNumber}
-                        onChange={(e) => setWhatsappNumber(e.target.value)}
-                        placeholder="Ej: +54 9 381 ..."
-                        className={inputClass}
-                      />
-                    </div>
-                  )}
-                  <div className={inquiryChannel === 'travis_webchat' ? 'sm:col-span-2' : ''}>
-                    <label className={labelClass}>Contexto inicial para Travis</label>
-                    <input
-                      value={travisPrompt}
-                      onChange={(e) => setTravisPrompt(e.target.value)}
-                      placeholder={`Ej: Quiero consultar disponibilidad para ${title || 'este viaje'}`}
-                      className={inputClass}
-                    />
-                  </div>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className={labelClass}>WhatsApp de atención</label>
+                  <input
+                    value={whatsappNumber}
+                    onChange={(e) => setWhatsappNumber(e.target.value)}
+                    placeholder="+54 9 3812 00-0712"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Contexto inicial para Travis</label>
+                  <input
+                    value={travisPrompt}
+                    onChange={(e) => setTravisPrompt(e.target.value)}
+                    placeholder={`Ej: Quiero consultar disponibilidad para ${title || 'este viaje'}`}
+                    className={inputClass}
+                  />
                 </div>
               </div>
-            )}
+            </div>
           </div>
 
           {/* 6. Portada y Galería Multimedia */}
@@ -1123,11 +1311,16 @@ export function TravelMarketTab() {
             <div className="p-4 space-y-2.5">
               <div>
                 <p className="text-[11px] font-semibold text-slate-500">
-                  {origin || 'Origen'} → {destination || 'Destino'} · {durationDays}D / {durationNights}N · {transportType}
+                  {origin || 'Origen'} → {destination || 'Destino'} · {durationDays}D / {durationNights}N ·{' '}
+                  {transportType === 'Bus' ? `Bus ${busType}` : transportType}
                 </p>
                 <h4 className="text-sm font-bold text-[#0a2a5b] mt-0.5">
                   {title || 'Nombre de la experiencia'}
                 </h4>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  {hotelName ? `${hotelStars ? `${hotelStars}★ ` : ''}${hotelName} · ` : ''}
+                  {foodPlan}
+                </p>
               </div>
 
               {includedServices.length > 0 && (
@@ -1168,22 +1361,29 @@ export function TravelMarketTab() {
                 </div>
               </div>
 
-              <div className="pt-2">
-                <div className="w-full py-2 rounded-lg bg-[#0a2a5b] text-white text-center text-xs font-bold flex items-center justify-center gap-1.5">
-                  {publishAction === 'consultar' && <MessageCircle className="w-3.5 h-3.5" />}
-                  {publishAction === 'reservar' && 'Reservar'}
-                  {publishAction === 'consultar' &&
-                    `Consultar con Travis (${
-                      inquiryChannel === 'both'
-                        ? 'Web + WhatsApp'
-                        : inquiryChannel === 'whatsapp'
-                          ? 'WhatsApp'
-                          : 'Web Chat'
-                    })`}
-                  {publishAction === 'senar' &&
-                    `Señar con ${formatMoney(calculatedDepositAmount)}`}
-                  {publishAction === 'comprar' && 'Comprar ahora'}
-                </div>
+              <div className="pt-2 grid grid-cols-2 gap-1.5">
+                {enabledActions.map((act) => (
+                  <div
+                    key={act}
+                    className={`py-2 px-2 rounded-lg text-center text-[11px] font-bold flex items-center justify-center gap-1 ${
+                      act === 'whatsapp'
+                        ? 'bg-emerald-600 text-white'
+                        : act === 'senar'
+                          ? 'bg-amber-500 text-slate-950'
+                          : act === 'ver_detalle'
+                            ? 'bg-slate-900 text-white'
+                            : 'bg-[#0a2a5b] text-white'
+                    }`}
+                  >
+                    {act === 'whatsapp' && <MessageCircle className="w-3 h-3" />}
+                    {act === 'ver_detalle' && 'Ver Detalle'}
+                    {act === 'whatsapp' && 'WhatsApp'}
+                    {act === 'consultar' && 'Consultar'}
+                    {act === 'reservar' && 'Reservar'}
+                    {act === 'senar' && `Señar (${formatMoney(calculatedDepositAmount)})`}
+                    {act === 'pagar' && 'Pagar Viaje'}
+                  </div>
+                ))}
               </div>
             </div>
           </div>
