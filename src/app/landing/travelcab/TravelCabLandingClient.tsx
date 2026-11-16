@@ -2,9 +2,11 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { TravisOmnichannelWidget } from '@/components/shared/TravisOmnichannelWidget';
+import { OtaPromoPushPop } from '@/components/ota/OtaPromoPushPop';
 import dynamic from 'next/dynamic';
 import { collection, onSnapshot, query, where, doc, addDoc, setDoc, updateDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { db, auth } from '@/lib/firebase';
 import { MUTariff, VehicleCategory } from '@/types/logistics';
 import { ARGENTINA_PROVINCES } from '@/types/partners';
 import { useTripAlertSound } from '@/hooks/useTripAlertSound';
@@ -19,6 +21,7 @@ import {
   Award, 
   Zap, 
   Phone, 
+  MessageCircle,
   ArrowRight, 
   Navigation, 
   Star, 
@@ -161,42 +164,52 @@ const LANDING_DATA_FALLBACK = {
     subtitle: "Todo lo que necesitas saber sobre el servicio de movilidad premium",
     items: [
       {
+        audience: "passenger",
         question: "¿Cómo funciona el Despachador Web Inteligente?",
-        answer: "El despachador te permite ingresar origen y destino, calcular una tarifa estimada instantáneamente y elegir tu categoría. Al confirmar, te redirigirá a WhatsApp con un mensaje pre-configurado para que nuestra central asigne el chofer más cercano en segundos."
+        answer: "El despachador te permite ingresar origen y destino, calcular una tarifa estimada instantáneamente y ver tu ruta en el mapa. Al pedir el viaje podés continuar como invitado (efectivo) o ingresar con tu cuenta para abonar con Mercado Pago o Puntos Rewards."
       },
       {
+        audience: "driver",
         question: "¿Qué es el 'Modelo Híbrido' para conductores (Membresía vs. Comisión)?",
         answer: "Es un esquema flexible único. Como conductor, puedes optar por pagar una membresía mensual fija (retienes el 100% del valor de tus viajes) o bien operar bajo el esquema tradicional de comisión baja (15%) por cada traslado realizado."
       },
       {
+        audience: "passenger",
         question: "¿Qué métodos de pago puedo utilizar?",
-        answer: "Ofrecemos flexibilidad total. Puedes abonar en efectivo directo al chofer, realizar transferencias instantáneas mediante Mercado Pago o billeteras virtuales, o registrar de forma segura tarjetas de débito/crédito corporativas."
+        answer: "Ofrecemos flexibilidad total. Como invitado podés abonar en efectivo directo al chofer; iniciando sesión con tu cuenta TravelApp también podés pagar con Mercado Pago / Tarjeta o canjear Puntos Rewards."
       },
       {
+        audience: "passenger",
         question: "¿Cómo se garantiza la seguridad de mi viaje?",
         answer: "Todos nuestros traslados son monitoreados satelitalmente las 24 horas. Además, nuestros choferes pasan por rigurosas pruebas de antecedentes penales, análisis psicofísicos y validación de vehículos de forma presencial."
       },
       {
+        audience: "driver",
         question: "¿Qué requisitos debe cumplir un vehículo para ser aceptado?",
         answer: "El vehículo debe ser modelo 2018 o posterior, contar con 4 puertas, aire acondicionado en óptimas condiciones, seguro comercial al día y pasar una revisión técnica e higiénica presencial en nuestras oficinas locales."
       },
       {
+        audience: "passenger",
         question: "¿Ofrecen soluciones de movilidad corporativa para empresas?",
         answer: "Sí, contamos con un área dedicada para cuentas corporativas. Ofrecemos facturación mensual unificada, paneles de control para administrar traslados del personal y tarifas corporativas especiales."
       },
       {
+        audience: "passenger",
         question: "¿Cómo funciona el sistema de Puntos Rewards?",
         answer: "Cada kilómetro recorrido en TravelCab acumula puntos automáticamente en tu perfil del ecosistema. Estos puntos pueden ser canjeados por descuentos en tus próximos viajes o beneficios exclusivos con partners."
       },
       {
+        audience: "passenger",
         question: "¿Qué es el servicio de Auto Rural Compartido (ARC)?",
         answer: "ARC es una alternativa económica diseñada para viajes interurbanos o rurales. Permite a varios pasajeros compartir un mismo trayecto planificado, reduciendo el costo del viaje hasta en un 35% por persona."
       },
       {
+        audience: "all",
         question: "¿Quién es la IA 'Travis' y cómo me ayuda?",
         answer: "Travis es nuestro asistente virtual inteligente disponible las 24 horas en WhatsApp. Está capacitado para cotizar tarifas, responder dudas sobre los servicios y guiar de forma rápida a los conductores en su proceso de registro."
       },
       {
+        audience: "driver",
         question: "¿Los conductores reciben capacitación antes de empezar?",
         answer: "Absolutamente. Todos los choferes de la red completan de manera obligatoria una inducción integral en servicio de atención premium al cliente, normas de seguridad vial, conducción defensiva y uso del despachador digital."
       }
@@ -497,6 +510,8 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [selectedSeats, setSelectedSeats] = useState(1);
+  const [serviceCriteriaModal, setServiceCriteriaModal] = useState<any | null>(null);
+  const [driverReqsModalOpen, setDriverReqsModalOpen] = useState(false);
 
   const [searchingDriverModal, setSearchingDriverModal] = useState<{
     isOpen: boolean;
@@ -529,6 +544,11 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
   // Modales
   const [legalModal, setLegalModal] = useState<{ isOpen: boolean; type: 'terms' | 'privacy' | 'about' }>({ isOpen: false, type: 'terms' });
   const [registerModal, setRegisterModal] = useState<{ isOpen: boolean; role: 'passenger' | 'driver' }>({ isOpen: false, role: 'passenger' });
+  const [nosotrosDropdownOpen, setNosotrosDropdownOpen] = useState(false);
+  const [institutionalModal, setInstitutionalModal] = useState<'vision' | 'mision' | 'valores' | null>(null);
+  const [showQuoteMap, setShowQuoteMap] = useState(false);
+  const [requestTripModalOpen, setRequestTripModalOpen] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
 
   // Flujo Registro Pasajero (Gamificado con Fotos/Cámara)
   const [pRegStep, setPRegStep] = useState<1 | 2 | 3>(1);
@@ -832,8 +852,6 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
   const handleCalculateRate = (e: React.FormEvent) => {
     e.preventDefault();
     const errors: typeof formErrors = {};
-    if (!passengerName.trim()) errors.name = true;
-    if (!passengerPhone.trim()) errors.phone = true;
     if (!pickupLocation.trim()) errors.pickup = true;
     if (!dropoffLocation.trim()) errors.dropoff = true;
 
@@ -843,7 +861,11 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
     }
 
     setFormErrors({});
-    setDispatcherStep(2);
+    const defaultVehicle = categories[0] || { id: 'estandar', name: 'TravelCab Standard', baseFareMultiplier: 1 };
+    setSelectedVehicle(defaultVehicle);
+    const priceAmount = getCalculatedPriceForVehicle(defaultVehicle);
+    setCalculatedPrice(formatCurrency(priceAmount));
+    setShowQuoteMap(true);
   };
 
   const handleSelectVehicle = async (vehicle: any) => {
@@ -1217,643 +1239,725 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
     <div className="min-h-screen bg-slate-50 text-tech-blue font-sans selection:bg-vial-orange/20 selection:text-tech-blue overflow-x-hidden animate-fadeIn">
       <span data-shell-free="true" className="hidden" />
       
-      {/* ---------------- NAVIGATION HEADER ---------------- */}
-      <header className="sticky top-0 z-40 w-full border-b border-slate-200/60 bg-white/80 backdrop-blur-md transition-all duration-300">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3 md:px-8">
-          <a href="/" className="flex items-center">
-            <img
-              src={cmsData.navigation?.logoImage || DEFAULT_CMS_DATA.navigation.logoImage}
-              alt="TravelCab"
-              className="h-16 md:h-22 w-auto object-contain transition-all duration-300"
-            />
-          </a>
-
-          <nav className="hidden md:flex items-center gap-6 bg-slate-100/80 px-4 py-1.5 rounded-full border border-slate-200/40">
-            <button
-              onClick={() => setViewMode('passenger')}
-              className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer ${
-                viewMode === 'passenger' 
-                  ? 'bg-[#0A2A5B] text-white shadow-sm' 
-                  : 'text-slate-600 hover:text-[#0A2A5B]'
-              }`}
-            >
-              Usuarios
-            </button>
-            <button
-              onClick={() => setViewMode('driver')}
-              className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer ${
-                viewMode === 'driver' 
-                  ? 'bg-[#0A2A5B] text-white shadow-sm' 
-                  : 'text-slate-600 hover:text-[#0A2A5B]'
-              }`}
-            >
-              Conductores
-            </button>
-            <a
-              href="#rewards-summary"
-              className="px-4 py-1.5 rounded-full text-xs font-bold text-slate-600 hover:text-[#0A2A5B] transition-all"
-            >
-              Rewards
+      {/* ---------------- HEADER INSTITUCIONAL (ESTILO EXPERIENCE) ---------------- */}
+      <header className="sticky top-0 z-50 w-full bg-[#0a2a5b]/95 backdrop-blur-md text-white border-b border-white/10 transition-all">
+        <div className="max-w-[1200px] mx-auto px-4 sm:px-6">
+          <div className="flex items-center justify-between h-14 sm:h-16 gap-6">
+            {/* Logo TravelCab Institucional Blanco */}
+            <a href="/landing/travelcab" className="flex items-center shrink-0 focus:outline-none group">
+              <img
+                src="/assets/travelcab_blanco.svg"
+                alt="TravelCab"
+                className="h-9 sm:h-11 w-auto object-contain transition-opacity group-hover:opacity-90"
+              />
             </a>
-          </nav>
 
-          <div className="hidden md:flex items-center gap-3">
-            <a
-              href="/login"
-              className="px-4 py-2.5 rounded-xl border border-slate-200 hover:border-slate-300 text-slate-600 hover:text-[#0A2A5B] text-sm font-bold transition-colors cursor-pointer bg-white"
-            >
-              Ingresar
-            </a>
-            <div className="relative group">
-              <button
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl text-white bg-[#FF5A19] hover:bg-[#e04e14] px-5 py-2.5 text-sm font-bold shadow-md transition-all cursor-pointer"
+            {/* Navegación Institucional Desktop */}
+            <nav className="hidden lg:flex items-center justify-center gap-7 text-[13px] font-normal tracking-[-0.01em] text-white/85">
+              {/* Nosotros */}
+              <div
+                className="relative"
+                onMouseEnter={() => setNosotrosDropdownOpen(true)}
+                onMouseLeave={() => setNosotrosDropdownOpen(false)}
               >
-                Registrarse
-                <ChevronRight className="h-4 w-4 rotate-90" />
-              </button>
-              <div className="absolute right-0 mt-2 w-48 rounded-2xl bg-white border border-slate-200/60 shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50 overflow-hidden transform origin-top-right scale-95 group-hover:scale-100">
                 <button
-                  onClick={() => { setPRegStep(1); setPRegData({ firstName: '', lastName: '', email: '', phone: '', photoUrl: '' }); setRegisterModal({ isOpen: true, role: 'passenger' }); }}
-                  className="w-full text-left block px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 hover:text-[#FF5A19] border-b border-slate-100 transition-colors cursor-pointer"
+                  type="button"
+                  onClick={() => setNosotrosDropdownOpen((prev) => !prev)}
+                  className="flex items-center gap-1 py-2 hover:text-white transition-colors cursor-pointer"
                 >
-                  Soy Pasajero
+                  <span>Nosotros</span>
+                  <ChevronRight className={`w-3.5 h-3.5 opacity-70 transition-transform duration-200 ${nosotrosDropdownOpen ? "rotate-90" : ""}`} />
                 </button>
-                <button
-                  onClick={() => { setDRegStep(0); setDRegSubmitted(false); setRegisterModal({ isOpen: true, role: 'driver' }); }}
-                  className="w-full text-left block px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 hover:text-[#FF5A19] transition-colors cursor-pointer"
-                >
-                  Soy Conductor
-                </button>
+
+                {nosotrosDropdownOpen && (
+                  <div className="absolute left-0 top-full pt-1 w-48 z-50">
+                    <div className="bg-[#0a2a5b]/95 backdrop-blur-xl rounded-xl shadow-2xl border border-white/15 py-1.5 text-[13px] text-white/90">
+                      <button
+                        type="button"
+                        onClick={() => { setNosotrosDropdownOpen(false); setInstitutionalModal('vision'); }}
+                        className="w-full px-4 py-2 text-left hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                      >
+                        Nuestra Visión
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setNosotrosDropdownOpen(false); setInstitutionalModal('mision'); }}
+                        className="w-full px-4 py-2 text-left hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                      >
+                        Nuestra Misión
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setNosotrosDropdownOpen(false); setInstitutionalModal('valores'); }}
+                        className="w-full px-4 py-2 text-left hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                      >
+                        Nuestros Valores
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          </div>
 
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-600 md:hidden hover:bg-slate-100 transition-colors"
-          >
-            {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-          </button>
-        </div>
-
-        {mobileMenuOpen && (
-          <div className="border-t border-slate-100 bg-white p-4 md:hidden flex flex-col gap-3 shadow-lg animate-fadeIn">
-            <div className="flex gap-2 p-1 bg-slate-100 rounded-lg">
               <button
-                onClick={() => { setViewMode('passenger'); setMobileMenuOpen(false); }}
-                className={`flex-1 py-2 text-xs font-bold rounded-md text-center transition-all ${
-                  viewMode === 'passenger' ? 'bg-tech-blue text-white shadow-sm' : 'text-slate-600'
-                }`}
+                type="button"
+                onClick={() => {
+                  setViewMode('passenger');
+                  document.getElementById('web-dispatcher-card')?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className={`py-2 transition-colors cursor-pointer ${viewMode === 'passenger' ? 'text-white font-semibold' : 'hover:text-white'}`}
               >
-                Pasajeros
+                Usuarios
               </button>
+
               <button
-                onClick={() => { setViewMode('driver'); setMobileMenuOpen(false); }}
-                className={`flex-1 py-2 text-xs font-bold rounded-md text-center transition-all ${
-                  viewMode === 'driver' ? 'bg-tech-blue text-white shadow-sm' : 'text-slate-600'
-                }`}
+                type="button"
+                onClick={() => {
+                  setViewMode('driver');
+                  document.getElementById('hybrid-block')?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className={`py-2 transition-colors cursor-pointer ${viewMode === 'driver' ? 'text-white font-semibold' : 'hover:text-white'}`}
               >
                 Conductores
               </button>
-            </div>
 
-            <a
-              href="#rewards-summary"
-              onClick={() => setMobileMenuOpen(false)}
-              className="block rounded-lg px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-all text-center"
-            >
-              Programa Rewards
-            </a>
+              <a href="#services-block" className="py-2 hover:text-white transition-colors">
+                Categorías
+              </a>
 
-            <div className="flex flex-col gap-1.5 pt-1 border-t border-slate-100">
+              <a href="#rewards-summary" className="py-2 hover:text-white transition-colors">
+                Rewards
+              </a>
+
+              <a href="/landing/ecosistema" className="py-2 hover:text-white transition-colors">
+                Ecosistema
+              </a>
+            </nav>
+
+            {/* Zona Derecha Institucional */}
+            <div className="hidden lg:flex items-center gap-3 shrink-0">
+              <a
+                href={`tel:${(cmsData.contact?.phone || '0810-220-0018').replace(/[^0-9]/g, '')}`}
+                className="flex items-center gap-1.5 text-[12px] text-white/80 hover:text-white transition-colors"
+              >
+                <Phone className="w-3.5 h-3.5" />
+                <span>{cmsData.contact?.phone || '0810-220-0018'}</span>
+              </a>
+
               <a
                 href="/login"
-                onClick={() => setMobileMenuOpen(false)}
-                className="w-full text-center block rounded-xl border border-slate-200 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 bg-white"
+                className="px-3.5 py-1.5 rounded-full border border-white/25 text-white text-[12px] font-medium hover:bg-white/10 transition-colors"
               >
                 Ingresar
               </a>
-              <button
-                onClick={() => { setPRegStep(1); setRegisterModal({ isOpen: true, role: 'passenger' }); setMobileMenuOpen(false); }}
-                className="w-full text-center block rounded-xl py-2.5 text-sm font-bold text-white shadow-md bg-[#FF5A19] hover:bg-[#e04e14]"
-              >
-                Registro Pasajero
-              </button>
-              <button
-                onClick={() => { setDRegStep(0); setDRegSubmitted(false); setRegisterModal({ isOpen: true, role: 'driver' }); setMobileMenuOpen(false); }}
-                className="w-full text-center block rounded-xl py-2.5 text-sm font-bold text-slate-700 border border-slate-200 bg-slate-50 mt-1"
-              >
-                Registro Conductor
-              </button>
-            </div>
-          </div>
-        )}
-      </header>
 
-      {/* ---------------- HERO SECTION ---------------- */}
-      <section 
-        className="relative overflow-hidden bg-cover bg-center py-20 lg:py-28 px-4 md:px-8 text-white transition-all duration-300"
-        style={{ 
-          backgroundImage: (() => {
-            const currentHero = viewMode === 'passenger' ? cmsData.pasajeroHero : cmsData.conductorHero;
-            const fallbackHero = viewMode === 'passenger' ? DEFAULT_CMS_DATA.pasajeroHero : DEFAULT_CMS_DATA.conductorHero;
-            
-            const opacityVal = currentHero?.opacity !== undefined 
-              ? Number(currentHero.opacity) 
-              : 55; // default to 55% transparency
-              
-            const op1 = (opacityVal / 100).toFixed(2);
-            const op2 = (Math.min(95, opacityVal + 15) / 100).toFixed(2);
-
-            const bgUrl = currentHero?.backgroundImage || fallbackHero.backgroundImage;
-            return `linear-gradient(rgba(10, 42, 91, ${op1}), rgba(15, 23, 42, ${op2})), url('${bgUrl}')`;
-          })()
-        }}
-      >
-        <div className="absolute top-0 right-0 -z-5 h-[400px] w-[400px] rounded-full bg-[#FF5A19]/15 blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 -z-5 h-[300px] w-[300px] rounded-full bg-[#0A2A5B]/30 blur-3xl pointer-events-none" />
-
-        <div className="mx-auto max-w-7xl relative z-10">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
-            
-            <div className="lg:col-span-6 xl:col-span-7 space-y-6 text-center lg:text-left">
-              <span className="inline-flex items-center rounded-full bg-[#FF5A19]/20 px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-[#FF5A19] ring-1 ring-[#FF5A19]/30 animate-pulse">
-                {viewMode === 'passenger' 
-                  ? (cmsData.pasajeroHero?.badge || DEFAULT_CMS_DATA.pasajeroHero.badge)
-                  : (cmsData.conductorHero?.badge || DEFAULT_CMS_DATA.conductorHero.badge)
-                }
-              </span>
-              
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-tight">
-                {viewMode === 'passenger' 
-                  ? (cmsData.pasajeroHero?.title || DEFAULT_CMS_DATA.pasajeroHero.title)
-                  : (cmsData.conductorHero?.title || DEFAULT_CMS_DATA.conductorHero.title)
-                }
-              </h1>
-              
-              <p className="mx-auto lg:mx-0 max-w-xl text-lg text-slate-200 leading-relaxed font-medium">
-                {viewMode === 'passenger' 
-                  ? (cmsData.pasajeroHero?.subtitle || DEFAULT_CMS_DATA.pasajeroHero.subtitle)
-                  : (cmsData.conductorHero?.subtitle || DEFAULT_CMS_DATA.conductorHero.subtitle)
-                }
-              </p>
-
-              <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 pt-2">
-                {viewMode === 'passenger' ? (
-                  <a 
-                    href="#web-dispatcher-card"
-                    className="w-full sm:w-auto inline-flex items-center justify-center rounded-2xl bg-[#FF5A19] hover:bg-[#e04e14] px-8 py-4 text-center font-bold text-white shadow-lg shadow-[#FF5A19]/25 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer"
-                  >
-                    Pedir Viaje Ahora
-                  </a>
-                ) : (
-                  <button 
-                    onClick={() => { setDRegStep(0); setDRegSubmitted(false); setRegisterModal({ isOpen: true, role: 'driver' }); }}
-                    className="w-full sm:w-auto inline-flex items-center justify-center rounded-2xl bg-[#FF5A19] hover:bg-[#e04e14] px-8 py-4 text-center font-bold text-white shadow-lg shadow-[#FF5A19]/25 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer"
-                  >
-                    Postularme como Conductor
-                  </button>
-                )}
-                
-                <button 
-                  onClick={() => setViewMode(viewMode === 'passenger' ? 'driver' : 'passenger')}
-                  className="group w-full sm:w-auto inline-flex flex-col items-center justify-center rounded-2xl border border-white/20 bg-white/5 backdrop-blur-sm px-6 py-3 text-center text-white hover:bg-white hover:text-tech-blue hover:-translate-y-0.5 transition-all duration-300"
+              <div className="relative group">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white text-[#0a2a5b] hover:bg-slate-100 px-4 py-1.5 text-[12px] font-semibold transition-colors cursor-pointer"
                 >
-                  <span className="font-bold text-sm">
-                    {viewMode === 'passenger' ? 'Ver Portal para Conductores' : 'Ver Portal para Pasajeros'}
-                  </span>
+                  Registrarse
+                  <ChevronRight className="h-3.5 w-3.5 rotate-90" />
+                </button>
+                <div className="absolute right-0 mt-2 w-48 rounded-xl bg-white border border-slate-200 shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 overflow-hidden">
+                  <button
+                    onClick={() => { setPRegStep(1); setPRegData({ firstName: '', lastName: '', email: '', phone: '', photoUrl: '' }); setRegisterModal({ isOpen: true, role: 'passenger' }); }}
+                    className="w-full text-left block px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-[#0a2a5b] border-b border-slate-100 transition-colors cursor-pointer"
+                  >
+                    Soy Pasajero
+                  </button>
+                  <button
+                    onClick={() => { setDRegStep(0); setDRegSubmitted(false); setRegisterModal({ isOpen: true, role: 'driver' }); }}
+                    className="w-full text-left block px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-[#0a2a5b] transition-colors cursor-pointer"
+                  >
+                    Soy Conductor
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/20 text-white lg:hidden hover:bg-white/10 transition-colors"
+              aria-label="Abrir menú"
+            >
+              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+          </div>
+
+          {mobileMenuOpen && (
+            <div className="border-t border-white/10 py-4 lg:hidden flex flex-col gap-3 text-white">
+              <div className="flex gap-2 p-1 bg-white/10 rounded-full">
+                <button
+                  onClick={() => { setViewMode('passenger'); setMobileMenuOpen(false); }}
+                  className={`flex-1 py-2 text-xs font-semibold rounded-full text-center transition-all ${
+                    viewMode === 'passenger' ? 'bg-white text-[#0a2a5b]' : 'text-white/80'
+                  }`}
+                >
+                  Usuarios
+                </button>
+                <button
+                  onClick={() => { setViewMode('driver'); setMobileMenuOpen(false); }}
+                  className={`flex-1 py-2 text-xs font-semibold rounded-full text-center transition-all ${
+                    viewMode === 'driver' ? 'bg-white text-[#0a2a5b]' : 'text-white/80'
+                  }`}
+                >
+                  Conductores
                 </button>
               </div>
 
-              <div className="grid grid-cols-3 gap-4 pt-8 border-t border-white/10 max-w-md mx-auto lg:mx-0">
-                {(cmsData.hero?.stats || DEFAULT_CMS_DATA.hero.stats).map((stat: any, idx: number) => (
-                  <div key={idx} className="text-center lg:text-left">
-                    <p className="text-2xl sm:text-3xl font-extrabold text-vial-orange tracking-tight">{stat.value}</p>
-                    <p className="text-xs sm:text-sm font-semibold text-slate-300 mt-1 leading-snug">{stat.label}</p>
-                  </div>
-                ))}
+              <div className="flex flex-col gap-1 text-sm">
+                <button
+                  type="button"
+                  onClick={() => { setInstitutionalModal('vision'); setMobileMenuOpen(false); }}
+                  className="text-left px-3 py-2 rounded-lg hover:bg-white/10"
+                >
+                  Nosotros (Visión, Misión y Valores)
+                </button>
+                <a href="#services-block" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg hover:bg-white/10">
+                  Categorías de Transporte
+                </a>
+                <a href="#rewards-summary" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg hover:bg-white/10">
+                  Programa Rewards
+                </a>
+              </div>
+
+              <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
+                <a
+                  href="/login"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="w-full text-center block rounded-full border border-white/25 py-2 text-xs font-semibold text-white hover:bg-white/10"
+                >
+                  Ingresar
+                </a>
+                <button
+                  onClick={() => { setPRegStep(1); setRegisterModal({ isOpen: true, role: 'passenger' }); setMobileMenuOpen(false); }}
+                  className="w-full text-center block rounded-full py-2 text-xs font-semibold text-[#0a2a5b] bg-white"
+                >
+                  Registro Usuario
+                </button>
+                <button
+                  onClick={() => { setDRegStep(0); setDRegSubmitted(false); setRegisterModal({ isOpen: true, role: 'driver' }); setMobileMenuOpen(false); }}
+                  className="w-full text-center block rounded-full py-2 text-xs font-semibold text-white border border-white/25"
+                >
+                  Registro Conductor
+                </button>
               </div>
             </div>
+          )}
+        </div>
+      </header>
 
-            <div className="lg:col-span-6 xl:col-span-5 flex flex-col justify-center items-center w-full gap-4 relative z-20">
-              <div className="w-full max-w-[480px] h-[220px] bg-slate-950 border border-slate-700/40 rounded-3xl overflow-hidden shadow-2xl relative">
-                <GoogleInteractiveMap 
-                  activeTrip={null}
-                  trips={[]}
-                  previewCoords={{ originCoords: pickupCoords, destinationCoords: dropoffCoords }}
-                />
+      {/* ---------------- HERO INSTITUCIONAL (USUARIOS 35/65 DISPATCHER+MAPA | CONDUCTORES FULL-BLEED) ---------------- */}
+      {viewMode === 'passenger' ? (
+        <section className="relative bg-white border-b border-slate-200/80">
+          <div className="mx-auto max-w-[1440px] flex flex-col lg:flex-row min-h-[600px] lg:min-h-[640px]">
+            {/* Margen Izquierdo (35%): Despachador Minimalista */}
+            <div
+              id="web-dispatcher-card"
+              className="w-full lg:w-[35%] bg-white border-b lg:border-b-0 lg:border-r border-slate-200/80 px-5 sm:px-7 py-7 flex flex-col justify-between z-20"
+            >
+              <div>
+                {/* Switcher sutil Usuario / Conductor */}
+                <div className="inline-flex items-center p-1 rounded-full bg-slate-100 border border-slate-200/80 mb-5">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('passenger')}
+                    className="px-3.5 py-1 rounded-full text-[11px] font-semibold bg-[#0a2a5b] text-white transition-all cursor-pointer"
+                  >
+                    Usuarios
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setViewMode('driver'); setShowQuoteMap(false); }}
+                    className="px-3.5 py-1 rounded-full text-[11px] font-semibold text-slate-600 hover:text-[#0a2a5b] transition-all cursor-pointer"
+                  >
+                    Conductores
+                  </button>
+                </div>
+
+                <div className="mb-5">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#0071e3]">
+                    {cmsData.dispatcher?.badge || DEFAULT_CMS_DATA.dispatcher.badge}
+                  </span>
+                  <h2 className="text-2xl font-semibold tracking-tight text-[#1d1d1f] mt-1">
+                    {cmsData.dispatcher?.title || DEFAULT_CMS_DATA.dispatcher.title}
+                  </h2>
+                </div>
+
+                {/* 3 Botones sutiles selector de servicio */}
+                <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-slate-100/90 border border-slate-200/70 mb-5">
+                  {[
+                    { id: 'MU' as const, label: 'Movilidad Urbana' },
+                    { id: 'ARC' as const, label: 'Compartido' },
+                    { id: 'TRANSFER' as const, label: 'Traslados' },
+                  ].map((svc) => (
+                    <button
+                      key={svc.id}
+                      type="button"
+                      onClick={() => {
+                        setModality(svc.id);
+                        setShowQuoteMap(false);
+                      }}
+                      className={`py-2 px-2 rounded-lg text-[11px] font-medium transition-all cursor-pointer leading-tight ${
+                        modality === svc.id
+                          ? 'bg-white text-[#0a2a5b] font-semibold shadow-xs border border-slate-200/80'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      {svc.label}
+                    </button>
+                  ))}
+                </div>
+
+                <form onSubmit={handleCalculateRate} className="space-y-4">
+                  {modality === 'ARC' && (
+                    <div>
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                        Asientos (Compartido)
+                      </label>
+                      <select
+                        value={selectedSeats}
+                        onChange={(e) => setSelectedSeats(Number(e.target.value))}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2.5 text-sm text-slate-800 outline-none focus:bg-white focus:border-[#0a2a5b]"
+                      >
+                        <option value={1}>1 Asiento</option>
+                        <option value={2}>2 Asientos</option>
+                        <option value={3}>3 Asientos</option>
+                        <option value={4}>4 Asientos (Vehículo Completo)</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Solo 1 campo Origen */}
+                  <div className="relative">
+                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5 flex justify-between">
+                      <span>{cmsData.dispatcher?.pickupLabel || DEFAULT_CMS_DATA.dispatcher.pickupLabel}</span>
+                      {pickupCoords && <span className="text-[10px] text-emerald-600 font-semibold">✓ Ubicación lista</span>}
+                    </label>
+                    <GoogleAddressAutocomplete
+                      value={pickupLocation}
+                      onChange={(val) => { setPickupLocation(val); setPickupCoords(null); }}
+                      onSelect={(address, coords) => { setPickupLocation(address); setPickupCoords(coords); }}
+                      placeholder={cmsData.dispatcher?.pickupPlaceholder || DEFAULT_CMS_DATA.dispatcher.pickupPlaceholder}
+                      className={formErrors.pickup ? 'border-red-400 bg-red-50/30' : ''}
+                    />
+                  </div>
+
+                  {/* Solo 1 campo Destino */}
+                  <div className="relative">
+                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5 flex justify-between">
+                      <span>{cmsData.dispatcher?.dropoffLabel || DEFAULT_CMS_DATA.dispatcher.dropoffLabel}</span>
+                      {dropoffCoords && <span className="text-[10px] text-emerald-600 font-semibold">✓ Ubicación lista</span>}
+                    </label>
+                    <GoogleAddressAutocomplete
+                      value={dropoffLocation}
+                      onChange={(val) => { setDropoffLocation(val); setDropoffCoords(null); }}
+                      onSelect={(address, coords) => { setDropoffLocation(address); setDropoffCoords(coords); }}
+                      placeholder={cmsData.dispatcher?.dropoffPlaceholder || DEFAULT_CMS_DATA.dispatcher.dropoffPlaceholder}
+                      className={formErrors.dropoff ? 'border-red-400 bg-red-50/30' : ''}
+                    />
+                  </div>
+
+                  {/* Selector Forma de Pago: Efectivo - Mercado Pago / Tarjeta - Puntos Rewards */}
+                  <div>
+                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
+                      {cmsData.dispatcher?.paymentMethodLabel || DEFAULT_CMS_DATA.dispatcher.paymentMethodLabel}
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {/* Efectivo */}
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('Efectivo')}
+                        className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                          paymentMethod === 'Efectivo'
+                            ? 'border-[#0a2a5b] bg-[#0a2a5b]/5 text-[#0a2a5b] font-semibold'
+                            : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                        }`}
+                      >
+                        <Coins className="h-4 w-4 mb-1" />
+                        <span className="text-[11px] leading-tight">Efectivo</span>
+                      </button>
+
+                      {/* Mercado Pago / Tarjeta */}
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('Mercado Pago')}
+                        className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                          paymentMethod === 'Mercado Pago'
+                            ? 'border-[#009EE3] bg-[#009EE3]/8 text-[#007eb5] font-semibold'
+                            : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                        }`}
+                      >
+                        <CreditCard className="h-4 w-4 mb-1 text-[#009EE3]" />
+                        <span className="text-[10px] leading-tight">Mercado Pago / Tarjeta</span>
+                      </button>
+
+                      {/* Puntos Rewards */}
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('Puntos Rewards')}
+                        className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                          paymentMethod === 'Puntos Rewards'
+                            ? 'border-[#0a2a5b] bg-[#0a2a5b]/5 text-[#0a2a5b] font-semibold'
+                            : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                        }`}
+                      >
+                        <Award className="h-4 w-4 mb-1" />
+                        <span className="text-[10px] leading-tight">Puntos Rewards</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full mt-2 rounded-full bg-[#0a2a5b] hover:bg-[#071d3f] py-3.5 px-5 text-sm font-semibold text-white transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                  >
+                    Calcular tarifa aproximada
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                </form>
               </div>
 
-              <div 
-                id="web-dispatcher-card" 
-                className="w-full max-w-[480px] bg-white/95 backdrop-blur-md border border-slate-200/50 rounded-3xl p-6 md:p-8 shadow-2xl text-tech-blue transition-all duration-500 hover:shadow-vial-orange/10"
-              >
-                <div className="flex justify-between items-center mb-6 border-b border-slate-200/60 pb-4">
-                  <div>
-                    <span className="text-[10px] font-extrabold text-vial-orange uppercase tracking-widest bg-vial-orange/10 px-2.5 py-1 rounded-full">
-                      {cmsData.dispatcher?.badge || DEFAULT_CMS_DATA.dispatcher.badge}
+              <p className="mt-5 pt-4 border-t border-slate-100 text-[10px] text-slate-400 leading-relaxed">
+                {cmsData.dispatcher?.legalText || DEFAULT_CMS_DATA.dispatcher.legalText}
+              </p>
+            </div>
+
+            {/* Margen Derecho (65%): Imagen dinámica editable desde CMS -> Se convierte en Mapa con ruta trazada + Detalle + Pedir Viaje */}
+            <div className="w-full lg:w-[65%] relative min-h-[420px] lg:min-h-[640px] bg-slate-900 overflow-hidden">
+              {!showQuoteMap ? (
+                <>
+                  <img
+                    src={cmsData.pasajeroHero?.backgroundImage || DEFAULT_CMS_DATA.pasajeroHero.backgroundImage}
+                    alt={cmsData.pasajeroHero?.title || 'TravelCab Usuarios y Pasajeros'}
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                  <div className="relative z-10 h-full flex flex-col justify-end p-6 sm:p-10 lg:p-14 text-white max-w-2xl">
+                    <span className="text-xs font-semibold uppercase tracking-[0.16em] text-white/80 mb-2">
+                      TravelCab · Movilidad Institucional
                     </span>
-                    <h3 className="text-xl font-black tracking-tight text-tech-blue mt-1.5">{cmsData.dispatcher?.title || DEFAULT_CMS_DATA.dispatcher.title}</h3>
-                  </div>
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-tech-blue text-white">
-                    <Navigation className="h-5 w-5 rotate-45 text-vial-orange fill-vial-orange" />
-                  </div>
-                </div>
-
-                {/* Selector de Modalidad: MU vs ARC vs TRANSFER */}
-                <div className="flex bg-slate-100 p-1.5 rounded-2xl gap-1.5 mb-4 border border-slate-200/40">
-                  <button
-                    type="button"
-                    onClick={() => { setModality('MU'); handleResetDispatcher(); }}
-                    className={`flex-1 py-2 text-[9px] font-black uppercase tracking-wider rounded-xl transition-all duration-300 ${
-                      modality === 'MU' 
-                        ? 'bg-tech-blue text-white shadow-lg shadow-tech-blue/20' 
-                        : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    🚕 Urbana (MU)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setModality('ARC'); handleResetDispatcher(); }}
-                    className={`flex-1 py-2 text-[9px] font-black uppercase tracking-wider rounded-xl transition-all duration-300 ${
-                      modality === 'ARC' 
-                        ? 'bg-tech-blue text-white shadow-lg shadow-tech-blue/20' 
-                        : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    🤝 Compartido (ARC)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setModality('TRANSFER'); handleResetDispatcher(); }}
-                    className={`flex-1 py-2 text-[9px] font-black uppercase tracking-wider rounded-xl transition-all duration-300 ${
-                      modality === 'TRANSFER' 
-                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' 
-                        : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    ✈️ Traslados Fijos
-                  </button>
-                </div>
-
-                {/* Selector de tipo de registro: Invitado vs Registrado */}
-                <div className="flex bg-slate-50 p-1.5 rounded-2xl gap-2 mb-6 border border-slate-200/40">
-                  <button
-                    type="button"
-                    onClick={() => { setBookingType('guest'); handleResetDispatcher(); }}
-                    className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all duration-300 ${
-                      bookingType === 'guest' 
-                        ? 'bg-vial-orange text-white shadow-lg shadow-vial-orange/20' 
-                        : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    👤 Invitado
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setBookingType('registered'); handleResetDispatcher(); }}
-                    className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all duration-300 ${
-                      bookingType === 'registered' 
-                        ? 'bg-vial-orange text-white shadow-lg shadow-vial-orange/20' 
-                        : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    🔐 Usuario Registrado
-                  </button>
-                </div>
-
-                {dispatcherStep === 1 && bookingType === 'registered' && !isLoggedIn && (
-                  <div className="space-y-4 animate-fadeIn">
-                    <div className="text-center pb-2">
-                      <h4 className="text-sm font-black uppercase tracking-wider text-[#0A2A5B]">Ingreso a la Plataforma</h4>
-                      <p className="text-xs text-slate-500 mt-1">Ingresa para usar tus datos del perfil de TravelApp automáticamente</p>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Email</label>
-                      <input 
-                        type="email"
-                        placeholder="usuario@travelapp.ar"
-                        value={loginEmail}
-                        onChange={(e) => setLoginEmail(e.target.value)}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm text-slate-800 placeholder-slate-400 outline-none focus:bg-white focus:ring-4 focus:ring-tech-blue/10"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Contraseña</label>
-                      <input 
-                        type="password"
-                        placeholder="••••••••"
-                        value={loginPassword}
-                        onChange={(e) => setLoginPassword(e.target.value)}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm text-slate-800 placeholder-slate-400 outline-none focus:bg-white focus:ring-4 focus:ring-tech-blue/10"
-                      />
-                    </div>
-                    {loginError && <p className="text-xs text-red-500 font-bold">{loginError}</p>}
-                    <div className="flex flex-col gap-2 pt-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (loginEmail && loginPassword) {
-                            setIsLoggedIn(true);
-                            setPassengerName("Juan Pérez");
-                            setPassengerPhone("+5493816554433");
-                            setLoginError("");
-                          } else {
-                            setLoginError("Por favor ingresa correo y contraseña.");
-                          }
-                        }}
-                        className="w-full bg-[#0A2A5B] text-white font-black py-3.5 rounded-2xl shadow-lg hover:brightness-110 transition-all text-center text-xs uppercase tracking-wider"
-                      >
-                        Ingresar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsLoggedIn(true);
-                          setPassengerName("Juan Pérez");
-                          setPassengerPhone("+5493816554433");
-                          setLoginError("");
-                        }}
-                        className="w-full bg-slate-100 text-slate-600 font-black py-3 rounded-2xl hover:bg-slate-200 transition-all text-center text-xs uppercase tracking-wider border border-slate-200"
-                      >
-                        ⚡ Ingreso de Prueba Rápido
-                      </button>
+                    <h1 className="text-3xl sm:text-5xl font-semibold tracking-tight leading-[1.08] mb-3 drop-shadow-sm">
+                      {cmsData.pasajeroHero?.title || DEFAULT_CMS_DATA.pasajeroHero.title}
+                    </h1>
+                    <p className="text-sm sm:text-base text-white/90 leading-relaxed mb-6">
+                      {cmsData.pasajeroHero?.subtitle || DEFAULT_CMS_DATA.pasajeroHero.subtitle}
+                    </p>
+                    <div className="grid grid-cols-3 gap-4 pt-4 border-t border-white/20 max-w-md">
+                      {(cmsData.hero?.stats || DEFAULT_CMS_DATA.hero.stats).map((stat: any, idx: number) => (
+                        <div key={idx}>
+                          <p className="text-lg sm:text-xl font-semibold text-white">{stat.value}</p>
+                          <p className="text-[11px] text-white/75">{stat.label}</p>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                )}
+                </>
+              ) : (
+                <div className="relative w-full h-full min-h-[460px] lg:min-h-[640px]">
+                  <GoogleInteractiveMap
+                    activeTrip={null}
+                    trips={[]}
+                    previewCoords={{ originCoords: pickupCoords, destinationCoords: dropoffCoords }}
+                  />
 
-                {dispatcherStep === 1 && (bookingType === 'guest' || isLoggedIn) && (
-                  <form onSubmit={handleCalculateRate} className="space-y-4 animate-fadeIn">
-                    {isLoggedIn && (
-                      <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 flex justify-between items-center mb-4">
-                        <div>
-                          <p className="text-[10px] text-emerald-800 font-black uppercase tracking-wider">Sesión de Usuario ✓</p>
-                          <p className="text-sm font-black text-slate-800 mt-0.5">{passengerName}</p>
-                          <p className="text-xs text-slate-500 font-bold">{passengerPhone}</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsLoggedIn(false);
-                            setPassengerName("");
-                            setPassengerPhone("");
-                          }}
-                          className="text-xs text-red-500 hover:text-red-700 font-black underline uppercase"
-                        >
-                          Salir
-                        </button>
-                      </div>
-                    )}
-
-                    {bookingType === 'guest' && (
-                      <>
-                        <div>
-                          <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center gap-1">
-                            <span>{cmsData.dispatcher?.passengerNameLabel || DEFAULT_CMS_DATA.dispatcher.passengerNameLabel}</span>
-                          </label>
-                          <input
-                            type="text"
-                            value={passengerName}
-                            onChange={(e) => setPassengerName(e.target.value)}
-                            placeholder={cmsData.dispatcher?.passengerNamePlaceholder || DEFAULT_CMS_DATA.dispatcher.passengerNamePlaceholder}
-                            className={`w-full rounded-2xl border bg-slate-50/50 px-4 py-3.5 text-sm text-slate-800 placeholder-slate-400 outline-none transition-all focus:bg-white focus:ring-4 focus:ring-tech-blue/10 ${
-                              formErrors.name ? 'border-red-300 bg-red-50/30' : 'border-slate-200'
-                            }`}
-                          />
+                  {/* Tarjeta flotante con ruta, detalle del viaje y botón Pedir Viaje */}
+                  <div className="absolute bottom-4 left-4 right-4 sm:bottom-6 sm:left-6 sm:right-6 z-20 bg-white/95 backdrop-blur-md border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xl text-[#1d1d1f]">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="space-y-1.5 flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-[#0a2a5b] text-white">
+                            {modality === 'MU' ? 'Movilidad Urbana' : modality === 'ARC' ? 'Compartido' : 'Traslados'}
+                          </span>
+                          <span className="text-xs font-medium text-slate-500">
+                            {distanceKm > 0 ? `${distanceKm} km` : 'Ruta calculada'} · {durationMin > 0 ? `${durationMin} min aprox.` : 'Tiempo estimado'}
+                          </span>
+                          <span className="text-xs font-medium text-slate-500">· {paymentMethod}</span>
                         </div>
 
-                        <div>
-                          <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-1.5">
-                            <span>{cmsData.dispatcher?.passengerPhoneLabel || DEFAULT_CMS_DATA.dispatcher.passengerPhoneLabel}</span>
-                          </label>
-                          <input
-                            type="text"
-                            value={passengerPhone}
-                            onChange={(e) => setPassengerPhone(e.target.value)}
-                            placeholder={cmsData.dispatcher?.passengerPhonePlaceholder || DEFAULT_CMS_DATA.dispatcher.passengerPhonePlaceholder}
-                            className={`w-full rounded-2xl border bg-slate-50/50 px-4 py-3.5 text-sm text-slate-800 placeholder-slate-400 outline-none transition-all focus:bg-white focus:ring-4 focus:ring-tech-blue/10 ${
-                              formErrors.phone ? 'border-red-300 bg-red-50/30' : 'border-slate-200'
-                            }`}
-                          />
+                        <p className="text-xs sm:text-sm text-slate-700 truncate">
+                          <span className="font-semibold text-[#0a2a5b]">Origen:</span> {pickupLocation}
+                        </p>
+                        <p className="text-xs sm:text-sm text-slate-700 truncate">
+                          <span className="font-semibold text-[#0a2a5b]">Destino:</span> {dropoffLocation}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between md:justify-end gap-4 border-t md:border-t-0 pt-3 md:pt-0 border-slate-200/80 shrink-0">
+                        <div className="text-left md:text-right">
+                          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">
+                            Tarifa Aproximada
+                          </span>
+                          <span className="text-2xl font-bold text-[#0a2a5b]">
+                            {calculatedPrice || '--'}
+                          </span>
                         </div>
-                      </>
-                    )}
 
-                    {modality === 'ARC' && (
-                      <div>
-                        <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center gap-1">
-                          <span>Cantidad de Asientos (ARC)</span>
-                        </label>
-                        <select
-                          value={selectedSeats}
-                          onChange={(e) => setSelectedSeats(Number(e.target.value))}
-                          className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3.5 text-sm text-slate-800 outline-none transition-all focus:bg-white focus:ring-4 focus:ring-tech-blue/10 font-bold"
-                        >
-                          <option value={1}>1 Asiento (Individual)</option>
-                          <option value={2}>2 Asientos</option>
-                          <option value={3}>3 Asientos</option>
-                          <option value={4}>4 Asientos (Vehículo Completo)</option>
-                        </select>
-                      </div>
-                    )}
-
-                    <div className="relative">
-                      <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-1.5 flex justify-between">
-                        <span>{cmsData.dispatcher?.pickupLabel || DEFAULT_CMS_DATA.dispatcher.pickupLabel}</span>
-                        {pickupCoords && <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider flex items-center gap-0.5">✓ Geocodificado</span>}
-                      </label>
-                      <GoogleAddressAutocomplete 
-                        value={pickupLocation}
-                        onChange={(val) => { setPickupLocation(val); setPickupCoords(null); }}
-                        onSelect={(address, coords) => { setPickupLocation(address); setPickupCoords(coords); }}
-                        placeholder={cmsData.dispatcher?.pickupPlaceholder || DEFAULT_CMS_DATA.dispatcher.pickupPlaceholder}
-                        className={formErrors.pickup ? 'border-red-300 bg-red-50/30' : ''}
-                      />
-                    </div>
-
-                    <div className="relative">
-                      <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-1.5 flex justify-between">
-                        <span>{cmsData.dispatcher?.dropoffLabel || DEFAULT_CMS_DATA.dispatcher.dropoffLabel}</span>
-                        {dropoffCoords && <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider flex items-center gap-0.5">✓ Geocodificado</span>}
-                      </label>
-                      <GoogleAddressAutocomplete 
-                        value={dropoffLocation}
-                        onChange={(val) => { setDropoffLocation(val); setDropoffCoords(null); }}
-                        onSelect={(address, coords) => { setDropoffLocation(address); setDropoffCoords(coords); }}
-                        placeholder={cmsData.dispatcher?.dropoffPlaceholder || DEFAULT_CMS_DATA.dispatcher.dropoffPlaceholder}
-                        className={formErrors.dropoff ? 'border-red-300 bg-red-50/30' : ''}
-                      />
-                    </div>
-
-                    <div className="pt-2">
-                      <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-2">
-                        {cmsData.dispatcher?.paymentMethodLabel || DEFAULT_CMS_DATA.dispatcher.paymentMethodLabel}
-                      </label>
-                      <div className="grid grid-cols-2 gap-3">
-                        {[
-                          { id: "Efectivo", label: "Efectivo", icon: Coins },
-                          { id: "Mercado Pago", label: "Mercado Pago", icon: Wallet }
-                        ].map((method) => {
-                          const IconComponent = method.icon;
-                          return (
-                            <button
-                              key={method.id}
-                              type="button"
-                              onClick={() => setPaymentMethod(method.id)}
-                              className={`flex flex-col items-center justify-center p-3.5 rounded-2xl border text-center transition-all ${
-                                paymentMethod === method.id 
-                                  ? 'border-tech-blue bg-tech-blue/5 text-tech-blue shadow-sm font-bold' 
-                                  : 'border-slate-200 hover:border-slate-300 text-slate-500'
-                              }`}
-                            >
-                              <IconComponent className="h-5 w-5 mb-1.5" />
-                              {method.id === 'Mercado Pago' ? (
-                                <span className="text-[10px] bg-[#009EE3]/15 text-[#009EE3] px-2 py-0.5 rounded font-black tracking-wider mt-1">Mercado Pago</span>
-                              ) : (
-                                <span className="text-[9px] uppercase font-black tracking-wide leading-none">{method.label}</span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="w-full mt-6 rounded-2xl bg-tech-blue py-4 font-black uppercase tracking-wider text-white shadow-xl hover:brightness-110 active:scale-98 transition-all flex items-center justify-center gap-2"
-                      style={{ backgroundColor: '#0a2a5b' }}
-                    >
-                      Calcular Tarifa Estimada
-                      <ArrowRight className="h-4 w-4" />
-                    </button>
-                  </form>
-                )}
-
-                {dispatcherStep === 2 && (
-                  <div className="space-y-5 animate-fadeIn">
-                    <div className="flex justify-between items-center bg-slate-100 p-3 rounded-xl">
-                      <div className="text-left">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Distancia del Trayecto</span>
-                        <p className="text-sm font-extrabold text-slate-800">{distanceKm > 0 ? `${distanceKm} km` : '--'}</p>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Duración de Viaje</span>
-                        <p className="text-sm font-extrabold text-slate-800">{durationMin > 0 ? `${durationMin} min` : '--'}</p>
-                      </div>
-                    </div>
-
-                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-400 mb-2">Selecciona tu Categoría de Traslado</h4>
-                    <div className="space-y-3">
-                      {vehiclesList.map((vehicle: any) => {
-                        const price = getCalculatedPriceForVehicle(vehicle);
-                        const carImg = vehicle.icon && (vehicle.icon.startsWith('http') || vehicle.icon.startsWith('/') || vehicle.icon.startsWith('data:'))
-                          ? vehicle.icon
-                          : (vehicle.category || vehicle.id || '').toLowerCase().includes('rural') || modality === 'ARC'
-                            ? '/assets/landing_rural.svg'
-                            : (vehicle.category || vehicle.id || '').toLowerCase().includes('vip') || (vehicle.category || vehicle.id || '').toLowerCase().includes('premium')
-                              ? '/assets/landing_premium.svg'
-                              : (vehicle.category || vehicle.id || '').toLowerCase().includes('plus')
-                                ? '/assets/landing_plus.svg'
-                                : (vehicle.category || vehicle.id || '').toLowerCase().includes('taxi')
-                                  ? '/assets/landing_taxi.svg'
-                                  : '/assets/landing_estandar.svg';
-
-                        return (
+                        <div className="flex items-center gap-2">
                           <button
-                            key={vehicle.id}
-                            onClick={() => handleSelectVehicle(vehicle)}
-                            className="w-full text-left p-4 rounded-3xl border-2 border-slate-200/80 bg-white hover:border-vial-orange hover:shadow-xl transition-all flex flex-col group relative overflow-hidden space-y-3 cursor-pointer"
+                            type="button"
+                            onClick={() => setShowQuoteMap(false)}
+                            className="px-3.5 py-2.5 rounded-full border border-slate-300 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
                           >
-                            {/* Header de la tarjeta */}
-                            <div className="flex items-center justify-between w-full">
-                              <div className="flex items-center gap-2">
-                                <span className="font-black text-slate-800 text-sm sm:text-base">{vehicle.name}</span>
-                                <span className="text-[9px] font-black uppercase text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full tracking-wider">
-                                  {vehicle.eta}
-                                </span>
-                              </div>
-                              <div className="text-right">
-                                <span className="text-lg sm:text-xl font-black text-tech-blue group-hover:text-vial-orange transition-colors">
-                                  {formatCurrency(price)}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Imagen de Auto Grande que llega casi a los márgenes de la tarjeta */}
-                            <div className="w-full h-24 sm:h-28 flex items-center justify-center -my-1 px-1">
-                              <img 
-                                src={carImg} 
-                                alt={vehicle.name} 
-                                className="w-full h-full object-contain filter drop-shadow-md group-hover:scale-105 transition-transform duration-300"
-                              />
-                            </div>
-
-                            {/* Pie de la tarjeta */}
-                            <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-xs">
-                              <p className="text-[11px] text-slate-500 font-medium line-clamp-1 flex-1 pr-2">{vehicle.description}</p>
-                              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider bg-slate-100 px-2 py-0.5 rounded-md flex-shrink-0">
-                                {paymentMethod}
-                              </span>
-                            </div>
+                            Volver
                           </button>
-                        );
-                      })}
+                          <button
+                            type="button"
+                            onClick={() => setRequestTripModalOpen(true)}
+                            className="px-6 py-3 rounded-full bg-[#0071e3] hover:bg-[#0077ed] text-white text-sm font-semibold transition-all shadow-md cursor-pointer"
+                          >
+                            Pedir Viaje
+                          </button>
+                        </div>
+                      </div>
                     </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      ) : (
+        <section className="relative overflow-hidden bg-slate-900 text-white">
+          <div className="relative w-full min-h-[540px] lg:min-h-[600px] flex items-center">
+            <img
+              src={cmsData.conductorHero?.backgroundImage || DEFAULT_CMS_DATA.conductorHero.backgroundImage}
+              alt={cmsData.conductorHero?.title || 'TravelCab Conductores Profesionales'}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/30 to-black/60" />
 
+            <div className="mx-auto max-w-[1200px] w-full px-4 sm:px-6 py-14 lg:py-20 relative z-10">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+                <div className="lg:col-span-7 space-y-5 text-center lg:text-left">
+                  <div className="inline-flex items-center p-1 rounded-full bg-white/15 backdrop-blur-md border border-white/25">
                     <button
-                      onClick={() => setDispatcherStep(1)}
-                      className="w-full mt-4 rounded-xl border border-slate-200/80 py-3 text-xs font-bold text-slate-500 hover:bg-slate-50 transition-colors uppercase tracking-wider"
+                      type="button"
+                      onClick={() => setViewMode('passenger')}
+                      className="px-4 py-1.5 rounded-full text-xs font-semibold text-white hover:text-white/90 transition-all cursor-pointer"
                     >
-                      Atrás (Modificar datos)
+                      Portal Usuarios
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('driver')}
+                      className="px-4 py-1.5 rounded-full text-xs font-semibold bg-white text-[#0a2a5b] transition-all cursor-pointer"
+                    >
+                      Portal Conductores
                     </button>
                   </div>
-                )}
 
-                {dispatcherStep === 3 && (
-                  <div className="text-center py-6 space-y-4 animate-fadeIn">
-                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
-                      <Check className="h-8 w-8 text-emerald-600" />
+                  <h1 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-white leading-[1.08] drop-shadow-md">
+                    {cmsData.conductorHero?.title || DEFAULT_CMS_DATA.conductorHero.title}
+                  </h1>
+
+                  <p className="mx-auto lg:mx-0 max-w-xl text-base sm:text-lg text-white/90 leading-relaxed font-normal drop-shadow-sm">
+                    {cmsData.conductorHero?.subtitle || DEFAULT_CMS_DATA.conductorHero.subtitle}
+                  </p>
+
+                  <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => { setDRegStep(0); setDRegSubmitted(false); setRegisterModal({ isOpen: true, role: 'driver' }); }}
+                      className="w-full sm:w-auto inline-flex items-center justify-center rounded-full bg-[#0071e3] hover:bg-[#0077ed] px-7 py-3 text-center text-sm font-medium text-white transition-all cursor-pointer"
+                    >
+                      Registrarme
+                    </button>
+
+                    <a
+                      href={`https://wa.me/${cmsData.dispatcher?.whatsappConfig?.phone || '5493812000712'}?text=${encodeURIComponent('Hola Travis! Quiero pedir información para sumarme como conductor en TravelCab.')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-full border border-white/60 bg-white/10 backdrop-blur-md px-6 py-3 text-center text-sm font-medium text-white hover:bg-white hover:text-[#0a2a5b] transition-all"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      Pedir información
+                    </a>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4 pt-6 border-t border-white/20 max-w-md mx-auto lg:mx-0">
+                    {(cmsData.hero?.stats || DEFAULT_CMS_DATA.hero.stats).map((stat: any, idx: number) => (
+                      <div key={idx} className="text-center lg:text-left">
+                        <p className="text-xl sm:text-2xl font-semibold text-white tracking-tight">{stat.value}</p>
+                        <p className="text-xs text-white/75 mt-0.5 leading-snug">{stat.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="lg:col-span-5 flex flex-col justify-center items-center w-full relative z-20">
+                  <div className="w-full max-w-[480px] bg-white/95 backdrop-blur-md border border-slate-200/60 rounded-2xl p-6 md:p-8 shadow-2xl text-[#1d1d1f]">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-[#0071e3] block mb-1">
+                      Portal Exclusivo Conductores
+                    </span>
+                    <h3 className="text-2xl font-semibold tracking-tight text-[#0a2a5b] mb-2">
+                      Empezá a generar ingresos con TravelCab
+                    </h3>
+                    <p className="text-xs text-slate-600 leading-relaxed mb-5">
+                      Elegí membresía fija mensual (100% de tus viajes para vos) o comisión baja del 15%, con soporte operativo 24/7.
+                    </p>
+
+                    <div className="space-y-3 mb-6">
+                      <div className="flex items-start gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                        <Award className="w-4 h-4 text-[#0a2a5b] shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-bold text-slate-900">100% Tuyo o 15% Comisión</p>
+                          <p className="text-[11px] text-slate-500">Cambiá de esquema según tu ritmo de trabajo.</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                        <ShieldCheck className="w-4 h-4 text-[#0a2a5b] shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-bold text-slate-900">Requisitos Claros</p>
+                          <p className="text-[11px] text-slate-500">Vehículo 2018+, 4 puertas, A/C y seguro comercial al día.</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                        <Phone className="w-4 h-4 text-[#0a2a5b] shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-bold text-slate-900">Asistencia 24/7 con Travis</p>
+                          <p className="text-[11px] text-slate-500">Acompañamiento real de nuestra central local.</p>
+                        </div>
+                      </div>
                     </div>
+
+                    <div className="flex flex-col gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => { setDRegStep(0); setDRegSubmitted(false); setRegisterModal({ isOpen: true, role: 'driver' }); }}
+                        className="w-full py-3 rounded-full bg-[#0a2a5b] hover:bg-[#071d3f] text-white text-xs font-semibold transition-colors cursor-pointer"
+                      >
+                        Registrarme
+                      </button>
+                      <a
+                        href={`https://wa.me/${cmsData.dispatcher?.whatsappConfig?.phone || '5493812000712'}?text=${encodeURIComponent('Hola Travis! Quiero pedir información para sumarme como conductor en TravelCab.')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3 rounded-full border border-slate-300 text-center text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                      >
+                        Pedir información por WhatsApp
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ---------------- BLOQUE 2: 3 TARJETAS DE SERVICIOS EDITABLES DESDE CMS (MOVILIDAD URBANA - COMPARTIDO - TRASLADOS) ---------------- */}
+      <section className="py-16 px-4 sm:px-6 bg-[#f5f5f7] border-b border-slate-200/70">
+        <div className="mx-auto max-w-[1200px]">
+          <div className="text-center max-w-2xl mx-auto mb-10">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#0071e3] mb-2">
+              Servicios TravelCab
+            </p>
+            <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight text-[#1d1d1f]">
+              Elegí cómo querés viajar
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {((cmsData as any).serviceModalities && Array.isArray((cmsData as any).serviceModalities) && (cmsData as any).serviceModalities.length > 0
+              ? (cmsData as any).serviceModalities
+              : [
+                  {
+                    id: 'MU',
+                    modality: 'MU',
+                    tag: 'Ciudad 24/7',
+                    title: 'Movilidad Urbana',
+                    subtitle: 'Viajes inmediatos puerta a puerta en la ciudad con tarifa estimada antes de subir y monitoreo satelital.',
+                    ctaText: 'Cotizar Urbano',
+                    imageUrl: 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&w=900&q=80',
+                    criteriaTitle: 'Criterios de Selección · Movilidad Urbana',
+                    criteriaText: '• Cobertura: Radio urbano y área metropolitana habilitada.\n• Pasajeros: Hasta 4 pasajeros con equipaje de mano estándar.\n• Vehículos habilitados: Sedán o Hatchback 4/5 puertas 2018+, A/C y seguro comercial.\n• Tarifación: Cálculo automático por distancia y tiempo estimado.',
+                  },
+                  {
+                    id: 'ARC',
+                    modality: 'ARC',
+                    tag: 'Ahorrá en Ruta',
+                    title: 'Compartido',
+                    subtitle: 'Reservá por asiento en rutas frecuentes y dividí costos viajando con pasajeros verificados.',
+                    ctaText: 'Ver Compartido',
+                    imageUrl: 'https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?auto=format&fit=crop&w=900&q=80',
+                    criteriaTitle: 'Criterios de Selección · Viaje Compartido',
+                    criteriaText: '• Modalidad: Reserva por asiento (1 a 4 lugares disponibles).\n• Equipaje: 1 bolso o mochila de cabina por pasajero.\n• Puntualidad: Tolerancia máxima de espera de 3 minutos en punto de encuentro.\n• Verificación: Pasajeros y conductores validados en el ecosistema TravelApp.',
+                  },
+                  {
+                    id: 'TRANSFER',
+                    modality: 'TRANSFER',
+                    tag: 'Aeropuerto & Mundo',
+                    title: 'Traslados',
+                    subtitle: 'Transfers privados a aeropuertos, terminales y destinos turísticos con tarifa fija programada.',
+                    ctaText: 'Programar Traslado',
+                    imageUrl: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=900&q=80',
+                    criteriaTitle: 'Criterios de Selección · Traslados & Transfers',
+                    criteriaText: '• Alcance: Aeropuertos, terminales, hoteles y traslados turísticos (próximamente red global Civitatis).\n• Equipaje: Capacidad para valijas grandes según categoría seleccionada.\n• Reserva: Programación anticipada con tarifa cerrada y seguimiento de vuelo.\n• Conductores: Unidades ejecutivas / Plus / Premium con habilitación turística o comercial.',
+                  },
+                ]
+            ).map((card: any, idx: number) => {
+              const cardModality = (card.modality || card.id || 'MU') as 'MU' | 'ARC' | 'TRANSFER';
+              return (
+                <div
+                  key={card.id || idx}
+                  onClick={() => {
+                    setViewMode('passenger');
+                    setModality(cardModality);
+                    setShowQuoteMap(false);
+                    setTimeout(() => {
+                      document.getElementById('web-dispatcher-card')?.scrollIntoView({ behavior: 'smooth' });
+                    }, 50);
+                  }}
+                  className="group bg-white rounded-2xl overflow-hidden border border-slate-200 hover:border-[#0a2a5b] hover:shadow-lg transition-all cursor-pointer flex flex-col"
+                >
+                  <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-100">
+                    <img
+                      src={card.imageUrl || 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&w=900&q=80'}
+                      alt={card.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                  </div>
+                  <div className="p-6 flex-1 flex flex-col justify-between">
                     <div>
-                      <h4 className="text-lg font-extrabold text-slate-800">¡Pedido Enviado!</h4>
-                      <p className="text-xs text-slate-500 mt-2 max-w-sm mx-auto leading-relaxed">
-                        Te hemos enviado un WhatsApp con los datos de tu viaje. Si la pestaña no se abrió automáticamente, presiona el botón inferior para chatear con Travis.
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-[#0071e3]">
+                        {card.tag || 'TravelCab'}
+                      </span>
+                      <h3 className="text-xl font-semibold text-[#1d1d1f] mt-1">
+                        {card.title}
+                      </h3>
+                      <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+                        {card.subtitle}
                       </p>
                     </div>
-
-                    {selectedVehicle && (
-                      <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 max-w-sm mx-auto text-left space-y-1 text-xs">
-                        <p className="text-slate-400 font-semibold">Resumen de Traslado:</p>
-                        <p className="font-bold text-slate-700"><span className="text-slate-400">Origen:</span> {pickupLocation}</p>
-                        <p className="font-bold text-slate-700"><span className="text-slate-400">Destino:</span> {dropoffLocation}</p>
-                        <p className="font-bold text-slate-700"><span className="text-slate-400">Categoría:</span> {selectedVehicle.name}</p>
-                        <p className="font-bold text-tech-blue"><span className="text-slate-400">Tarifa Estimada:</span> {calculatedPrice}</p>
-                      </div>
-                    )}
-
-                    <div className="pt-4 flex gap-3 max-w-sm mx-auto">
+                    <div className="pt-4 mt-5 border-t border-slate-100 space-y-2.5">
                       <button
-                        onClick={handleResetDispatcher}
-                        className="flex-1 rounded-xl border border-slate-200/80 py-3 text-xs font-bold text-slate-500 hover:bg-slate-50 transition-colors uppercase tracking-wider"
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setServiceCriteriaModal(card);
+                        }}
+                        className="w-full py-2 px-3 rounded-lg bg-slate-100 hover:bg-slate-200/80 text-[11px] font-semibold text-slate-700 transition-colors cursor-pointer text-center"
                       >
-                        Nuevo Viaje
+                        Ver criterios de selección
                       </button>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-[#0a2a5b]">
+                          {card.ctaText || 'Seleccionar servicio'}
+                        </span>
+                        <ArrowRight className="w-4 h-4 text-[#0a2a5b] group-hover:translate-x-1 transition-transform" />
+                      </div>
                     </div>
                   </div>
-                )}
-
-                <p className="mt-4 text-[9px] text-slate-400 leading-normal text-center">
-                  {cmsData.dispatcher?.legalText || DEFAULT_CMS_DATA.dispatcher.legalText}
-                </p>
-              </div>
-            </div>
-
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
 
-      {/* ---------------- SECCIÓN: SERVICIOS Y CATEGORÍAS ---------------- */}
+      {/* ---------------- SECCIÓN: SERVICIOS Y CATEGORÍAS (SOLO USUARIOS) ---------------- */}
+      {viewMode === 'passenger' && (
       <section className="py-20 px-6 md:px-8 bg-white" id="services-block">
         <div className="mx-auto max-w-7xl">
           <div className="text-center max-w-3xl mx-auto mb-16 space-y-4">
@@ -1910,6 +2014,7 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
           </div>
         </div>
       </section>
+      )}
 
       {/* ---------------- SECCIÓN: BENEFICIOS DE PASAJERO ---------------- */}
       {viewMode === 'passenger' && (
@@ -2016,11 +2121,105 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
                 </div>
               </div>
             </div>
+
+            {/* Beneficios y Requisitos Exclusivos para Conductores */}
+            <div className="mt-16 pt-12 border-t border-slate-200/80 grid grid-cols-1 md:grid-cols-3 gap-6">
+              {(cmsData.drivers?.benefits || DEFAULT_CMS_DATA.drivers.benefits).map((b: any, i: number) => (
+                <div key={i} className="rounded-2xl border border-slate-200 bg-white p-6 space-y-3">
+                  <div className="w-10 h-10 rounded-xl bg-[#0a2a5b] text-white flex items-center justify-center">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <h4 className="text-base font-bold text-slate-900">{b.title}</h4>
+                  <p className="text-xs text-slate-600 leading-relaxed">{b.description}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Bloque CMS: Split de Pagos (Mercado Pago, CBU/CVU y transición bindX) */}
+            <div className="mt-12 rounded-3xl border border-slate-200 bg-white p-6 sm:p-10 shadow-xs">
+              <div className="max-w-3xl mb-8">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#0071e3]">
+                  {(cmsData as any).driverSplitPayments?.badge || 'COBRANZAS Y LIQUIDACIONES'}
+                </span>
+                <h3 className="text-2xl sm:text-3xl font-semibold tracking-tight text-[#1d1d1f] mt-1">
+                  {(cmsData as any).driverSplitPayments?.title || 'Cómo funciona el Split de Pagos'}
+                </h3>
+                <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+                  {(cmsData as any).driverSplitPayments?.subtitle || 'Elegí cobrar tus viajes digitales de forma automática vinculando tu cuenta de Mercado Pago o mediante transferencia a tu CBU / CVU.'}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="rounded-2xl border border-[#009EE3]/30 bg-[#009EE3]/5 p-6 space-y-2.5">
+                  <div className="flex items-center gap-2.5">
+                    <CreditCard className="w-5 h-5 text-[#009EE3]" />
+                    <h4 className="text-base font-bold text-[#1d1d1f]">
+                      {(cmsData as any).driverSplitPayments?.mpTitle || 'Split Automático con Mercado Pago'}
+                    </h4>
+                  </div>
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                    {(cmsData as any).driverSplitPayments?.mpDescription || 'Al enlazar tu cuenta de Mercado Pago desde tu perfil de conductor, cada viaje abonado con tarjeta o dinero en cuenta se divide automáticamente en el momento: recibís tu parte al instante y se descuenta solo la comisión correspondiente (o 0% si estás en Membresía Fija).'}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-6 space-y-2.5">
+                  <div className="flex items-center gap-2.5">
+                    <Wallet className="w-5 h-5 text-[#0a2a5b]" />
+                    <h4 className="text-base font-bold text-[#1d1d1f]">
+                      {(cmsData as any).driverSplitPayments?.cbuTitle || 'Cobros por Otro CBU / CVU'}
+                    </h4>
+                  </div>
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                    {(cmsData as any).driverSplitPayments?.cbuDescription || 'Si preferís operar con otro banco o billetera virtual, podés cargar tu CBU o CVU alternativo para recibir las liquidaciones acumuladas de tus viajes digitales según el cronograma semanal.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600 leading-relaxed">
+                <strong className="text-[#0a2a5b]">Nota de infraestructura:</strong>{' '}
+                {(cmsData as any).driverSplitPayments?.bindxNote || 'Actualización programada: Una vez finalizados los trámites e integración con bindX, todo el esquema de split y acreditaciones se unificará automáticamente bajo la nueva infraestructura bancaria.'}
+              </div>
+            </div>
+
+            {/* Tarjeta CMS: Requisitos de Aceptación de Conductores y Vehículos */}
+            <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="space-y-1.5 max-w-2xl">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#0071e3]">
+                  {(cmsData as any).driverRequirements?.badge || 'REQUISITOS DE ACEPTACIÓN'}
+                </span>
+                <h3 className="text-xl sm:text-2xl font-semibold text-[#1d1d1f]">
+                  {(cmsData as any).driverRequirements?.title || 'Requisitos para Conductores y Vehículos'}
+                </h3>
+                <p className="text-sm text-slate-600 leading-relaxed">
+                  {(cmsData as any).driverRequirements?.subtitle || 'Conocé los criterios obligatorios para postularte y mantener tu cuenta activa en TravelCab.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDriverReqsModalOpen(true)}
+                className="shrink-0 inline-flex items-center justify-center gap-2 rounded-full border border-[#0a2a5b] px-6 py-3 text-sm font-semibold text-[#0a2a5b] hover:bg-[#0a2a5b] hover:text-white transition-colors cursor-pointer"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                Ver Requisitos de Aceptación
+              </button>
+            </div>
+
+            <div className="mt-10 text-center">
+              <button
+                type="button"
+                onClick={() => { setDRegStep(0); setDRegSubmitted(false); setRegisterModal({ isOpen: true, role: 'driver' }); }}
+                className="inline-flex items-center gap-2 rounded-full bg-[#0a2a5b] hover:bg-[#071d3f] text-white px-8 py-3.5 text-sm font-semibold transition-colors cursor-pointer"
+              >
+                <span>Iniciar Registro de Conductor</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </section>
       )}
 
-      {/* ---------------- SECCIÓN: PROGRAMA REWARDS ---------------- */}
+      {/* ---------------- SECCIÓN: PROGRAMA REWARDS (SOLO USUARIOS) ---------------- */}
+      {viewMode === 'passenger' && (
       <section className="py-20 px-6 md:px-8 bg-white border-b border-slate-200/40" id="rewards-summary">
         <div className="mx-auto max-w-7xl">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
@@ -2065,6 +2264,7 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
           </div>
         </div>
       </section>
+      )}
 
       {/* ---------------- SECCIÓN: FAQ (Preguntas Frecuentes - DINÁMICAS DESDE CMS) ---------------- */}
       <section className="py-20 px-6 md:px-8 bg-slate-50" id="faq-section">
@@ -2082,7 +2282,9 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
           </div>
 
           <div className="space-y-4">
-            {(cmsData.faq?.items || DEFAULT_CMS_DATA.faq.items || []).map((item: any, idx: number) => {
+            {(cmsData.faq?.items || DEFAULT_CMS_DATA.faq.items || [])
+              .filter((item: any) => !item.audience || item.audience === 'all' || item.audience === viewMode)
+              .map((item: any, idx: number) => {
               const isOpen = openFaqIndex === idx;
               return (
                 <div 
@@ -3293,6 +3495,416 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
           </div>
         </div>
       )}
+
+      {/* Modal Institucional: Visión, Misión y Valores */}
+      {institutionalModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 sm:p-8 shadow-2xl relative border border-slate-200 text-slate-800">
+            <button
+              type="button"
+              onClick={() => setInstitutionalModal(null)}
+              aria-label="Cerrar modal"
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex gap-2 border-b border-slate-100 pb-4 mb-5">
+              {(['vision', 'mision', 'valores'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setInstitutionalModal(tab)}
+                  className={`px-4 py-1.5 rounded-full text-xs font-semibold capitalize transition-colors cursor-pointer ${
+                    institutionalModal === tab
+                      ? 'bg-[#0a2a5b] text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {tab === 'vision' ? 'Visión' : tab === 'mision' ? 'Misión' : 'Valores'}
+                </button>
+              ))}
+            </div>
+
+            <h3 className="text-2xl font-semibold text-[#1d1d1f] mb-3">
+              {institutionalModal === 'vision'
+                ? 'Nuestra Visión'
+                : institutionalModal === 'mision'
+                ? 'Nuestra Misión'
+                : 'Nuestros Valores'}
+            </h3>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              {institutionalModal === 'vision'
+                ? 'Consolidar la red de movilidad urbana y corporativa más confiable, segura y tecnológica de Argentina, integrando traslados urbanos con todo el ecosistema TravelApp.'
+                : institutionalModal === 'mision'
+                ? 'Conectar pasajeros y empresas con conductores profesionales certificados mediante tarifas transparentes, monitoreo satelital 24/7 y un modelo justo para quien conduce.'
+                : 'Seguridad verificada, puntualidad, transparencia tarifaria, respeto por el conductor y excelencia en cada trayecto.'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Confirmación de Pedido: Invitado (solo Efectivo + Nombre + WhatsApp) vs Usuario (Login) */}
+      {requestTripModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 sm:p-7 shadow-2xl relative border border-slate-200 text-[#1d1d1f]">
+            <button
+              type="button"
+              onClick={() => setRequestTripModalOpen(false)}
+              aria-label="Cerrar modal de pedido"
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="mb-5">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#0071e3]">
+                Confirmar Traslado
+              </span>
+              <h3 className="text-xl font-semibold text-[#1d1d1f] mt-1">
+                ¿Cómo querés pedir tu viaje?
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Tarifa estimada: <strong className="text-[#0a2a5b]">{calculatedPrice || '--'}</strong> · {modality === 'MU' ? 'Movilidad Urbana' : modality === 'ARC' ? 'Compartido' : 'Traslados'}
+              </p>
+            </div>
+
+            {/* Selector Invitado vs Usuario */}
+            <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-100 border border-slate-200/80 mb-5">
+              <button
+                type="button"
+                onClick={() => {
+                  setBookingType('guest');
+                  setPaymentMethod('Efectivo');
+                  setLoginError('');
+                }}
+                className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  bookingType === 'guest'
+                    ? 'bg-white text-[#0a2a5b] shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Invitado
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setBookingType('registered');
+                  setLoginError('');
+                }}
+                className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  bookingType === 'registered'
+                    ? 'bg-white text-[#0a2a5b] shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Usuario TravelApp
+              </button>
+            </div>
+
+            {bookingType === 'guest' ? (
+              <div className="space-y-4">
+                <div className="rounded-xl bg-amber-50 border border-amber-200/80 px-3.5 py-2.5 text-xs text-amber-900">
+                  Los viajes como <strong>Invitado</strong> solo están habilitados en <strong>Efectivo</strong>. Para abonar con Mercado Pago o Puntos Rewards, ingresá como Usuario.
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                    Nombre completo *
+                  </label>
+                  <input
+                    type="text"
+                    value={passengerName}
+                    onChange={(e) => setPassengerName(e.target.value)}
+                    placeholder="Ej: María González"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-2.5 text-sm text-slate-800 outline-none focus:bg-white focus:border-[#0a2a5b]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                    WhatsApp de contacto *
+                  </label>
+                  <input
+                    type="tel"
+                    value={passengerPhone}
+                    onChange={(e) => setPassengerPhone(e.target.value)}
+                    placeholder="Ej: +54 9 381 555 1234"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-2.5 text-sm text-slate-800 outline-none focus:bg-white focus:border-[#0a2a5b]"
+                  />
+                </div>
+
+                {loginError && <p className="text-xs font-medium text-red-600">{loginError}</p>}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!passengerName.trim() || !passengerPhone.trim()) {
+                      setLoginError('Por favor completá tu nombre y WhatsApp para confirmar.');
+                      return;
+                    }
+                    setLoginError('');
+                    setPaymentMethod('Efectivo');
+                    setRequestTripModalOpen(false);
+                    handleSelectVehicle(selectedVehicle || categories[0] || { id: 'estandar', name: 'TravelCab Standard' });
+                  }}
+                  className="w-full py-3 rounded-full bg-[#0a2a5b] hover:bg-[#071d3f] text-white text-sm font-semibold transition-colors cursor-pointer"
+                >
+                  Confirmar Viaje en Efectivo
+                </button>
+              </div>
+            ) : !isLoggedIn ? (
+              <div className="space-y-4">
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Ingresá con tu cuenta TravelApp para abonar con <strong>{paymentMethod}</strong> y sumar o canjear Puntos Rewards.
+                </p>
+
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    placeholder="usuario@travelapp.ar"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-2.5 text-sm text-slate-800 outline-none focus:bg-white focus:border-[#0a2a5b]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                    Contraseña
+                  </label>
+                  <input
+                    type="password"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-2.5 text-sm text-slate-800 outline-none focus:bg-white focus:border-[#0a2a5b]"
+                  />
+                </div>
+
+                {loginError && <p className="text-xs font-medium text-red-600">{loginError}</p>}
+
+                <button
+                  type="button"
+                  disabled={authLoading}
+                  onClick={async () => {
+                    if (!loginEmail.trim() || !loginPassword) {
+                      setLoginError('Ingresá tu email y contraseña.');
+                      return;
+                    }
+                    setAuthLoading(true);
+                    setLoginError('');
+                    try {
+                      const cred = await signInWithEmailAndPassword(auth, loginEmail.trim(), loginPassword);
+                      setIsLoggedIn(true);
+                      if (!passengerName.trim()) {
+                        setPassengerName(cred.user.displayName || loginEmail.split('@')[0]);
+                      }
+                      if (!passengerPhone.trim()) {
+                        setPassengerPhone(cred.user.phoneNumber || '');
+                      }
+                    } catch (err: any) {
+                      setLoginError(
+                        err?.code === 'auth/invalid-credential' || err?.code === 'auth/wrong-password'
+                          ? 'Email o contraseña incorrectos.'
+                          : 'No se pudo iniciar sesión. Verificá tus datos.'
+                      );
+                    } finally {
+                      setAuthLoading(false);
+                    }
+                  }}
+                  className="w-full py-3 rounded-full bg-[#0071e3] hover:bg-[#0077ed] disabled:opacity-60 text-white text-sm font-semibold transition-colors cursor-pointer"
+                >
+                  {authLoading ? 'Ingresando...' : 'Iniciar sesión y continuar'}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3.5 flex items-center justify-between">
+                  <div>
+                    <p className="text-[11px] font-semibold text-emerald-800">Sesión iniciada ✓</p>
+                    <p className="text-sm font-semibold text-slate-900">{passengerName || loginEmail}</p>
+                    <p className="text-xs text-slate-600">Medio de pago: {paymentMethod}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsLoggedIn(false);
+                      setPassengerName('');
+                      setPassengerPhone('');
+                    }}
+                    className="text-xs font-medium text-slate-500 hover:text-red-600 underline cursor-pointer"
+                  >
+                    Cambiar cuenta
+                  </button>
+                </div>
+
+                {!passengerPhone.trim() && (
+                  <div>
+                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                      WhatsApp de contacto *
+                    </label>
+                    <input
+                      type="tel"
+                      value={passengerPhone}
+                      onChange={(e) => setPassengerPhone(e.target.value)}
+                      placeholder="Ej: +54 9 381 555 1234"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-2.5 text-sm text-slate-800 outline-none focus:bg-white focus:border-[#0a2a5b]"
+                    />
+                  </div>
+                )}
+
+                {loginError && <p className="text-xs font-medium text-red-600">{loginError}</p>}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!passengerPhone.trim()) {
+                      setLoginError('Ingresá un número de WhatsApp para coordinar el móvil.');
+                      return;
+                    }
+                    setLoginError('');
+                    setRequestTripModalOpen(false);
+                    handleSelectVehicle(selectedVehicle || categories[0] || { id: 'estandar', name: 'TravelCab Standard' });
+                  }}
+                  className="w-full py-3 rounded-full bg-[#0a2a5b] hover:bg-[#071d3f] text-white text-sm font-semibold transition-colors cursor-pointer"
+                >
+                  Confirmar Viaje ({paymentMethod})
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal Criterios de Selección por Servicio (Editable desde CMS) */}
+      {serviceCriteriaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 sm:p-7 shadow-2xl relative border border-slate-200 text-[#1d1d1f]">
+            <button
+              type="button"
+              onClick={() => setServiceCriteriaModal(null)}
+              aria-label="Cerrar criterios"
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#0071e3]">
+              {serviceCriteriaModal.tag || 'Criterios de Servicio'}
+            </span>
+            <h3 className="text-xl font-semibold text-[#1d1d1f] mt-1 mb-4">
+              {serviceCriteriaModal.criteriaTitle || `Criterios de Selección · ${serviceCriteriaModal.title}`}
+            </h3>
+
+            <div className="rounded-xl bg-slate-50 border border-slate-200/80 p-4 text-sm text-slate-700 leading-relaxed whitespace-pre-line mb-5">
+              {serviceCriteriaModal.criteriaText || 'Consultá las condiciones de cobertura, equipaje y vehículos habilitados para este servicio.'}
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setServiceCriteriaModal(null)}
+                className="px-4 py-2.5 rounded-full border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Cerrar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const mod = (serviceCriteriaModal.modality || serviceCriteriaModal.id || 'MU') as 'MU' | 'ARC' | 'TRANSFER';
+                  setServiceCriteriaModal(null);
+                  setViewMode('passenger');
+                  setModality(mod);
+                  setShowQuoteMap(false);
+                  setTimeout(() => {
+                    document.getElementById('web-dispatcher-card')?.scrollIntoView({ behavior: 'smooth' });
+                  }, 50);
+                }}
+                className="px-5 py-2.5 rounded-full bg-[#0a2a5b] hover:bg-[#071d3f] text-white text-xs font-semibold transition-colors cursor-pointer"
+              >
+                {serviceCriteriaModal.ctaText || 'Ir al Despachador'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Requisitos de Aceptación Conductores y Vehículos (Editable desde CMS) */}
+      {driverReqsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl relative border border-slate-200 text-[#1d1d1f] max-h-[90vh] overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => setDriverReqsModalOpen(false)}
+              aria-label="Cerrar requisitos"
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#0071e3]">
+              {(cmsData as any).driverRequirements?.badge || 'REQUISITOS DE ACEPTACIÓN'}
+            </span>
+            <h3 className="text-2xl font-semibold text-[#1d1d1f] mt-1">
+              {(cmsData as any).driverRequirements?.title || 'Requisitos para Conductores y Vehículos'}
+            </h3>
+            <p className="text-sm text-slate-600 mt-1 mb-6">
+              {(cmsData as any).driverRequirements?.subtitle || 'Conocé los criterios obligatorios para postularte y mantener tu cuenta activa en TravelCab.'}
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[#0a2a5b]">
+                  Requisitos del Conductor
+                </h4>
+                <div className="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line">
+                  {(cmsData as any).driverRequirements?.driverReqs ||
+                    '• Licencia de conducir profesional vigente (Clase D1 o equivalente local).\n• DNI argentino vigente y CUIL/CUIT activo.\n• Certificado de antecedentes penales actualizado.\n• Teléfono smartphone con GPS y datos móviles.\n• Cuenta de Mercado Pago o CBU/CVU para liquidaciones.'}
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[#0a2a5b]">
+                  Requisitos del Vehículo
+                </h4>
+                <div className="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line">
+                  {(cmsData as any).driverRequirements?.vehicleReqs ||
+                    '• Modelo 2018 o superior en excelente estado estético y mecánico.\n• 4 o 5 puertas, aire acondicionado y calefacción funcionando.\n• Seguro automotor vigente con cobertura para transporte de pasajeros / comercial.\n• VTV / RTO técnica al día y cédula verde/azul habilitante.'}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDriverReqsModalOpen(false)}
+                className="px-4 py-2.5 rounded-full border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Cerrar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDriverReqsModalOpen(false);
+                  setDRegStep(0);
+                  setDRegSubmitted(false);
+                  setRegisterModal({ isOpen: true, role: 'driver' });
+                }}
+                className="px-6 py-2.5 rounded-full bg-[#0a2a5b] hover:bg-[#071d3f] text-white text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Registrarme como Conductor
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PushPop Promocional editable desde CMS */}
+      <OtaPromoPushPop config={(cmsData as any).promoPushPop} />
 
       {/* Travis Omnichannel Live Chat */}
       <TravisOmnichannelWidget

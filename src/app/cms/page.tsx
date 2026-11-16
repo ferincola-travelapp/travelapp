@@ -192,6 +192,68 @@ const DEFAULT_CMS_DATA = {
     badgeText: "PROGRAMA REWARDS",
     imageUrl: "https://images.unsplash.com/photo-1513151233558-d860c5398176?auto=format&fit=crop&w=800&q=80"
   },
+  serviceModalities: [
+    {
+      id: "MU",
+      modality: "MU",
+      tag: "Ciudad 24/7",
+      title: "Movilidad Urbana",
+      subtitle: "Viajes inmediatos puerta a puerta en la ciudad con tarifa estimada antes de subir y monitoreo satelital.",
+      ctaText: "Cotizar Urbano",
+      imageUrl: "https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&w=900&q=80",
+      criteriaTitle: "Criterios de Selección · Movilidad Urbana",
+      criteriaText: "• Cobertura: Radio urbano y área metropolitana habilitada.\n• Pasajeros: Hasta 4 pasajeros con equipaje de mano estándar.\n• Vehículos habilitados: Sedán o Hatchback 4/5 puertas 2018+, A/C y seguro comercial.\n• Tarifación: Cálculo automático por distancia y tiempo estimado."
+    },
+    {
+      id: "ARC",
+      modality: "ARC",
+      tag: "Ahorrá en Ruta",
+      title: "Compartido",
+      subtitle: "Reservá por asiento en rutas frecuentes y dividí costos viajando con pasajeros verificados.",
+      ctaText: "Ver Compartido",
+      imageUrl: "https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?auto=format&fit=crop&w=900&q=80",
+      criteriaTitle: "Criterios de Selección · Viaje Compartido",
+      criteriaText: "• Modalidad: Reserva por asiento (1 a 4 lugares disponibles).\n• Equipaje: 1 bolso o mochila de cabina por pasajero.\n• Puntualidad: Tolerancia máxima de espera de 3 minutos en punto de encuentro.\n• Verificación: Pasajeros y conductores validados en el ecosistema TravelApp."
+    },
+    {
+      id: "TRANSFER",
+      modality: "TRANSFER",
+      tag: "Aeropuerto & Mundo",
+      title: "Traslados",
+      subtitle: "Transfers privados a aeropuertos, terminales y destinos turísticos con tarifa fija programada.",
+      ctaText: "Programar Traslado",
+      imageUrl: "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=900&q=80",
+      criteriaTitle: "Criterios de Selección · Traslados & Transfers",
+      criteriaText: "• Alcance: Aeropuertos, terminales, hoteles y traslados turísticos (próximamente red global Civitatis).\n• Equipaje: Capacidad para valijas grandes según categoría seleccionada.\n• Reserva: Programación anticipada con tarifa cerrada y seguimiento de vuelo.\n• Conductores: Unidades ejecutivas / Plus / Premium con habilitación turística o comercial."
+    }
+  ],
+  driverSplitPayments: {
+    badge: "COBRANZAS Y LIQUIDACIONES",
+    title: "Cómo funciona el Split de Pagos",
+    subtitle: "Elegí cobrar tus viajes digitales de forma automática vinculando tu cuenta de Mercado Pago o mediante transferencia a tu CBU / CVU.",
+    mpTitle: "Split Automático con Mercado Pago",
+    mpDescription: "Al enlazar tu cuenta de Mercado Pago desde tu perfil de conductor, cada viaje abonado con tarjeta o dinero en cuenta se divide automáticamente en el momento: recibís tu parte al instante y se descuenta solo la comisión correspondiente (o 0% si estás en Membresía Fija).",
+    cbuTitle: "Cobros por Otro CBU / CVU",
+    cbuDescription: "Si preferís operar con otro banco o billetera virtual, podés cargar tu CBU o CVU alternativo para recibir las liquidaciones acumuladas de tus viajes digitales según el cronograma semanal.",
+    bindxNote: "Actualización programada: Una vez finalizados los trámites e integración con bindX, todo el esquema de split y acreditaciones se unificará automáticamente bajo la nueva infraestructura bancaria."
+  },
+  driverRequirements: {
+    badge: "REQUISITOS DE ACEPTACIÓN",
+    title: "Requisitos para Conductores y Vehículos",
+    subtitle: "Conocé los criterios obligatorios para postularte y mantener tu cuenta activa en TravelCab.",
+    driverReqs: "• Licencia de conducir profesional vigente (Clase D1 o equivalente local).\n• DNI argentino vigente y CUIL/CUIT activo.\n• Certificado de antecedentes penales actualizado.\n• Teléfono smartphone con GPS y datos móviles.\n• Cuenta de Mercado Pago o CBU/CVU para liquidaciones.",
+    vehicleReqs: "• Modelo 2018 o superior en excelente estado estético y mecánico.\n• 4 o 5 puertas, aire acondicionado y calefacción funcionando.\n• Seguro automotor vigente con cobertura para transporte de pasajeros / comercial.\n• VTV / RTO técnica al día y cédula verde/azul habilitante."
+  },
+  promoPushPop: {
+    enabled: false,
+    badge: "NOVEDAD TRAVELCAB",
+    title: "Traslados Programados y Aeropuerto con Tarifa Fija",
+    subtitle: "Cotizá en segundos tu traslado en la ciudad o al aeropuerto y sumá puntos TravelApp Rewards.",
+    discountCode: "",
+    imageUrl: "https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&w=900&q=80",
+    ctaText: "Cotizar Ahora",
+    ctaUrl: "#web-dispatcher-card"
+  },
   redesSociales: {
     facebook: "https://facebook.com/travelcab",
     instagram: "https://instagram.com/travelcab.ar",
@@ -905,7 +967,7 @@ const DEFAULT_LUNAVIAJERA_CMS_DATA = {
   ]
 };
 
-type ActiveTab = 'hero' | 'servicios' | 'conductores' | 'rewards' | 'faq' | 'legales' | 'slider' | 'ofertas' | 'social' | 'eco_hero' | 'eco_promo' | 'eco_unidades' | 'eco_quienes' | 'eco_stats' | 'eco_apps' | 'eco_trabaja' | 'eco_legales' | 'eco_marketplace' | 'rew_slider' | 'rew_beneficios' | 'rew_social' | 'rew_negocio' | 'rew_legales' | 'app_cards' | 'app_rewards' | 'afi_hero' | 'afi_cobro' | 'afi_faq' | 'afi_footer' | 'exp_pushpop' | 'exp_floating' | 'exp_quienes' | 'exp_marketplace' | 'exp_buscador' | 'exp_metrics' | 'exp_testimonials' | 'lv_hero' | 'lv_cards' | 'lv_galeria' | 'lv_catalogo' | 'lv_travis' | 'lv_quienes' | 'lv_contacto' | 'bus_cms';
+type ActiveTab = 'hero' | 'tc_pushpop' | 'servicios' | 'conductores' | 'rewards' | 'faq' | 'legales' | 'slider' | 'ofertas' | 'social' | 'eco_hero' | 'eco_promo' | 'eco_unidades' | 'eco_quienes' | 'eco_stats' | 'eco_apps' | 'eco_trabaja' | 'eco_legales' | 'eco_marketplace' | 'rew_slider' | 'rew_beneficios' | 'rew_social' | 'rew_negocio' | 'rew_legales' | 'app_cards' | 'app_rewards' | 'afi_hero' | 'afi_cobro' | 'afi_faq' | 'afi_footer' | 'exp_pushpop' | 'exp_floating' | 'exp_quienes' | 'exp_marketplace' | 'exp_buscador' | 'exp_metrics' | 'exp_testimonials' | 'lv_hero' | 'lv_cards' | 'lv_galeria' | 'lv_catalogo' | 'lv_travis' | 'lv_quienes' | 'lv_contacto' | 'bus_cms';
 
 export default function CMSPage() {
   const { user, logout } = useAuth();
@@ -1863,7 +1925,7 @@ export default function CMSPage() {
       <div>
       <div className="flex border border-slate-200 border-b-0 overflow-x-auto gap-1.5 bg-white/90 px-4 pt-3 rounded-t-2xl">
         {(selectedLanding === 'travelcab' 
-          ? ['hero', 'servicios', 'conductores', 'rewards', 'faq', 'legales'] 
+          ? ['hero', 'tc_pushpop', 'servicios', 'conductores', 'rewards', 'faq', 'legales'] 
           : selectedLanding === 'experience'
           ? ['exp_pushpop', 'slider', 'exp_floating', 'exp_quienes', 'exp_marketplace', 'exp_buscador', 'bus_cms', 'exp_metrics', 'exp_testimonials', 'rewards', 'social']
           : selectedLanding === 'lunaviajera'
@@ -1886,6 +1948,7 @@ export default function CMSPage() {
             }`}
           >
             {tab === 'hero' && '1. Heros y Portada'}
+            {tab === 'tc_pushpop' && '🔔 PushPop Promocional'}
             {tab === 'exp_pushpop' && '🔔 1. Modal PushPop & Cookies'}
             {tab === 'slider' && '🎬 2. Hero Video & Slider HD'}
             {tab === 'exp_floating' && '🎴 3. Banners Flotantes'}
@@ -2068,8 +2131,166 @@ export default function CMSPage() {
           </div>
         )}
 
-        {selectedLanding === 'travelcab' && activeTab === 'servicios' && (
+        {selectedLanding === 'travelcab' && activeTab === 'tc_pushpop' && data && (
           <div className="space-y-6">
+            <div className="border-b border-slate-100 pb-4">
+              <h3 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
+                <span>🔔 PushPop Promocional &amp; Novedades (TravelCab / Civitatis)</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Ventana emergente activable para anunciar promociones especiales, traslados internacionales o lanzamientos al ingresar a TravelCab.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-bold text-slate-900">Activar PushPop en TravelCab</h4>
+                <p className="text-[11px] text-slate-500">Si está desactivado, los visitantes no verán la ventana emergente.</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={Boolean(data.promoPushPop?.enabled)}
+                  onChange={(e) => updateField('promoPushPop', 'enabled', e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#0a2a5b]" />
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <CMSInput
+                label="Badge / Etiqueta"
+                value={data.promoPushPop?.badge || ''}
+                onChange={(val) => updateField('promoPushPop', 'badge', val)}
+                placeholder="Ej. NUEVO · TRASLADOS GLOBALES"
+              />
+              <CMSInput
+                label="Código Promocional (opcional)"
+                value={data.promoPushPop?.discountCode || ''}
+                onChange={(val) => updateField('promoPushPop', 'discountCode', val)}
+                placeholder="Ej. TRAVELCAB10"
+              />
+            </div>
+
+            <CMSInput
+              label="Título Principal del PushPop"
+              value={data.promoPushPop?.title || ''}
+              onChange={(val) => updateField('promoPushPop', 'title', val)}
+              placeholder="Ej. Traslados al Aeropuerto y en Todo el Mundo"
+            />
+
+            <CMSTextarea
+              label="Descripción / Mensaje"
+              value={data.promoPushPop?.subtitle || ''}
+              onChange={(val) => updateField('promoPushPop', 'subtitle', val)}
+              rows={3}
+              placeholder="Detalles de la promoción o lanzamiento..."
+            />
+
+            <ImageUploaderInput
+              label="Fotografía del PushPop"
+              section="promoPushPop"
+              field="imageUrl"
+              value={data.promoPushPop?.imageUrl || ''}
+            />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <CMSInput
+                label="Texto del Botón CTA"
+                value={data.promoPushPop?.ctaText || ''}
+                onChange={(val) => updateField('promoPushPop', 'ctaText', val)}
+                placeholder="Ej. Cotizar Traslado"
+              />
+              <CMSInput
+                label="Enlace del Botón CTA"
+                value={data.promoPushPop?.ctaUrl || ''}
+                onChange={(val) => updateField('promoPushPop', 'ctaUrl', val)}
+                placeholder="Ej. #web-dispatcher-card"
+              />
+            </div>
+          </div>
+        )}
+
+        {selectedLanding === 'travelcab' && activeTab === 'servicios' && (
+          <div className="space-y-8">
+            {/* Bloque 2: 3 Tarjetas de Modalidades (Movilidad Urbana - Compartido - Traslados) */}
+            <div className="space-y-4 border-b border-slate-200 pb-8">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-800">Bloque 2: 3 Tarjetas de Servicios (Movilidad Urbana · Compartido · Traslados)</h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Edita las 3 tarjetas principales que aparecen debajo del Hero (ideal para destacar Movilidad Urbana, Compartido y futuros Traslados globales Civitatis).
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-4">
+                {(data.serviceModalities || DEFAULT_CMS_DATA.serviceModalities).map((card: any, idx: number) => {
+                  const updateModalityCard = (field: string, value: string) => {
+                    const current = Array.isArray(data.serviceModalities) && data.serviceModalities.length > 0
+                      ? [...data.serviceModalities]
+                      : [...DEFAULT_CMS_DATA.serviceModalities];
+                    current[idx] = { ...current[idx], [field]: value };
+                    setData((prev: any) => ({ ...prev, serviceModalities: current }));
+                  };
+                  return (
+                    <div key={card.id || idx} className="rounded-xl border border-slate-200 p-4 bg-slate-50/70 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-extrabold uppercase tracking-wider text-[#0a2a5b]">
+                          Tarjeta #{idx + 1} · Modalidad {card.modality || card.id}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <CMSInput
+                          label="Título"
+                          value={card.title || ''}
+                          onChange={(val) => updateModalityCard('title', val)}
+                        />
+                        <CMSInput
+                          label="Etiqueta / Tag"
+                          value={card.tag || ''}
+                          onChange={(val) => updateModalityCard('tag', val)}
+                        />
+                        <CMSInput
+                          label="Texto Botón"
+                          value={card.ctaText || ''}
+                          onChange={(val) => updateModalityCard('ctaText', val)}
+                        />
+                        <div className="md:col-span-2">
+                          <CMSInput
+                            label="Descripción"
+                            value={card.subtitle || ''}
+                            onChange={(val) => updateModalityCard('subtitle', val)}
+                          />
+                        </div>
+                        <CMSInput
+                          label="URL de Imagen"
+                          value={card.imageUrl || ''}
+                          onChange={(val) => updateModalityCard('imageUrl', val)}
+                          placeholder="https://..."
+                        />
+                        <div className="md:col-span-3 pt-2 border-t border-slate-200/70 grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <CMSInput
+                            label="Título Modal Criterios"
+                            value={card.criteriaTitle || ''}
+                            onChange={(val) => updateModalityCard('criteriaTitle', val)}
+                            placeholder="Criterios de Selección..."
+                          />
+                          <div className="md:col-span-2">
+                            <CMSTextarea
+                              label="Criterios de Selección (uno por línea para el Modal)"
+                              value={card.criteriaText || ''}
+                              onChange={(val) => updateModalityCard('criteriaText', val)}
+                              rows={3}
+                              placeholder="• Criterio 1&#10;• Criterio 2"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="flex justify-between items-center border-b border-slate-100 pb-4">
               <div>
                 <h3 className="text-base font-extrabold text-slate-800">Categorías de Transporte (Servicios)</h3>
@@ -2195,6 +2416,103 @@ export default function CMSPage() {
                   label="Detalles de Membresía"
                   value={data.tiposTrabajo?.membresiaTexto || ''}
                   onChange={(val) => updateField('tiposTrabajo', 'membresiaTexto', val)}
+                />
+              </div>
+            </div>
+
+            {/* Bloque Split de Pagos (Mercado Pago, CBU/CVU y bindX) */}
+            <div className="border-t border-slate-200 pt-6 space-y-4">
+              <div>
+                <h4 className="text-sm font-extrabold text-slate-800">Split de Pagos (Mercado Pago / CBU-CVU / bindX)</h4>
+                <p className="text-xs text-slate-400 mt-0.5">Explica cómo cobran los conductores al enlazar Mercado Pago o usando otro CBU/CVU, y la nota de migración a bindX.</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <CMSInput
+                  label="Badge"
+                  value={data.driverSplitPayments?.badge ?? DEFAULT_CMS_DATA.driverSplitPayments.badge}
+                  onChange={(val) => updateField('driverSplitPayments', 'badge', val)}
+                />
+                <CMSInput
+                  label="Título del Bloque"
+                  value={data.driverSplitPayments?.title ?? DEFAULT_CMS_DATA.driverSplitPayments.title}
+                  onChange={(val) => updateField('driverSplitPayments', 'title', val)}
+                />
+                <div className="md:col-span-2">
+                  <CMSTextarea
+                    label="Subtítulo del Bloque"
+                    value={data.driverSplitPayments?.subtitle ?? DEFAULT_CMS_DATA.driverSplitPayments.subtitle}
+                    onChange={(val) => updateField('driverSplitPayments', 'subtitle', val)}
+                    rows={2}
+                  />
+                </div>
+                <CMSInput
+                  label="Título Opción 1 (Mercado Pago)"
+                  value={data.driverSplitPayments?.mpTitle ?? DEFAULT_CMS_DATA.driverSplitPayments.mpTitle}
+                  onChange={(val) => updateField('driverSplitPayments', 'mpTitle', val)}
+                />
+                <CMSInput
+                  label="Título Opción 2 (CBU / CVU)"
+                  value={data.driverSplitPayments?.cbuTitle ?? DEFAULT_CMS_DATA.driverSplitPayments.cbuTitle}
+                  onChange={(val) => updateField('driverSplitPayments', 'cbuTitle', val)}
+                />
+                <CMSTextarea
+                  label="Explicación Split Mercado Pago"
+                  value={data.driverSplitPayments?.mpDescription ?? DEFAULT_CMS_DATA.driverSplitPayments.mpDescription}
+                  onChange={(val) => updateField('driverSplitPayments', 'mpDescription', val)}
+                  rows={3}
+                />
+                <CMSTextarea
+                  label="Explicación Cobros con Otro CBU / CVU"
+                  value={data.driverSplitPayments?.cbuDescription ?? DEFAULT_CMS_DATA.driverSplitPayments.cbuDescription}
+                  onChange={(val) => updateField('driverSplitPayments', 'cbuDescription', val)}
+                  rows={3}
+                />
+                <div className="md:col-span-2">
+                  <CMSTextarea
+                    label="Nota de Transición a bindX"
+                    value={data.driverSplitPayments?.bindxNote ?? DEFAULT_CMS_DATA.driverSplitPayments.bindxNote}
+                    onChange={(val) => updateField('driverSplitPayments', 'bindxNote', val)}
+                    rows={2}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Requisitos de Aceptación Conductores y Vehículos */}
+            <div className="border-t border-slate-200 pt-6 space-y-4">
+              <div>
+                <h4 className="text-sm font-extrabold text-slate-800">Requisitos de Aceptación (Conductores y Vehículos)</h4>
+                <p className="text-xs text-slate-400 mt-0.5">Se muestra como tarjeta y modal detallado dentro del portal de conductores.</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <CMSInput
+                  label="Badge"
+                  value={data.driverRequirements?.badge ?? DEFAULT_CMS_DATA.driverRequirements.badge}
+                  onChange={(val) => updateField('driverRequirements', 'badge', val)}
+                />
+                <CMSInput
+                  label="Título"
+                  value={data.driverRequirements?.title ?? DEFAULT_CMS_DATA.driverRequirements.title}
+                  onChange={(val) => updateField('driverRequirements', 'title', val)}
+                />
+                <div className="md:col-span-2">
+                  <CMSInput
+                    label="Subtítulo"
+                    value={data.driverRequirements?.subtitle ?? DEFAULT_CMS_DATA.driverRequirements.subtitle}
+                    onChange={(val) => updateField('driverRequirements', 'subtitle', val)}
+                  />
+                </div>
+                <CMSTextarea
+                  label="Requisitos del Conductor (uno por línea)"
+                  value={data.driverRequirements?.driverReqs ?? DEFAULT_CMS_DATA.driverRequirements.driverReqs}
+                  onChange={(val) => updateField('driverRequirements', 'driverReqs', val)}
+                  rows={5}
+                />
+                <CMSTextarea
+                  label="Requisitos del Vehículo (uno por línea)"
+                  value={data.driverRequirements?.vehicleReqs ?? DEFAULT_CMS_DATA.driverRequirements.vehicleReqs}
+                  onChange={(val) => updateField('driverRequirements', 'vehicleReqs', val)}
+                  rows={5}
                 />
               </div>
             </div>
