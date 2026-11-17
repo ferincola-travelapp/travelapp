@@ -15,7 +15,7 @@ import { MinimalModuleShell, MinimalNavItem } from '@/components/layout/MinimalM
 const CRM_NAV_ITEMS: MinimalNavItem[] = [
   { key: 'leads', label: 'Tablero de Leads', icon: KanbanSquare },
   { key: 'agenda', label: 'Agenda (Citas / Meet)', icon: Calendar },
-  { key: 'customers', label: 'Lista de Clientes', icon: Users },
+  { key: 'customers', label: 'Directorio 360°', icon: Users },
   { key: 'history', label: 'Historial de Ventas', icon: History },
   { key: 'travis', label: 'Travis IA ✦', icon: Bot },
   { key: 'messages', label: 'Centro de Mensajería', icon: MessageSquare },

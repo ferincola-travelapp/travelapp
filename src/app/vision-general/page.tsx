@@ -23,6 +23,9 @@ import {
   Clock,
   ShieldAlert,
   ChevronDown,
+  Award,
+  Crown,
+  GitBranch,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -43,6 +46,7 @@ import { UsersTab } from '@/components/vision-general/UsersTab';
 import { FiscalTab } from '@/components/vision-general/FiscalTab';
 import { StabilityAndMessages } from '@/components/vision-general/StabilityAndMessages';
 import { TravelCabManagement, TravelCabSection } from '@/components/vision-general/TravelCabManagement';
+import { isCompleteTravelerProfile } from '@/lib/directory-helpers';
 
 type TabKey = 'metricas' | 'sucursales' | 'usuarios' | 'fiscal' | 'cab_tarifas' | 'cab_servicio' | 'cab_categoria';
 
@@ -82,10 +86,13 @@ export default function VisionGeneralPage() {
 
   const [stats, setStats] = useState({
     totalUsers: 0,
+    basicUsersCount: 0,
+    completeClientsCount: 0,
     activeTrips: 0,
     registeredDrivers: 0,
     activeDrivers: 0,
     leadsCount: 0,
+    affiliatesCount: 0,
     queriesPending: 0,
     experiencesCount: 0,
     revenue7Days: 0,
@@ -209,7 +216,14 @@ export default function VisionGeneralPage() {
 
     const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
       latestUsers = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setStats((prev) => ({ ...prev, totalUsers: snap.size }));
+      const complete = latestUsers.filter((u) => isCompleteTravelerProfile(u)).length;
+      const basic = latestUsers.length - complete;
+      setStats((prev) => ({
+        ...prev,
+        totalUsers: snap.size,
+        basicUsersCount: basic,
+        completeClientsCount: complete,
+      }));
       recompute();
     });
     const unsubTrips = onSnapshot(collection(db, 'trips'), (snap) => {
@@ -248,6 +262,9 @@ export default function VisionGeneralPage() {
       const active = snap.docs.filter((d) => d.data().status === 'approved' || d.data().status === 'active').length;
       setStats((prev) => ({ ...prev, registeredDrivers: snap.size, activeDrivers: active }));
     });
+    const unsubAffiliates = onSnapshot(collection(db, 'experience_partners'), (snap) => {
+      setStats((prev) => ({ ...prev, affiliatesCount: snap.size }));
+    });
 
     return () => {
       unsubUsers();
@@ -256,6 +273,7 @@ export default function VisionGeneralPage() {
       unsubExp();
       unsubRes();
       unsubDrivers();
+      unsubAffiliates();
     };
   }, [isAuthorized]);
 
@@ -568,6 +586,42 @@ export default function VisionGeneralPage() {
                     ${stats.revenue7Days.toLocaleString('es-AR')}
                   </p>
                   <p className="text-[11px] text-slate-400 mt-0.5">Viajes + Reservas confirmadas</p>
+                </div>
+              </div>
+
+              {/* Segmentación & Trazabilidad 360° (Acceso directo a CRM) */}
+              <div className="rounded-xl border border-slate-200/90 bg-white/80 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#0a2a5b] flex items-center gap-1.5">
+                    <GitBranch className="w-3.5 h-3.5" /> Segmentación &amp; Trazabilidad 360° (CRM)
+                  </h3>
+                  <Link href="/crm/customers" className="text-[11px] font-bold text-[#0a2a5b] hover:underline">
+                    Abrir Directorio →
+                  </Link>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                  {[
+                    { tab: 'leads', label: 'Leads (Datos)', value: stats.leadsCount, icon: MessageSquare, color: 'text-blue-700 bg-blue-50/70 border-blue-200' },
+                    { tab: 'usuarios', label: 'Usuarios App', value: stats.basicUsersCount, icon: Users, color: 'text-slate-700 bg-slate-50 border-slate-200' },
+                    { tab: 'clientes', label: 'Clientes Turismo', value: stats.completeClientsCount, icon: Crown, color: 'text-amber-700 bg-amber-50/70 border-amber-200' },
+                    { tab: 'conductores', label: 'Conductores', value: stats.registeredDrivers, icon: Car, color: 'text-indigo-700 bg-indigo-50/70 border-indigo-200' },
+                    { tab: 'afiliados', label: 'Afiliados', value: stats.affiliatesCount, icon: Award, color: 'text-purple-700 bg-purple-50/70 border-purple-200' },
+                  ].map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.tab}
+                        href={`/crm/customers?tab=${item.tab}`}
+                        className={`rounded-xl border p-3 hover:shadow-sm transition-all flex flex-col justify-between ${item.color}`}
+                      >
+                        <div className="flex items-center justify-between text-[11px] font-bold">
+                          <span>{item.label}</span>
+                          <Icon className="w-3.5 h-3.5" />
+                        </div>
+                        <p className="text-xl font-bold mt-1.5">{item.value}</p>
+                      </Link>
+                    );
+                  })}
                 </div>
               </div>
 
