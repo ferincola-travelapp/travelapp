@@ -614,6 +614,14 @@ export default function RegistroPage() {
             {/* Botones de Acción */}
             <div className="space-y-2.5">
               <Link
+                href="/mi-perfil"
+                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-[#FF5A19] hover:bg-[#e04d12] text-white font-black text-xs uppercase tracking-wider shadow-lg transition-all"
+              >
+                <User className="w-4 h-4" />
+                <span>Completar Mi Perfil de Viajero</span>
+              </Link>
+
+              <Link
                 href="/marketplace"
                 className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-[#0A2A5B] hover:bg-[#071d3f] text-white font-black text-xs uppercase tracking-wider shadow-lg transition-all"
               >
@@ -637,7 +645,7 @@ export default function RegistroPage() {
           <div className="mt-6 pt-4 border-t border-slate-100 text-center">
             <p className="text-xs text-slate-500">
               ¿Ya tenés una cuenta registrada?{" "}
-              <Link href="/login" className="font-bold text-[#FF5A19] hover:underline">
+              <Link href="/ingresar" className="font-bold text-[#FF5A19] hover:underline">
                 Iniciá sesión acá
               </Link>
             </p>

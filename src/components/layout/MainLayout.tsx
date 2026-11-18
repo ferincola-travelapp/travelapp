@@ -54,6 +54,10 @@ function AppShell({
     pathname.startsWith("/admin/login/") ||
     pathname === "/registro" ||
     pathname.startsWith("/registro/") ||
+    pathname === "/ingresar" ||
+    pathname.startsWith("/ingresar/") ||
+    pathname === "/mi-perfil" ||
+    pathname.startsWith("/mi-perfil/") ||
     pathname === "/marketplace" ||
     pathname.startsWith("/marketplace/") ||
     pathname === "/afiliados" ||

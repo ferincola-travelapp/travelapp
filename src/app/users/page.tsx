@@ -28,39 +28,6 @@ interface Branch {
   location: string;
 }
 
-const MOCK_STAFF: StaffUser[] = [
-  {
-    id: '1',
-    name: 'Federico Frinconi',
-    email: 'ferincola@gmail.com',
-    role: 'admin',
-    branchId: '1',
-    branchName: 'Sucursal Retiro',
-    active: true,
-    createdAt: '2026-06-01'
-  },
-  {
-    id: '2',
-    name: 'Operador Tucumán',
-    email: 'operator.tuc@travelapp.ar',
-    role: 'operator',
-    branchId: '3',
-    branchName: 'Sucursal Tucumán',
-    active: true,
-    createdAt: '2026-06-15'
-  },
-  {
-    id: '3',
-    name: 'Auditor Externo',
-    email: 'viewer.audit@travelapp.ar',
-    role: 'viewer',
-    branchId: 'all',
-    branchName: 'Todas las Sucursales',
-    active: true,
-    createdAt: '2026-07-01'
-  }
-];
-
 const MODULE_FEATURES = [
   {
     module: 'Visión Global',
@@ -195,30 +162,26 @@ export default function StaffUsersPage() {
   // Load staff users
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'staff_users'), (snapshot) => {
-      if (snapshot.empty) {
-        setStaff(MOCK_STAFF);
-      } else {
-        const list: StaffUser[] = snapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            name: data.name || '',
-            email: data.email || '',
-            role: data.role || 'operator',
-            branchId: data.branchId || '1',
-            branchName: data.branchName || 'Sucursal',
-            allowedUnits: Array.isArray(data.allowedUnits) ? data.allowedUnits : [],
-            allowedSectors: Array.isArray(data.allowedSectors) ? data.allowedSectors : [],
-            active: data.active !== undefined ? data.active : true,
-            createdAt: data.createdAt || new Date().toISOString().split('T')[0]
-          };
-        });
-        setStaff(list);
-      }
+      const list: StaffUser[] = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          name: data.name || '',
+          email: data.email || '',
+          role: data.role || 'operator',
+          branchId: data.branchId || '1',
+          branchName: data.branchName || 'Sucursal',
+          allowedUnits: Array.isArray(data.allowedUnits) ? data.allowedUnits : [],
+          allowedSectors: Array.isArray(data.allowedSectors) ? data.allowedSectors : [],
+          active: data.active !== undefined ? data.active : true,
+          createdAt: data.createdAt || new Date().toISOString().split('T')[0]
+        };
+      });
+      setStaff(list);
       setLoading(false);
     }, (error) => {
       console.error("Error loading staff users:", error);
-      setStaff(MOCK_STAFF);
+      setStaff([]);
       setLoading(false);
     });
     return () => unsub();

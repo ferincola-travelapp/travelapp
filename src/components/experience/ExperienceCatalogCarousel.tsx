@@ -620,14 +620,14 @@ export function ExperienceCatalogCarousel({
     }
   };
 
-  // Acción 2: Botón "Comprar" (aplica descuento si existe y enlaza con NAVE)
-  const handleBuyWithNave = async () => {
+  // Acción 2: Botón "Comprar" (aplica descuento si existe y enlaza con Mercado Pago)
+  const handleBuyWithMercadoPago = async () => {
     if (!bookingExp || submittingMode) return;
 
     const leadPassenger = passengerNames[0]?.trim();
     if (!leadPassenger || !passengerPhone.trim() || !selectedHotel) {
       alert(
-        "Por favor completá los nombres de los pasajeros, teléfono/WhatsApp y el origen antes de continuar al pago con NAVE."
+        "Por favor completá los nombres de los pasajeros, teléfono/WhatsApp y el origen antes de continuar al pago con Mercado Pago."
       );
       return;
     }
@@ -661,9 +661,9 @@ export function ExperienceCatalogCarousel({
       discountAmount,
       totalAmount: finalAmount,
       currency: bookingExp.currency,
-      paymentGateway: "NAVE",
+      paymentGateway: "MERCADOPAGO",
       externalPaymentId,
-      status: "INITIATED_NAVE_CHECKOUT",
+      status: "INITIATED_MP_CHECKOUT",
       timeToPayDeadline: paymentDeadline.deadlineIso,
       source: "WEB_EXPERIENCE_LANDING",
       createdAt: new Date().toISOString(),
@@ -677,13 +677,13 @@ export function ExperienceCatalogCarousel({
       });
       reservationDocId = docRef.id;
     } catch {
-      // Continúa hacia la pasarela NAVE aún si Firestore está en modo lectura
+      // Continúa hacia Mercado Pago aún si Firestore delega escritura al servidor
     }
 
     try {
       const appOrigin =
         typeof window !== "undefined" ? window.location.origin : "";
-      const response = await fetch("/api/checkout/nave-intent", {
+      const response = await fetch("/api/checkout/preference", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -707,24 +707,18 @@ export function ExperienceCatalogCarousel({
       });
 
       const data = await response.json().catch(() => ({}));
-      if (response.status === 429) {
-        alert(
-          data.error ||
-            "Demasiados intentos seguidos. Por favor aguardá unos segundos."
-        );
-        return;
-      }
-      if (data?.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
+      const redirectUrl = data?.initPoint || data?.checkoutUrl;
+      if (redirectUrl) {
+        window.location.href = redirectUrl;
         return;
       }
       alert(
         data?.error ||
-          "No se pudo iniciar la pasarela NAVE en este momento. Intentá nuevamente."
+          "No se pudo iniciar Mercado Pago en este momento. Intentá nuevamente."
       );
     } catch (err) {
-      console.error("Error conectando con NAVE:", err);
-      alert("Error de conexión al iniciar el pago con NAVE.");
+      console.error("Error conectando con Mercado Pago:", err);
+      alert("Error de conexión al iniciar el pago con Mercado Pago.");
     } finally {
       setSubmittingMode(null);
     }
@@ -1236,7 +1230,7 @@ export function ExperienceCatalogCarousel({
                     </span>
                   </div>
 
-                  {/* 6. BOTONES DE RESERVAR Y COMPRAR (ENLAZADO CON NAVE) */}
+                  {/* 6. BOTONES DE RESERVAR Y COMPRAR (MERCADO PAGO) */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                     <button
                       type="submit"
@@ -1256,18 +1250,18 @@ export function ExperienceCatalogCarousel({
                     <button
                       type="button"
                       disabled={submittingMode !== null}
-                      onClick={handleBuyWithNave}
-                      className="w-full py-3 px-4 rounded-full bg-[#0071e3] hover:bg-[#0077ed] text-white text-sm font-medium transition-colors flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+                      onClick={handleBuyWithMercadoPago}
+                      className="w-full py-3 px-4 rounded-full bg-[#009EE3] hover:bg-[#0087c4] text-white text-sm font-medium transition-colors flex items-center justify-center gap-2 shadow-sm cursor-pointer"
                     >
                       {submittingMode === "comprar" ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Conectando con NAVE...</span>
+                          <span>Conectando con Mercado Pago...</span>
                         </>
                       ) : (
                         <>
                           <CreditCard className="w-4 h-4" />
-                          <span>Comprar con NAVE</span>
+                          <span>Pagar con Mercado Pago</span>
                         </>
                       )}
                     </button>

@@ -341,6 +341,13 @@ export default function AfiliadosLandingClient() {
             </a>
 
             <Link
+              href="/mi-perfil"
+              className="text-[12px] font-medium text-white/90 hover:text-white px-3 py-1.5 border border-white/25 hover:border-white transition-colors"
+            >
+              Crear Perfil
+            </Link>
+
+            <Link
               href={cmsData.header.loginUrl}
               className="text-[12px] font-medium text-white/90 hover:text-white px-3.5 py-1.5 border border-white/25 hover:border-white transition-colors"
             >

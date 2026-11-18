@@ -169,10 +169,10 @@ function NewReservationForm() {
   const [paymentPlan, setPaymentPlan] = useState<'total' | 'deposit' | 'installments'>('deposit');
   const [depositPercent, setDepositPercent] = useState<number>(30);
   const [paidNowAmount, setPaidNowAmount] = useState<number>(0);
-  const [paymentMethod, setPaymentMethod] = useState<string>('Transferencia Bancaria');
+  const [paymentMethod, setPaymentMethod] = useState<string>('Mercado Pago / Tarjeta');
   const [paymentNotes, setPaymentNotes] = useState<string>('Seña de confirmación de reserva');
 
-  // Submission State & Nave Galicia Intent
+  // Submission State & Mercado Pago Preference
   const [saving, setSaving] = useState<boolean>(false);
   const [successReservationId, setSuccessReservationId] = useState<string | null>(null);
   const [successFileNumber, setSuccessFileNumber] = useState<string>('');
@@ -181,12 +181,12 @@ function NewReservationForm() {
   const [generatedNaveQr, setGeneratedNaveQr] = useState<string | null>(null);
   const [copiedSuccessLink, setCopiedSuccessLink] = useState<boolean>(false);
 
-  // Handler para invocar Nave Banco Galicia en el momento de crear el expediente
+  // Handler para invocar Mercado Pago Checkout Pro en el momento de crear el expediente
   const handleGenerateNavePayment = async (fileCode: string, amount: number, tripName: string) => {
     setNaveIntentLoading(true);
     setCopiedSuccessLink(false);
     try {
-      const resp = await fetch('/api/checkout/nave-intent', {
+      const resp = await fetch('/api/checkout/preference', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -204,15 +204,16 @@ function NewReservationForm() {
         })
       });
       const data = await resp.json();
-      if (data.success && data.checkoutUrl) {
-        setGeneratedNaveUrl(data.checkoutUrl);
-        setGeneratedNaveQr(data.qrData);
+      const mpUrl = data.initPoint || data.checkoutUrl;
+      if (data.success && mpUrl) {
+        setGeneratedNaveUrl(mpUrl);
+        setGeneratedNaveQr(mpUrl);
       } else {
-        alert(`Error al generar cobro en Nave Galicia: ${data.error || 'Respuesta inválida'}`);
+        alert(`Error al generar cobro en Mercado Pago: ${data.error || 'Respuesta inválida'}`);
       }
     } catch (err: any) {
-      console.error('Error invoking Nave intent:', err);
-      alert(`Error de red al conectar con Nave Banco Galicia: ${err.message}`);
+      console.error('Error invoking Mercado Pago preference:', err);
+      alert(`Error de red al conectar con Mercado Pago: ${err.message}`);
     } finally {
       setNaveIntentLoading(false);
     }
@@ -871,8 +872,8 @@ function NewReservationForm() {
       setSuccessReservationId(reservationId);
       setSuccessFileNumber(fileNumber);
 
-      // Si el medio de pago elegido es NAVE Galicia, generar el intent de pago inmediatamente
-      if (paymentMethod.toLowerCase().includes('nave')) {
+      // Si el medio de pago elegido es Mercado Pago, generar el link de pago inmediatamente
+      if (paymentMethod.toLowerCase().includes('mercado pago')) {
         handleGenerateNavePayment(fileNumber, paidNowAmount > 0 ? paidNowAmount : totalPrice, tripTitle);
       }
 
@@ -1611,8 +1612,7 @@ function NewReservationForm() {
                   onChange={e => setPaymentMethod(e.target.value)}
                   className="w-full p-2 bg-white rounded-lg border border-slate-200 font-bold"
                 >
-                  <option value="NAVE Galicia (Link de Pago + QR MODO)">NAVE Galicia (Link de Pago + QR MODO)</option>
-                  <option value="Mercado Pago / Tarjeta">Mercado Pago / Tarjeta</option>
+                  <option value="Mercado Pago / Tarjeta">Mercado Pago (Link de Pago + QR)</option>
                   <option value="Transferencia Bancaria">Transferencia Bancaria</option>
                   <option value="Efectivo en Sucursal">Efectivo en Sucursal</option>
                   <option value="Dólares Billete">Dólares Billete</option>
@@ -1685,20 +1685,20 @@ function NewReservationForm() {
               </p>
             </div>
 
-            {/* SECCIÓN NAVE GALICIA (LINK + QR) */}
+            {/* SECCIÓN MERCADO PAGO (LINK + QR) */}
             {naveIntentLoading ? (
-              <div className="py-6 bg-orange-50/60 rounded-2xl border border-orange-200 text-center space-y-2">
-                <RefreshCw className="h-7 w-7 text-orange-500 animate-spin mx-auto" />
-                <p className="text-xs font-bold text-orange-950">
-                  Generando link oficial de pago y código QR en NAVE Banco Galicia...
+              <div className="py-6 bg-sky-50/60 rounded-2xl border border-sky-200 text-center space-y-2">
+                <RefreshCw className="h-7 w-7 text-sky-500 animate-spin mx-auto" />
+                <p className="text-xs font-bold text-sky-950">
+                  Generando link oficial de pago y código QR en Mercado Pago...
                 </p>
               </div>
             ) : generatedNaveUrl ? (
-              <div className="bg-orange-50/40 p-4 rounded-2xl border border-orange-200 space-y-3 text-left">
-                <div className="flex items-center justify-between border-b border-orange-200/60 pb-2">
+              <div className="bg-sky-50/40 p-4 rounded-2xl border border-sky-200 space-y-3 text-left">
+                <div className="flex items-center justify-between border-b border-sky-200/60 pb-2">
                   <div className="flex items-center gap-2">
-                    <CreditCard className="h-4 w-4 text-orange-600" />
-                    <span className="text-xs font-black text-slate-800">Cobro con NAVE Banco Galicia / MODO</span>
+                    <CreditCard className="h-4 w-4 text-sky-600" />
+                    <span className="text-xs font-black text-slate-800">Cobro con Mercado Pago Checkout Pro</span>
                   </div>
                   <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800">
                     Activo
@@ -1709,11 +1709,11 @@ function NewReservationForm() {
                 <div className="text-center py-1">
                   <img
                     src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(generatedNaveUrl)}`}
-                    alt="Código QR NAVE Galicia"
+                    alt="Código QR Mercado Pago"
                     className="w-32 h-32 object-contain mx-auto rounded-lg shadow-sm border border-slate-200 bg-white p-1.5"
                   />
                   <span className="text-[10px] font-medium text-slate-500 mt-1 block">
-                    Escaneá con Galicia, MODO o cualquier billetera virtual
+                    Escaneá para abrir el Checkout Oficial de Mercado Pago
                   </span>
                 </div>
 
@@ -1743,7 +1743,7 @@ function NewReservationForm() {
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   <a
                     href={`https://wa.me/${passengerPhone?.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
-                      `¡Hola ${passengerName}! Confirmamos la emisión de tu expediente de viaje (${successReservationId}). Podés abonar de forma segura con NAVE Banco Galicia (tarjetas o QR interoperable MODO) a través del siguiente enlace:\n\n${generatedNaveUrl}\n\n¡Muchas gracias por viajar con TravelApp!`
+                      `¡Hola ${passengerName}! Confirmamos la emisión de tu expediente de viaje (${successReservationId}). Podés abonar de forma segura con Mercado Pago (tarjetas o dinero en cuenta) a través del siguiente enlace:\n\n${generatedNaveUrl}\n\n¡Muchas gracias por viajar con TravelApp!`
                     )}`}
                     target="_blank"
                     rel="noreferrer"
@@ -1756,10 +1756,10 @@ function NewReservationForm() {
                     href={generatedNaveUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center justify-center gap-1.5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
+                    className="flex items-center justify-center gap-1.5 py-2.5 bg-[#009EE3] hover:bg-[#0087c4] text-white rounded-xl text-xs font-bold transition shadow-sm"
                   >
                     <ExternalLink className="h-4 w-4" />
-                    Abrir Checkout
+                    Abrir Checkout MP
                   </a>
                 </div>
               </div>
@@ -1768,10 +1768,10 @@ function NewReservationForm() {
                 <button
                   type="button"
                   onClick={() => handleGenerateNavePayment(successReservationId, paidNowAmount > 0 ? paidNowAmount : totalPrice, customTitle || 'Tour')}
-                  className="w-full py-2.5 bg-orange-50 hover:bg-orange-100 text-orange-800 rounded-xl text-xs font-black transition border border-orange-200 flex items-center justify-center gap-2"
+                  className="w-full py-2.5 bg-sky-50 hover:bg-sky-100 text-sky-800 rounded-xl text-xs font-black transition border border-sky-200 flex items-center justify-center gap-2"
                 >
-                  <CreditCard className="h-4 w-4 text-orange-600" />
-                  Emitir Link de Cobro &amp; QR NAVE Galicia Ahora
+                  <CreditCard className="h-4 w-4 text-sky-600" />
+                  Emitir Link de Cobro &amp; QR Mercado Pago Ahora
                 </button>
               </div>
             )}

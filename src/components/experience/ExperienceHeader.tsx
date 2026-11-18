@@ -185,20 +185,20 @@ export function ExperienceHeader({
               Pasajes en Bus
             </Link>
 
-            {/* 6. BOTÓN DE LOGIN / REGISTRO */}
+            {/* 6. BOTÓN DE LOGIN / CREAR PERFIL */}
             <div className="flex items-center gap-1">
               <Link
-                href="/login"
+                href="/ingresar"
                 className="py-2 hover:text-white transition-colors"
               >
-                Login
+                Ingresar
               </Link>
               <span className="text-white/30">/</span>
               <Link
-                href="/registro"
+                href="/mi-perfil"
                 className="py-2 hover:text-white transition-colors"
               >
-                Registro
+                Crear Perfil
               </Link>
             </div>
           </nav>
@@ -325,19 +325,19 @@ export function ExperienceHeader({
 
             <div className="flex items-center gap-3 pt-2 border-t border-white/10">
               <Link
-                href="/login"
+                href="/ingresar"
                 onClick={() => setMobileMenuOpen(false)}
                 className="hover:text-white"
               >
-                Login
+                Ingresar
               </Link>
               <span className="text-white/30">/</span>
               <Link
-                href="/registro"
+                href="/mi-perfil"
                 onClick={() => setMobileMenuOpen(false)}
                 className="hover:text-white"
               >
-                Registro
+                Crear Perfil
               </Link>
             </div>
           </div>

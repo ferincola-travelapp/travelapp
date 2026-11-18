@@ -642,7 +642,7 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
         tourTitle: bookingTour.title,
         destination: bookingTour.location,
         productType: bookingTour.productType || "experiencia_dia",
-        bookingMode: mode === "compra" ? "buy_nave" : "time_to_pay",
+        bookingMode: mode === "compra" ? "buy_mercadopago" : "time_to_pay",
         nombrePasajero: leadName,
         passengerName: leadName,
         passengersList: filledNames,
@@ -657,7 +657,7 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
         discountCode: appliedDiscount?.code || null,
         discountPercent: appliedDiscount?.percent || 0,
         discountAmount,
-        estado: mode === "compra" ? "Pendiente_Pago_Nave" : "Reservada_TimeToPay",
+        estado: mode === "compra" ? "Pendiente_Pago_MercadoPago" : "Reservada_TimeToPay",
         expiresAt: ttl.deadlineIso,
         timeToPayPolicy: ttl.label,
         financials: {
@@ -694,7 +694,7 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
           passengerPhone: passengerPhone.trim(),
           departureDate: bookingDate,
           pickupOrigin: originFinal,
-          status: mode === "compra" ? "En Proceso de Pago (NAVE)" : "Reservada",
+          status: mode === "compra" ? "En Proceso de Pago (Mercado Pago)" : "Reservada",
           paxCount,
           payment: {
             totalAmount: finalTotal,
@@ -708,10 +708,10 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
         console.warn("[Marketplace] Escritura en contracted_trips omitida para visitante público:", ctErr);
       }
 
-      // 3. Si eligió "Comprar con NAVE", crear intención de pago y redirigir
+      // 3. Si eligió "Pagar con Mercado Pago", crear preferencia de Checkout Pro y redirigir
       if (mode === "compra") {
         const appOrigin = typeof window !== "undefined" ? window.location.origin : "";
-        const naveRes = await fetch("/api/checkout/nave-intent", {
+        const mpRes = await fetch("/api/checkout/preference", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -731,22 +731,20 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
           })
         });
 
-        const naveData = await naveRes.json().catch(() => ({}));
-        if (naveRes.status === 429) {
-          alert(naveData.error || "Demasiados intentos seguidos. Por favor aguardá unos segundos.");
-          return;
-        }
-
-        if (naveRes.ok && naveData.checkoutUrl) {
+        const mpData = await mpRes.json().catch(() => ({}));
+        const mpUrl = mpData?.initPoint || mpData?.checkoutUrl;
+        if (mpRes.ok && mpUrl) {
           setBookingSuccess({
             code: resCode,
             deadlineLabel: ttl.label,
             mode: "compra",
-            checkoutUrl: naveData.checkoutUrl
+            checkoutUrl: mpUrl
           });
-          window.location.href = naveData.checkoutUrl;
+          window.location.href = mpUrl;
           return;
         }
+        alert(mpData?.error || "No se pudo iniciar Mercado Pago en este momento. Intentá nuevamente.");
+        return;
       }
 
       setBookingSuccess({
@@ -805,7 +803,7 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
                 Marketplace de Experiencias.
               </h1>
               <p className="mt-3 text-base sm:text-lg text-[#6e6e73] max-w-2xl font-normal leading-relaxed">
-                Explorá todas nuestras excursiones verificadas con fichas técnicas completas, pick-up en tu hotel, reserva inmediata con Time-to-Pay y pago seguro con NAVE.
+                Explorá todas nuestras excursiones verificadas con fichas técnicas completas, pick-up en tu hotel, reserva inmediata con Time-to-Pay y pago seguro con Mercado Pago.
               </p>
             </div>
 
@@ -1729,10 +1727,10 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
                 {bookingSuccess.checkoutUrl && (
                   <a
                     href={bookingSuccess.checkoutUrl}
-                    className="w-full py-3.5 rounded-full bg-[#0071e3] hover:bg-[#0077ed] text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-md transition-all"
+                    className="w-full py-3.5 rounded-full bg-[#009EE3] hover:bg-[#0087c4] text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-md transition-all"
                   >
                     <CreditCard className="w-4 h-4" />
-                    Ir a Pagar con NAVE Ahora
+                    Ir a Pagar con Mercado Pago Ahora
                   </a>
                 )}
 
@@ -1982,14 +1980,14 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
                     type="button"
                     disabled={isSubmittingBooking}
                     onClick={() => handleProcessAction("compra")}
-                    className="w-full py-3.5 rounded-full bg-[#0071e3] hover:bg-[#0077ed] text-white font-semibold text-sm shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                    className="w-full py-3.5 rounded-full bg-[#009EE3] hover:bg-[#0087c4] text-white font-semibold text-sm shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
                   >
                     {isSubmittingBooking ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <CreditCard className="w-4 h-4" />
                     )}
-                    <span>Comprar con NAVE</span>
+                    <span>Pagar con Mercado Pago</span>
                   </button>
                 </div>
               </div>

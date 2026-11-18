@@ -34,15 +34,8 @@ const mockChartData = [
   { name: 'Dom', emitidos: 30000, canjeados: 22000 },
 ];
 
-const MOCK_PAYOUTS: PayoutDue[] = [
-  { id: 'PAY-001', merchantName: "McDonald's Pilar", amount: 158000, dueDate: '2026-07-25', status: 'Pendiente' },
-  { id: 'PAY-002', merchantName: "Estación Shell Retiro", amount: 245000, dueDate: '2026-07-28', status: 'Pendiente' },
-  { id: 'PAY-003', merchantName: "Hotel Tucumán Plaza", amount: 480000, dueDate: '2026-08-02', status: 'Pendiente' },
-  { id: 'PAY-004', merchantName: "Cine Hoyts Shopping", amount: 95000, dueDate: '2026-08-05', status: 'Pendiente' },
-];
-
 export default function RewardsAnalyticsPage() {
-  const [payouts, setPayouts] = useState<PayoutDue[]>(MOCK_PAYOUTS);
+  const [payouts, setPayouts] = useState<PayoutDue[]>([]);
   const [loading, setLoading] = useState(true);
   const [globalConfig, setGlobalConfig] = useState<GlobalRewardsConfig>(DEFAULT_REWARDS_CONFIG);
 

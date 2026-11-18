@@ -104,7 +104,7 @@ const DEFAULT_REWARDS_CMS_DATA = {
     subtitle:
       "Iniciá sesión o creá tu cuenta sin costo para empezar a acumular puntos en cada experiencia y traslado.",
     buttonText: "Activar mi Billetera Rewards",
-    buttonUrl: "/login",
+    buttonUrl: "/mi-perfil",
   },
   businessSection: {
     title: "Integrá tu marca al ecosistema TravelApp Rewards.",
@@ -263,17 +263,17 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
             </a>
 
             <Link
-              href="/login"
+              href="/ingresar"
               className="text-[12px] font-medium text-white/90 hover:text-white px-3.5 py-1.5 border border-white/25 hover:border-white transition-colors"
             >
-              Mi Wallet
+              Ingresar
             </Link>
 
             <Link
-              href={ctaBlock?.buttonUrl || "/login"}
+              href="/mi-perfil"
               className="inline-flex items-center gap-1.5 bg-[#d95b00] hover:bg-[#c25000] text-white text-[12px] font-medium px-4 py-1.5 rounded-full transition-colors"
             >
-              <span>Activar Cuenta</span>
+              <span>Crear Perfil</span>
             </Link>
           </div>
 
@@ -328,16 +328,16 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
             </a>
             <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
               <Link
-                href="/login"
+                href="/ingresar"
                 className="w-full text-center py-2.5 border border-white/30 text-white text-[13px] font-medium"
               >
-                Ingresar a Mi Wallet
+                Ingresar a Mi Perfil
               </Link>
               <Link
-                href={ctaBlock?.buttonUrl || "/login"}
+                href="/mi-perfil"
                 className="w-full text-center py-2.5 bg-[#d95b00] text-white text-[13px] font-medium"
               >
-                Activar Cuenta
+                Crear Perfil
               </Link>
             </div>
           </div>
@@ -411,7 +411,7 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
                       {slide.ctaText || "Ver Catálogo de Canjes"}
                     </Link>
                     <Link
-                      href="/login"
+                      href="/ingresar"
                       className="px-6 py-2.5 rounded-full border border-white/60 hover:bg-white hover:text-[#1d1d1f] text-white text-[14px] font-normal tracking-tight transition-colors"
                     >
                       Activar mi Wallet
@@ -544,7 +544,7 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
                       Más información
                     </Link>
                     <Link
-                      href="/login"
+                      href="/ingresar"
                       className={`px-5 py-2 rounded-full text-[13px] font-normal border transition-colors ${
                         isDark
                           ? "border-white/50 text-white hover:bg-white hover:text-[#1d1d1f]"
@@ -664,7 +664,7 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
 
             <div className="pt-4 flex flex-wrap items-center gap-3.5">
               <Link
-                href={ctaBlock?.buttonUrl || "/login"}
+                href={ctaBlock?.buttonUrl || "/mi-perfil"}
                 className="px-6 py-3 rounded-full bg-[#0a2a5b] hover:bg-[#071d40] text-white text-[14px] font-normal transition-colors"
               >
                 {ctaBlock?.buttonText || "Activar mi Billetera Rewards"}
@@ -1047,7 +1047,7 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
                   </a>
                 </li>
                 <li>
-                  <Link href="/login" className="hover:text-white transition-colors">
+                  <Link href="/ingresar" className="hover:text-white transition-colors">
                     Mi Wallet
                   </Link>
                 </li>

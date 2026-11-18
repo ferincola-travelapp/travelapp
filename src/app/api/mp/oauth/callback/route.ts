@@ -68,8 +68,14 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Si no hubo respuesta real, generar estructura mock de seguridad para pruebas
+    // Si no hubo respuesta real, nunca guardar credenciales falsas en producción
     if (!mpTokenData) {
+      if (process.env.NODE_ENV === 'production') {
+        return NextResponse.json(
+          { error: 'No se pudo completar la vinculación real con Mercado Pago OAuth.' },
+          { status: 502 }
+        );
+      }
       mpTokenData = {
         access_token: 'APP_USR_MOCK_TOKEN_' + Date.now(),
         token_type: 'bearer',

@@ -8,7 +8,7 @@ import {
   Zap, CheckCircle2, ShieldCheck, Mail, Headphones, HelpCircle, MessageSquare,
   CreditCard, Edit3, Save, AlertCircle, RefreshCw, Layers, CheckSquare
 } from 'lucide-react';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { DEFAULT_EXPERIENCE_TIERS, getPartnerTier } from '@/lib/commissions';
 import { ExperiencePartnerTier } from '@/types/affiliates';
@@ -26,62 +26,12 @@ export interface SoldTrip {
   createdAt: string;
 }
 
-const MOCK_SOLD_TRIPS: SoldTrip[] = [
-  {
-    id: 'RES-901',
-    customerName: 'Santiago Rossi',
-    experienceTitle: 'Excursión Valles Calchaquíes & Bodegas VIP',
-    totalAmount: 120000,
-    installmentsCount: 3,
-    paidInstallments: 2,
-    commissionPerInstallment: 2800, // 7% of $40,000 installment
-    totalCommission: 8400,
-    payoutStatus: 'credited_mp',
-    createdAt: '2026-08-01',
-  },
-  {
-    id: 'RES-902',
-    customerName: 'Laura Benítez',
-    experienceTitle: 'Trekking & Canopy Aventura Yungas',
-    totalAmount: 60000,
-    installmentsCount: 2,
-    paidInstallments: 2,
-    commissionPerInstallment: 2100, // 7% of $30,000 installment
-    totalCommission: 4200,
-    payoutStatus: 'credited_mp',
-    createdAt: '2026-07-28',
-  },
-  {
-    id: 'RES-903',
-    customerName: 'Esteban Paz',
-    experienceTitle: 'Día de Campo & Cabalgata en Ruinas de Quilmes',
-    totalAmount: 95000,
-    installmentsCount: 3,
-    paidInstallments: 1,
-    commissionPerInstallment: 2216, // 7% of $31,666 installment
-    totalCommission: 6650,
-    payoutStatus: 'pending_installment',
-    createdAt: '2026-08-05',
-  },
-  {
-    id: 'RES-904',
-    customerName: 'Lucía Fernández',
-    experienceTitle: 'Traslado Privado Executive TravelCab',
-    totalAmount: 45000,
-    installmentsCount: 1,
-    paidInstallments: 1,
-    commissionPerInstallment: 3150,
-    totalCommission: 3150,
-    payoutStatus: 'pending_cbu_monday',
-    createdAt: '2026-08-07',
-  }
-];
-
 export default function AfiliadosPortalPage() {
   const [copied, setCopied] = useState(false);
   const [copiedItem, setCopiedItem] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'sales' | 'marketplace' | 'mediahub' | 'payouts'>('dashboard');
   const [tiers, setTiers] = useState<ExperiencePartnerTier[]>(DEFAULT_EXPERIENCE_TIERS);
+  const [soldTrips, setSoldTrips] = useState<SoldTrip[]>([]);
 
   // Escuchar matriz de niveles en tiempo real desde Firestore
   useEffect(() => {
@@ -94,6 +44,44 @@ export default function AfiliadosPortalPage() {
       return () => unsub();
     } catch (err) {
       console.warn('[Portal Tiers listener error]:', err);
+    }
+  }, []);
+
+  // Escuchar reservas reales en Firestore para el panel de ventas del afiliado
+  useEffect(() => {
+    try {
+      const q = query(collection(db, 'experience_reservations'), orderBy('createdAt', 'desc'), limit(50));
+      const unsub = onSnapshot(q, (snap) => {
+        const loaded: SoldTrip[] = snap.docs
+          .map((d) => {
+            const data = d.data() as any;
+            if (!data.affiliateRef && !data.partnerId) return null;
+            const totalAmount = Number(data.financials?.totalPrice || data.totalAmount || data.amount || 0);
+            const paidAmount = Number(data.financials?.paidAmount || 0);
+            const commissionRate = 0.05;
+            const totalCommission = Math.round(totalAmount * commissionRate);
+            const isPaid = paidAmount >= totalAmount && totalAmount > 0;
+            return {
+              id: data.reservationCode || data.fileNumber || d.id,
+              customerName: data.nombrePasajero || data.passengerName || 'Pasajero',
+              experienceTitle: data.tourTitle || data.experienceTitle || 'Experiencia TravelApp',
+              totalAmount,
+              installmentsCount: 1,
+              paidInstallments: isPaid ? 1 : 0,
+              commissionPerInstallment: totalCommission,
+              totalCommission,
+              payoutStatus: isPaid ? 'credited_mp' : 'pending_installment',
+              createdAt: typeof data.createdAt === 'string' ? data.createdAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
+            } as SoldTrip;
+          })
+          .filter((item): item is SoldTrip => item !== null);
+        setSoldTrips(loaded);
+      }, () => {
+        setSoldTrips([]);
+      });
+      return () => unsub();
+    } catch {
+      setSoldTrips([]);
     }
   }, []);
 
@@ -316,7 +304,7 @@ export default function AfiliadosPortalPage() {
             }`}
           >
             <TrendingUp className="w-4 h-4 text-emerald-400" />
-            Mis Viajes Vendidos & Cuotas ({MOCK_SOLD_TRIPS.length})
+            Mis Viajes Vendidos & Cuotas ({soldTrips.length})
           </button>
 
           <button
@@ -461,7 +449,13 @@ export default function AfiliadosPortalPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 bg-white">
-                    {MOCK_SOLD_TRIPS.map((trip) => {
+                    {soldTrips.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-10 text-center text-xs text-slate-400 font-medium">
+                          Todavía no registrás viajes vendidos con tu enlace de afiliado. Compartí tu link para comenzar a sumar comisiones.
+                        </td>
+                      </tr>
+                    ) : soldTrips.map((trip) => {
                       const quotaPct = Math.round((trip.paidInstallments / trip.installmentsCount) * 100);
                       return (
                         <tr key={trip.id} className="hover:bg-slate-50/80 transition-colors">

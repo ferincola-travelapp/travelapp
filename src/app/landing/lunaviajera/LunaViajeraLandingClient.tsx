@@ -509,7 +509,7 @@ export default function LunaViajeraLandingClient({ initialCms }: LunaViajeraLand
         destination: selectedExcursion.tagline || "Norte Argentino",
         productType: "excursion_local",
         businessUnit: "lunaviajera",
-        bookingMode: bookingMode === "deposit" ? "sena_30_nave" : "total_nave",
+        bookingMode: bookingMode === "deposit" ? "sena_30_mp" : "total_mp",
         nombrePasajero: passengerName,
         passengerName,
         telefonoPasajero: passengerPhone,
@@ -518,7 +518,7 @@ export default function LunaViajeraLandingClient({ initialCms }: LunaViajeraLand
         dniPasajero: passengerDni,
         cantidadPersonas: passengerCount,
         quantity: passengerCount,
-        estado: "Pendiente_Pago_Nave",
+        estado: "Pendiente_Pago_MercadoPago",
         financials: {
           currency: "ARS",
           unitPrice: selectedExcursion.price,
@@ -531,7 +531,7 @@ export default function LunaViajeraLandingClient({ initialCms }: LunaViajeraLand
         createdAt: new Date().toISOString(),
       };
 
-      const res = await fetch("/api/checkout/nave-intent", {
+      const res = await fetch("/api/checkout/preference", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -552,14 +552,9 @@ export default function LunaViajeraLandingClient({ initialCms }: LunaViajeraLand
       });
 
       const data = await res.json().catch(() => ({}));
-      if (res.status === 429) {
-        alert(data.error || "Demasiados intentos seguidos. Por favor aguardá unos segundos.");
-        setResStatus("idle");
-        return;
-      }
-
-      if (res.ok && data.checkoutUrl) {
-        setCheckoutUrl(data.checkoutUrl);
+      const mpUrl = data?.initPoint || data?.checkoutUrl;
+      if (res.ok && mpUrl) {
+        setCheckoutUrl(mpUrl);
       }
 
       setCreatedFile(resCode);

@@ -979,7 +979,7 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
                     : "Solicitar Cotización Oficial"}
                 </h4>
                 <p className="text-xs text-slate-400 mb-4">
-                  Un asesor de TravelApp coordinará tus cupos, formas de pago (NAVE Galicia, Transferencia o Tarjeta) y documentación.
+                  Un asesor de TravelApp coordinará tus cupos, formas de pago (Mercado Pago, Transferencia o Tarjeta) y documentación.
                 </p>
 
                 {leadSubmitted ? (

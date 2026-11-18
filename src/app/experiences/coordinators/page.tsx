@@ -15,34 +15,6 @@ interface Coordinator {
   activeTripTitle?: string;
 }
 
-const MOCK_COORDINATORS: Coordinator[] = [
-  {
-    id: 'COORD-01',
-    name: 'Laura Gómez',
-    email: 'laura.gomez@travelapp.ar',
-    phone: '+54 381 999-8888',
-    documentNumber: '32456789',
-    status: 'En Viaje',
-    activeTripTitle: 'Mendoza Wine Tour Premium'
-  },
-  {
-    id: 'COORD-02',
-    name: 'Martín Cardozo',
-    email: 'martin.cardozo@travelapp.ar',
-    phone: '+54 381 777-6666',
-    documentNumber: '35123987',
-    status: 'Disponible'
-  },
-  {
-    id: 'COORD-03',
-    name: 'Estela Maris',
-    email: 'estela.maris@travelapp.ar',
-    phone: '+54 381 444-2222',
-    documentNumber: '29876543',
-    status: 'Licencia'
-  }
-];
-
 export default function ExperienceCoordinatorsPage() {
   const [coordinators, setCoordinators] = useState<Coordinator[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,27 +35,23 @@ export default function ExperienceCoordinatorsPage() {
   useEffect(() => {
     // Sincronización en vivo con Firestore
     const unsub = onSnapshot(collection(db, 'coordinators'), (snapshot) => {
-      if (snapshot.empty) {
-        setCoordinators(MOCK_COORDINATORS);
-      } else {
-        const list: Coordinator[] = snapshot.docs.map(docSnap => {
-          const data = docSnap.data();
-          return {
-            id: docSnap.id,
-            name: data.name || '',
-            email: data.email || '',
-            phone: data.phone || '',
-            documentNumber: data.documentNumber || '',
-            status: data.status || 'Disponible',
-            activeTripTitle: data.activeTripTitle || undefined
-          };
-        });
-        setCoordinators(list);
-      }
+      const list: Coordinator[] = snapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          name: data.name || '',
+          email: data.email || '',
+          phone: data.phone || '',
+          documentNumber: data.documentNumber || '',
+          status: data.status || 'Disponible',
+          activeTripTitle: data.activeTripTitle || undefined
+        };
+      });
+      setCoordinators(list);
       setLoading(false);
     }, (error) => {
       console.error("Error loading coordinators:", error);
-      setCoordinators(MOCK_COORDINATORS);
+      setCoordinators([]);
       setLoading(false);
     });
     return () => unsub();

@@ -267,6 +267,7 @@ export default function HomeScreen() {
   const [rewardsBlocks, setRewardsBlocks] = useState<any[]>([]);
   const [rewardsList, setRewardsList] = useState<RewardItem[]>([]);
   const [experiences, setExperiences] = useState<any[]>([]);
+  const [otaPackages, setOtaPackages] = useState<any[]>([]);
   const [passengerTrips, setPassengerTrips] = useState<any[]>([]);
   const [rewardsPoints, setRewardsPoints] = useState(0); // Puntos reales desde Concorde 360 / Firestore
   const [hasReceivedPhotoBonus, setHasReceivedPhotoBonus] = useState(false);
@@ -330,7 +331,7 @@ export default function HomeScreen() {
   // Datos de TravelApp Experience - Viajes Contratados
   const [hasPurchasedOrganizedTrip, setHasPurchasedOrganizedTrip] = useState(false);
   const [contractedTrip, setContractedTrip] = useState<any | null>(null);
-  const [experienceMainTab, setExperienceMainTab] = useState<'catalog' | 'buses' | 'trip'>('catalog');
+  const [experienceMainTab, setExperienceMainTab] = useState<'travelapp' | 'buses' | 'experience' | 'trip'>('travelapp');
   const [busTicketCode, setBusTicketCode] = useState('');
   const [busTicketDest, setBusTicketDest] = useState('');
   const [busTicketAmount, setBusTicketAmount] = useState('');
@@ -713,7 +714,7 @@ export default function HomeScreen() {
     if (hasPurchasedOrganizedTrip) {
       setExperienceMainTab('trip');
     } else {
-      setExperienceMainTab('catalog');
+      setExperienceMainTab('travelapp');
     }
   }, [hasPurchasedOrganizedTrip]);
 
@@ -849,36 +850,53 @@ export default function HomeScreen() {
           setLoadingLocation(false);
           return;
         }
-        let loc = await Location.getLastKnownPositionAsync({});
-        if (!loc) {
-          loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        let loc: Location.LocationObject | null = null;
+        try {
+          loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.High,
+          });
+        } catch {
+          loc = await Location.getLastKnownPositionAsync({
+            maxAge: 60000,
+            requiredAccuracy: 100,
+          });
         }
         if (loc) {
           const userCoords = {
             latitude: loc.coords.latitude,
             longitude: loc.coords.longitude,
-            latitudeDelta: 0.015,
-            longitudeDelta: 0.015,
+            latitudeDelta: 0.012,
+            longitudeDelta: 0.012,
           };
           setCurrentLocation(userCoords);
           setOriginCoords({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
 
-          // Asignar dirección del GPS por defecto al campo de Origen
+          // Asignar dirección exacta del GPS por defecto al campo de Origen (Google Geocoding + fallback OS)
           try {
-            const addressRes = await Location.reverseGeocodeAsync({
-              latitude: loc.coords.latitude,
-              longitude: loc.coords.longitude,
-            });
-            if (addressRes && addressRes.length > 0) {
-              const addr = addressRes[0];
-              const street = addr.street || addr.name || '';
-              const number = addr.streetNumber ? ` ${addr.streetNumber}` : '';
-              const district = addr.city || addr.subregion || addr.region || '';
-              const formatted = street ? `${street}${number}${district ? `, ${district}` : ''}` : 'Ubicación actual';
-              setOrigin(formatted);
-            } else {
-              setOrigin('Ubicación actual');
+            let formatted = '';
+            if (GOOGLE_MAPS_KEY) {
+              const geoResp = await fetch(
+                `https://maps.googleapis.com/maps/api/geocode/json?latlng=${loc.coords.latitude},${loc.coords.longitude}&key=${GOOGLE_MAPS_KEY}&language=es`
+              );
+              const geoJson = await geoResp.json();
+              if (geoJson?.status === 'OK' && Array.isArray(geoJson.results) && geoJson.results.length > 0) {
+                formatted = geoJson.results[0].formatted_address || '';
+              }
             }
+            if (!formatted) {
+              const addressRes = await Location.reverseGeocodeAsync({
+                latitude: loc.coords.latitude,
+                longitude: loc.coords.longitude,
+              });
+              if (addressRes && addressRes.length > 0) {
+                const addr = addressRes[0];
+                const street = addr.street || addr.name || '';
+                const number = addr.streetNumber ? ` ${addr.streetNumber}` : '';
+                const district = addr.city || addr.subregion || addr.region || '';
+                formatted = street ? `${street}${number}${district ? `, ${district}` : ''}` : '';
+              }
+            }
+            setOrigin(formatted || 'Ubicación actual');
           } catch {
             setOrigin('Ubicación actual');
           }
@@ -1039,6 +1057,14 @@ export default function HomeScreen() {
       }
     });
 
+    // 5b. Catálogo de Viajes Emisivos (ota_packages) en tiempo real
+    const unsubOtaPackages = onSnapshot(collection(db, 'ota_packages'), (snap) => {
+      const list = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }) as any)
+        .filter(p => p.active !== false);
+      setOtaPackages(list);
+    });
+
     // 6. Tarifarios activos sincronizados en tiempo real con el Dashboard Web
     const unsubTariffs = onSnapshot(collection(db, 'tariffs'), (snap) => {
       const rawList = snap.docs.map(d => ({ id: d.id, ...d.data() }) as any);
@@ -1085,6 +1111,7 @@ export default function HomeScreen() {
       unsubCMS();
       unsubRewards();
       unsubExperiences();
+      unsubOtaPackages();
       unsubTariffs();
       unsubLogistics();
       unsubNotifications();
@@ -2967,7 +2994,7 @@ export default function HomeScreen() {
                       setActiveTab('home');
                     } else {
                       setActiveTab('experience');
-                      setExperienceMainTab('catalog');
+                      setExperienceMainTab('travelapp');
                     }
                   }}
                 />
@@ -2995,30 +3022,37 @@ export default function HomeScreen() {
             </View>
             <Text style={styles.experienceHeaderDesc}>Tus mejores experiencias aquí</Text>
 
-            {/* Segmented Control de Experiencias */}
-            <View style={styles.segmentedControl}>
+            {/* Segmented Control de Mi Viaje (4 módulos) */}
+            <View style={styles.segmentedControlGrid}>
               <TouchableOpacity 
-                style={[styles.segmentBtn, experienceMainTab === 'catalog' && styles.segmentBtnActive]}
-                onPress={() => setExperienceMainTab('catalog')}
+                style={[styles.segmentBtnGrid, experienceMainTab === 'travelapp' && styles.segmentBtnActive]}
+                onPress={() => setExperienceMainTab('travelapp')}
               >
-                <Ionicons name="earth" size={16} color={experienceMainTab === 'catalog' ? Colors.white : Colors.textSecondary} />
-                <Text style={[styles.segmentText, experienceMainTab === 'catalog' && styles.segmentTextActive]}>Catálogo</Text>
+                <Ionicons name="airplane" size={15} color={experienceMainTab === 'travelapp' ? Colors.white : Colors.textSecondary} />
+                <Text style={[styles.segmentText, experienceMainTab === 'travelapp' && styles.segmentTextActive]} numberOfLines={1}>TravelApp</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.segmentBtn, experienceMainTab === 'buses' && styles.segmentBtnActive]}
+                style={[styles.segmentBtnGrid, experienceMainTab === 'buses' && styles.segmentBtnActive]}
                 onPress={() => setExperienceMainTab('buses')}
               >
-                <Ionicons name="bus" size={16} color={experienceMainTab === 'buses' ? Colors.white : Colors.textSecondary} />
-                <Text style={[styles.segmentText, experienceMainTab === 'buses' && styles.segmentTextActive]}>Buses</Text>
+                <Ionicons name="bus" size={15} color={experienceMainTab === 'buses' ? Colors.white : Colors.textSecondary} />
+                <Text style={[styles.segmentText, experienceMainTab === 'buses' && styles.segmentTextActive]} numberOfLines={1}>Buses</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.segmentBtn, experienceMainTab === 'trip' && styles.segmentBtnActive]}
+                style={[styles.segmentBtnGrid, experienceMainTab === 'experience' && styles.segmentBtnActive]}
+                onPress={() => setExperienceMainTab('experience')}
+              >
+                <Ionicons name="earth" size={15} color={experienceMainTab === 'experience' ? Colors.white : Colors.textSecondary} />
+                <Text style={[styles.segmentText, experienceMainTab === 'experience' && styles.segmentTextActive]} numberOfLines={1}>TravelApp Experience</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.segmentBtnGrid, experienceMainTab === 'trip' && styles.segmentBtnActive]}
                 onPress={() => setExperienceMainTab('trip')}
               >
-                <Ionicons name="compass" size={16} color={experienceMainTab === 'trip' ? Colors.white : Colors.textSecondary} />
-                <Text style={[styles.segmentText, experienceMainTab === 'trip' && styles.segmentTextActive]}>Mi experiencia</Text>
+                <Ionicons name="compass" size={15} color={experienceMainTab === 'trip' ? Colors.white : Colors.textSecondary} />
+                <Text style={[styles.segmentText, experienceMainTab === 'trip' && styles.segmentTextActive]} numberOfLines={1}>Mi viaje</Text>
                 {!hasPurchasedOrganizedTrip && (
-                  <Ionicons name="lock-closed" size={12} color={experienceMainTab === 'trip' ? Colors.white : Colors.textMuted} style={{ marginLeft: 4 }} />
+                  <Ionicons name="lock-closed" size={12} color={experienceMainTab === 'trip' ? Colors.white : Colors.textMuted} style={{ marginLeft: 2 }} />
                 )}
               </TouchableOpacity>
             </View>
@@ -3273,8 +3307,66 @@ export default function HomeScreen() {
               </View>
             )}
 
-            {/* SECCIÓN A: CATÁLOGO */}
-            {experienceMainTab === 'catalog' && (
+            {/* SECCIÓN A: TRAVELAPP (CATÁLOGO DE VIAJES EMISIVOS) - POR DEFECTO */}
+            {experienceMainTab === 'travelapp' && (
+              <View style={styles.catalogContainer}>
+                {otaPackages.length === 0 ? (
+                  <View style={styles.lockedTripContainer}>
+                    <Ionicons name="airplane-outline" size={32} color={Colors.primary} />
+                    <Text style={styles.lockedTripTitle}>Catálogo TravelApp Emisivo</Text>
+                    <Text style={styles.lockedTripDesc}>
+                      Próximamente verás aquí nuestros paquetes internacionales y emisivos disponibles. También podés consultar con un asesor.
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.catalogConsultBtn, { marginTop: 12, paddingHorizontal: 18 }]}
+                      onPress={() => navigation.navigate('Chat')}
+                    >
+                      <Ionicons name="chatbubble-ellipses-outline" size={16} color={Colors.white} />
+                      <Text style={styles.catalogConsultBtnText}>Consultar con Asesor</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  otaPackages.map(item => (
+                    <View key={item.id} style={styles.catalogCard}>
+                      {(item.imageUrl || item.img || item.coverImage) ? (
+                        <Image source={{ uri: item.imageUrl || item.img || item.coverImage }} style={styles.catalogCardImg} />
+                      ) : null}
+                      <View style={styles.catalogCardBody}>
+                        <View style={styles.catalogCardMeta}>
+                          <Text style={styles.catalogDuration}>{item.duration || item.nights ? `${item.nights || ''} Noches` : 'Paquete Emisivo'}</Text>
+                          <Text style={styles.catalogPrice}>
+                            {typeof item.price === 'number'
+                              ? `${item.currency || 'USD'} ${item.price.toLocaleString('es-AR')}`
+                              : item.price || 'Consultar'}
+                          </Text>
+                        </View>
+                        <Text style={styles.catalogTitle}>{item.title || item.name}</Text>
+                        <Text style={styles.catalogDesc}>{item.description || item.desc || item.destination || ''}</Text>
+                        <TouchableOpacity
+                          style={styles.catalogConsultBtn}
+                          onPress={() => {
+                            Alert.alert(
+                              'Consultar Viaje Emisivo',
+                              `¿Querés hablar con un asesor sobre "${item.title || item.name}"?`,
+                              [
+                                { text: 'Chatear con Asesor', onPress: () => navigation.navigate('Chat') },
+                                { text: 'Cancelar', style: 'cancel' }
+                              ]
+                            );
+                          }}
+                        >
+                          <Ionicons name="chatbubble-ellipses-outline" size={16} color={Colors.white} />
+                          <Text style={styles.catalogConsultBtnText}>Consultar Detalles</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))
+                )}
+              </View>
+            )}
+
+            {/* SECCIÓN B: TRAVELAPP EXPERIENCE (CATÁLOGO DE VIAJES RECEPTIVOS) */}
+            {experienceMainTab === 'experience' && (
               <View style={styles.catalogContainer}>
                 {experiences.map(item => (
                   <View key={item.id} style={styles.catalogCard}>
@@ -5995,7 +6087,9 @@ const styles = StyleSheet.create({
   experienceHeaderDesc: { fontSize: 13, fontFamily: 'Quicksand-Bold', color: Colors.textSecondary, marginBottom: 16 },
   
   segmentedControl: { flexDirection: 'row', backgroundColor: '#F1F5F9', borderRadius: 14, padding: 4, marginBottom: 18 },
+  segmentedControlGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, backgroundColor: '#F1F5F9', borderRadius: 14, padding: 6, marginBottom: 18 },
   segmentBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10 },
+  segmentBtnGrid: { minWidth: '47%', flexGrow: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 10, paddingHorizontal: 8, borderRadius: 10 },
   segmentBtnActive: { backgroundColor: Colors.primary },
   segmentText: { fontSize: 13, fontFamily: 'Quicksand-Medium', color: Colors.textSecondary },
   segmentTextActive: { color: Colors.white, fontFamily: 'Quicksand-Bold' },

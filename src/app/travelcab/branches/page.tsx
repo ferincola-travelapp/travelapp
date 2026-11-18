@@ -28,49 +28,6 @@ interface Branch {
   active: boolean;
 }
 
-const MOCK_MOVEMENTS: CashMovement[] = [
-  {
-    id: 'TX-001',
-    branchId: '3',
-    branchName: 'Sucursal Tucumán',
-    amount: 15400,
-    type: 'ingreso',
-    concept: 'Recaudación Caja diaria — Turno Mañana',
-    date: '2026-07-18',
-    registeredBy: 'operator.tuc@travelapp.ar'
-  },
-  {
-    id: 'TX-002',
-    branchId: '1',
-    branchName: 'Sucursal Retiro',
-    amount: 3200,
-    type: 'egreso',
-    concept: 'Insumos de oficina e impresora',
-    date: '2026-07-18',
-    registeredBy: 'ferincola@gmail.com'
-  },
-  {
-    id: 'TX-003',
-    branchId: '3',
-    branchName: 'Sucursal Tucumán',
-    amount: 4500,
-    type: 'egreso',
-    concept: 'Reembolso por peaje — viaje TRP-903',
-    date: '2026-07-17',
-    registeredBy: 'operator.tuc@travelapp.ar'
-  },
-  {
-    id: 'TX-004',
-    branchId: '2',
-    branchName: 'Sucursal Pilar',
-    amount: 25000,
-    type: 'ingreso',
-    concept: 'Pago por adelantado traslado corporativo',
-    date: '2026-07-16',
-    registeredBy: 'ferincola@gmail.com'
-  }
-];
-
 export default function BranchCashPage() {
   const [movements, setMovements] = useState<CashMovement[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);

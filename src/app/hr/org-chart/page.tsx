@@ -20,51 +20,6 @@ interface StaffMember {
   status: 'Activo' | 'Licencia' | 'Baja';
 }
 
-const MOCK_STAFF: StaffMember[] = [
-  {
-    id: 'EMP-01',
-    name: 'Federico Frinconi',
-    dni: '32111222',
-    cuit: '20-32111222-9',
-    fechaIngreso: '2024-01-15',
-    cargo: 'Director Ejecutivo (CEO)',
-    sucursalId: '1',
-    sucursalName: 'Sucursal Retiro',
-    photoBase64: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Federico',
-    reportsToId: '',
-    reportsToName: '',
-    status: 'Activo'
-  },
-  {
-    id: 'EMP-02',
-    name: 'Laura Gómez',
-    dni: '35888999',
-    cuit: '27-35888999-4',
-    fechaIngreso: '2025-02-01',
-    cargo: 'Gerente de Experiencias',
-    sucursalId: '2',
-    sucursalName: 'Sucursal Pilar',
-    photoBase64: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Laura',
-    reportsToId: 'EMP-01',
-    reportsToName: 'Federico Frinconi',
-    status: 'Activo'
-  },
-  {
-    id: 'EMP-03',
-    name: 'Martín Cardozo',
-    dni: '38222333',
-    cuit: '20-38222333-5',
-    fechaIngreso: '2025-05-10',
-    cargo: 'Coordinador de Logística',
-    sucursalId: '3',
-    sucursalName: 'Sucursal Tucumán',
-    photoBase64: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Martin',
-    reportsToId: 'EMP-02',
-    reportsToName: 'Laura Gómez',
-    status: 'Activo'
-  }
-];
-
 function OrgNode({ member, members }: { member: StaffMember; members: StaffMember[] }) {
   const children = members.filter(m => m.reportsToId === member.id);
   
@@ -123,32 +78,28 @@ export default function HROrgChartPage() {
   useEffect(() => {
     // Sincronización en vivo con Firestore
     const unsub = onSnapshot(collection(db, 'hr_staff'), (snapshot) => {
-      if (snapshot.empty) {
-        setStaff(MOCK_STAFF);
-      } else {
-        const list: StaffMember[] = snapshot.docs.map(docSnap => {
-          const data = docSnap.data();
-          return {
-            id: docSnap.id,
-            name: data.name || '',
-            dni: data.dni || '',
-            cuit: data.cuit || '',
-            fechaIngreso: data.fechaIngreso || '',
-            cargo: data.cargo || '',
-            sucursalId: data.sucursalId || '1',
-            sucursalName: data.sucursalName || (data.sucursalId === '2' ? 'Sucursal Pilar' : data.sucursalId === '3' ? 'Sucursal Tucumán' : 'Sucursal Retiro'),
-            photoBase64: data.photoBase64 || '',
-            reportsToId: data.reportsToId || '',
-            reportsToName: data.reportsToName || '',
-            status: data.status || 'Activo'
-          };
-        });
-        setStaff(list);
-      }
+      const list: StaffMember[] = snapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          name: data.name || '',
+          dni: data.dni || '',
+          cuit: data.cuit || '',
+          fechaIngreso: data.fechaIngreso || '',
+          cargo: data.cargo || '',
+          sucursalId: data.sucursalId || '1',
+          sucursalName: data.sucursalName || (data.sucursalId === '2' ? 'Sucursal Pilar' : data.sucursalId === '3' ? 'Sucursal Tucumán' : 'Sucursal Retiro'),
+          photoBase64: data.photoBase64 || '',
+          reportsToId: data.reportsToId || '',
+          reportsToName: data.reportsToName || '',
+          status: data.status || 'Activo'
+        };
+      });
+      setStaff(list);
       setLoading(false);
     }, (error) => {
       console.error("Error loading staff:", error);
-      setStaff(MOCK_STAFF);
+      setStaff([]);
       setLoading(false);
     });
     return () => unsub();

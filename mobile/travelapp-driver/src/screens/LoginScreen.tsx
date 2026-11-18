@@ -116,6 +116,9 @@ export default function LoginScreen() {
   // Fotos de Documentos Requeridos
   const [vehiclePhotoUri, setVehiclePhotoUri] = useState<string | null>(null);
   const [driverLicenseUri, setDriverLicenseUri] = useState<string | null>(null);
+  const [criminalRecordUri, setCriminalRecordUri] = useState<string | null>(null);
+  const [conductCertUri, setConductCertUri] = useState<string | null>(null);
+  const [healthCertUri, setHealthCertUri] = useState<string | null>(null);
   const [cedulaUri, setCedulaUri] = useState<string | null>(null);
   const [rtoUri, setRtoUri] = useState<string | null>(null);
   const [seguroUri, setSeguroUri] = useState<string | null>(null);
@@ -312,6 +315,12 @@ export default function LoginScreen() {
   };
 
   const handleRegisterSubmit = async () => {
+    if (!driverLicenseUri || !criminalRecordUri) {
+      return Alert.alert(
+        'Documentación Requerida',
+        'Por favor adjuntá tu Licencia de Conducir y Certificado de Reincidencia. Buena Conducta y Sanidad son opcionales.'
+      );
+    }
     setSubmittingReg(true);
     try {
       const cleanEmail = regEmail.trim().toLowerCase();
@@ -373,6 +382,9 @@ export default function LoginScreen() {
         documents: {
           vehiclePhoto: vehiclePhotoUri || undefined,
           driverLicense: driverLicenseUri || undefined,
+          criminalRecord: criminalRecordUri || undefined,
+          conductCert: conductCertUri || undefined,
+          healthCert: healthCertUri || undefined,
           cedula: cedulaUri || undefined,
           rto: rtoUri || undefined,
           seguro: seguroUri || undefined,
@@ -444,7 +456,8 @@ export default function LoginScreen() {
       setProfilePhotoUri(null); setVehiclePhotoUri(null); setStreet(''); setStreetNumber(''); setFloorApp(''); setCity('');
       setProvince(''); setPostalCode(''); setTaxIdNumber(''); setCbuCvu(''); setVehicleMake('');
       setVehicleModel(''); setVehicleYear(''); setVehicleColor(''); setVehiclePlate('');
-      setDriverLicenseUri(null); setCedulaUri(null); setRtoUri(null); setSeguroUri(null);
+      setDriverLicenseUri(null); setCriminalRecordUri(null); setConductCertUri(null); setHealthCertUri(null);
+      setCedulaUri(null); setRtoUri(null); setSeguroUri(null);
       setMpEmail(''); setMpLinked(false);
 
       Alert.alert(
@@ -913,24 +926,6 @@ export default function LoginScreen() {
                       </View>
                     </View>
                     
-                    {/* Item 1: Licencia de Conducir */}
-                    <View style={styles.docItemCard}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.docItemTitle}>Licencia de Conducir (Frente/Dorso)</Text>
-                        <Text style={styles.docItemStatus}>
-                          {driverLicenseUri ? '✓ Imagen de Licencia cargada' : 'Cargá foto de tu registro'}
-                        </Text>
-                      </View>
-                      <View style={styles.docBtnRow}>
-                        <TouchableOpacity style={styles.docMiniBtn} onPress={() => handleTakePhoto(setDriverLicenseUri)}>
-                          <Ionicons name="camera" size={14} color={Colors.white} />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.docMiniSecBtn} onPress={() => handlePickImage(setDriverLicenseUri)}>
-                          <Ionicons name="image" size={14} color={Colors.primary} />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-
                     {/* Item 2: Cédula Verde/Azul */}
                     <View style={styles.docItemCard}>
                       <View style={{ flex: 1 }}>
@@ -988,13 +983,91 @@ export default function LoginScreen() {
                 </View>
               )}
 
-              {/* PASO 4: Vinculación Mercado Pago */}
+              {/* PASO 4: Documentación Personal y Conexión Mercado Pago */}
               {regStep === 4 && (
                 <View style={styles.stepContainer}>
-                  <Text style={styles.stepTitle}>Paso 4: Conexión de Cobros Mercado Pago</Text>
-                  
+                  <Text style={styles.stepTitle}>Paso 4: Documentación Personal</Text>
+
                   <Text style={styles.stepSubtitle}>
-                    Para procesar las tarifas con cobro digital y acreditación neta directa, conectá tu cuenta de Mercado Pago.
+                    Adjuntá tu documentación personal. Licencia de Conducir y Certificado de Reincidencia son obligatorios; Buena Conducta y Sanidad son opcionales.
+                  </Text>
+
+                  <View style={{ gap: 10, marginBottom: 14 }}>
+                    {/* Licencia de Conducir */}
+                    <View style={styles.docItemCard}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.docItemTitle}>Licencia de Conducir (vigente) *</Text>
+                        <Text style={styles.docItemStatus}>
+                          {driverLicenseUri ? '✓ Licencia cargada' : 'Obligatoria: cargá foto de tu registro'}
+                        </Text>
+                      </View>
+                      <View style={styles.docBtnRow}>
+                        <TouchableOpacity style={styles.docMiniBtn} onPress={() => handleTakePhoto(setDriverLicenseUri)}>
+                          <Ionicons name="camera" size={14} color={Colors.white} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.docMiniSecBtn} onPress={() => handlePickImage(setDriverLicenseUri)}>
+                          <Ionicons name="image" size={14} color={Colors.primary} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    {/* Certificado de Reincidencia */}
+                    <View style={styles.docItemCard}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.docItemTitle}>Certificado de Reincidencia *</Text>
+                        <Text style={styles.docItemStatus}>
+                          {criminalRecordUri ? '✓ Reincidencia cargada' : 'Obligatorio: antecedentes penales'}
+                        </Text>
+                      </View>
+                      <View style={styles.docBtnRow}>
+                        <TouchableOpacity style={styles.docMiniBtn} onPress={() => handleTakePhoto(setCriminalRecordUri)}>
+                          <Ionicons name="camera" size={14} color={Colors.white} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.docMiniSecBtn} onPress={() => handlePickImage(setCriminalRecordUri)}>
+                          <Ionicons name="image" size={14} color={Colors.primary} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    {/* Certificado de Buena Conducta (Opcional) */}
+                    <View style={styles.docItemCard}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.docItemTitle}>Buena Conducta (Policía) (Opcional)</Text>
+                        <Text style={styles.docItemStatus}>
+                          {conductCertUri ? '✓ Buena Conducta cargada' : 'Opcional: podés cargarlo más adelante'}
+                        </Text>
+                      </View>
+                      <View style={styles.docBtnRow}>
+                        <TouchableOpacity style={styles.docMiniBtn} onPress={() => handleTakePhoto(setConductCertUri)}>
+                          <Ionicons name="camera" size={14} color={Colors.white} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.docMiniSecBtn} onPress={() => handlePickImage(setConductCertUri)}>
+                          <Ionicons name="image" size={14} color={Colors.primary} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    {/* Certificado de Sanidad (Opcional) */}
+                    <View style={styles.docItemCard}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.docItemTitle}>Certificado de Sanidad (Opcional)</Text>
+                        <Text style={styles.docItemStatus}>
+                          {healthCertUri ? '✓ Sanidad cargado' : 'Opcional: podés cargarlo más adelante'}
+                        </Text>
+                      </View>
+                      <View style={styles.docBtnRow}>
+                        <TouchableOpacity style={styles.docMiniBtn} onPress={() => handleTakePhoto(setHealthCertUri)}>
+                          <Ionicons name="camera" size={14} color={Colors.white} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.docMiniSecBtn} onPress={() => handlePickImage(setHealthCertUri)}>
+                          <Ionicons name="image" size={14} color={Colors.primary} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+
+                  <Text style={[styles.stepSubtitle, { marginBottom: 8 }]}>
+                    Conexión de Cobros Mercado Pago (Opcional para Split Digital):
                   </Text>
 
                   <View style={styles.mpConnectCard}>

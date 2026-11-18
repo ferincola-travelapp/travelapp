@@ -298,12 +298,12 @@ const Step3 = ({ data, set, setB }: { data: FormData; set: (k: keyof FormData, v
 // ── Step 4: Documentation ─────────────────────────────────────
 const Step4 = ({ data, set }: { data: FormData; set: (k: keyof FormData, v: string) => void }) => (
   <div className="space-y-4">
-    <p className="text-xs text-slate-500">Adjuntá los documentos del conductor. Podés subir archivos PDF/JPG o capturar directamente con la cámara.</p>
+    <p className="text-xs text-slate-500">Adjuntá los documentos del conductor. Licencia de Conducir y Certificado de Reincidencia son obligatorios; Buena Conducta y Sanidad son opcionales.</p>
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      <FileField label="Licencia de Conducir (vigente)" value={data.driverLicense} onChange={v => set('driverLicense', v)} />
-      <FileField label="Certificado de Reincidencia" value={data.criminalRecord} onChange={v => set('criminalRecord', v)} />
-      <FileField label="Certificado de Buena Conducta" value={data.conductCert} onChange={v => set('conductCert', v)} />
-      <FileField label="Certificado de Sanidad" value={data.healthCert} onChange={v => set('healthCert', v)} />
+      <FileField label="Licencia de Conducir (vigente) *" value={data.driverLicense} onChange={v => set('driverLicense', v)} />
+      <FileField label="Certificado de Reincidencia *" value={data.criminalRecord} onChange={v => set('criminalRecord', v)} />
+      <FileField label="Certificado de Buena Conducta (Opcional)" value={data.conductCert} onChange={v => set('conductCert', v)} />
+      <FileField label="Certificado de Sanidad (Opcional)" value={data.healthCert} onChange={v => set('healthCert', v)} />
     </div>
     <FileField label="Seguro Comercial — Póliza (PDF)" value={''} onChange={() => {}} />
   </div>
@@ -361,6 +361,12 @@ export default function NewPartnerPage() {
               licenseNumber: data.sutrappaLicense || '',
               holder: data.sutrappaHolder || ''
             }
+          },
+          documents: {
+            driverLicense: data.driverLicense || undefined,
+            criminalRecord: data.criminalRecord || undefined,
+            conductCert: data.conductCert || undefined,
+            healthCert: data.healthCert || undefined,
           },
           status: 'En Revisión',
           walletBalance: 0,

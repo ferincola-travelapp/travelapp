@@ -24,43 +24,6 @@ interface Merchant {
   status: 'Activo' | 'Inactivo';
 }
 
-const MOCK_MERCHANTS: Merchant[] = [
-  {
-    id: 'MERCH-01',
-    nombreFantasia: "McDonald's Pilar",
-    razonSocial: "Arcos Dorados S.A.",
-    cuit: "30-11223344-9",
-    domicilio: "Av. Las Magnolias 700",
-    localidad: "Pilar",
-    provincia: "Buenos Aires",
-    titularName: "Carlos Alberto Pérez",
-    titularCargo: "Gerente Operativo",
-    telefono: "+54 11 555-5555",
-    fechaAlta: "2025-01-10",
-    fechaVencimiento: "2026-10-10",
-    rubroName: "Gastronomía",
-    categoryName: "Gold",
-    status: "Activo"
-  },
-  {
-    id: 'MERCH-02',
-    nombreFantasia: "Shell Combustibles Retiro",
-    razonSocial: "Shell Argentina S.A.",
-    cuit: "30-77889900-5",
-    domicilio: "Av. Ramos Mejía 1200",
-    localidad: "Retiro",
-    provincia: "Capital Federal",
-    titularName: "Eduardo López",
-    titularCargo: "Titular de Estación",
-    telefono: "+54 11 444-4444",
-    fechaAlta: "2025-03-15",
-    fechaVencimiento: "2026-03-15",
-    rubroName: "Traslados Logísticos",
-    categoryName: "Platinum",
-    status: "Activo"
-  }
-];
-
 export default function AssociatedMerchantsListPage() {
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,35 +32,31 @@ export default function AssociatedMerchantsListPage() {
   useEffect(() => {
     // Sincronización en vivo con Firestore
     const unsub = onSnapshot(collection(db, 'rewards_merchants'), (snapshot) => {
-      if (snapshot.empty) {
-        setMerchants(MOCK_MERCHANTS);
-      } else {
-        const list: Merchant[] = snapshot.docs.map(docSnap => {
-          const data = docSnap.data();
-          return {
-            id: docSnap.id,
-            nombreFantasia: data.nombreFantasia || 'Comercio',
-            razonSocial: data.razonSocial || '',
-            cuit: data.cuit || '',
-            domicilio: data.domicilio || '',
-            localidad: data.localidad || '',
-            provincia: data.provincia || '',
-            titularName: data.titularName || '',
-            titularCargo: data.titularCargo || '',
-            telefono: data.telefono || '',
-            fechaAlta: data.fechaAlta || '',
-            fechaVencimiento: data.fechaVencimiento || '',
-            rubroName: data.rubroName || 'Gastronomía',
-            categoryName: data.categoryName || 'Gold',
-            status: data.status || 'Activo'
-          };
-        });
-        setMerchants(list);
-      }
+      const list: Merchant[] = snapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          nombreFantasia: data.nombreFantasia || 'Comercio',
+          razonSocial: data.razonSocial || '',
+          cuit: data.cuit || '',
+          domicilio: data.domicilio || '',
+          localidad: data.localidad || '',
+          provincia: data.provincia || '',
+          titularName: data.titularName || '',
+          titularCargo: data.titularCargo || '',
+          telefono: data.telefono || '',
+          fechaAlta: data.fechaAlta || '',
+          fechaVencimiento: data.fechaVencimiento || '',
+          rubroName: data.rubroName || 'Gastronomía',
+          categoryName: data.categoryName || 'Gold',
+          status: data.status || 'Activo'
+        };
+      });
+      setMerchants(list);
       setLoading(false);
     }, (error) => {
       console.error("Error loading merchants:", error);
-      setMerchants(MOCK_MERCHANTS);
+      setMerchants([]);
       setLoading(false);
     });
     return () => unsub();

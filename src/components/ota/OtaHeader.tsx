@@ -419,6 +419,14 @@ export function OtaHeader({
                     </div>
                     <div className="py-1">
                       <Link
+                        href="/mi-perfil"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                      >
+                        <UserIcon className="w-3.5 h-3.5 text-[#FF5A19]" />
+                        <span>Mi Perfil de Viajero</span>
+                      </Link>
+                      <Link
                         href="/marketplace"
                         onClick={() => setUserMenuOpen(false)}
                         className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
@@ -454,16 +462,16 @@ export function OtaHeader({
             ) : (
               <div className="flex items-center gap-1 sm:gap-2">
                 <Link
-                  href="/login"
+                  href="/ingresar"
                   className="px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-sm text-[11px] sm:text-xs font-bold text-white hover:bg-white/10 transition-all border border-white/25 bg-white/5 whitespace-nowrap"
                 >
                   Ingresar
                 </Link>
                 <Link
-                  href="/registro"
+                  href="/mi-perfil"
                   className="px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-sm text-[11px] sm:text-xs font-black bg-white hover:bg-slate-100 text-[#0A2A5B] transition-colors whitespace-nowrap"
                 >
-                  Registro
+                  Crear Perfil
                 </Link>
               </div>
             )}

@@ -1130,9 +1130,7 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
     if (dRegStep === 3) {
       return (
         dRegData.driverLicense !== '' &&
-        dRegData.criminalRecord !== '' &&
-        dRegData.conductCert !== '' &&
-        dRegData.healthCert !== ''
+        dRegData.criminalRecord !== ''
       );
     }
     return false;
@@ -1344,10 +1342,16 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
               </a>
 
               <a
-                href="/login"
+                href="/ingresar"
                 className="px-3.5 py-1.5 rounded-full border border-white/25 text-white text-[12px] font-medium hover:bg-white/10 transition-colors"
               >
                 Ingresar
+              </a>
+              <a
+                href="/mi-perfil"
+                className="px-3.5 py-1.5 rounded-full border border-white/25 text-white text-[12px] font-medium hover:bg-white/10 transition-colors"
+              >
+                Crear Perfil
               </a>
 
               <div className="relative group">
@@ -1423,11 +1427,18 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
 
               <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
                 <a
-                  href="/login"
+                  href="/ingresar"
                   onClick={() => setMobileMenuOpen(false)}
                   className="w-full text-center block rounded-full border border-white/25 py-2 text-xs font-semibold text-white hover:bg-white/10"
                 >
                   Ingresar
+                </a>
+                <a
+                  href="/mi-perfil"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="w-full text-center block rounded-full border border-white/25 py-2 text-xs font-semibold text-white hover:bg-white/10"
+                >
+                  Crear Perfil
                 </a>
                 <button
                   onClick={() => { setPRegStep(1); setRegisterModal({ isOpen: true, role: 'passenger' }); setMobileMenuOpen(false); }}
@@ -3400,7 +3411,7 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
                   {dRegStep === 3 && (
                     <div className="space-y-4">
                       <p className="text-[10px] text-slate-400 mb-4 leading-normal">
-                        Adjunte los documentos requeridos del conductor utilizando la cámara o subiendo el archivo. Todos los campos son de carga obligatoria.
+                        Adjunte los documentos del conductor utilizando la cámara o subiendo el archivo. Licencia de Conducir y Certificado de Reincidencia son obligatorios; Buena Conducta y Sanidad son opcionales.
                       </p>
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3435,7 +3446,7 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
                         </div>
 
                         <div className="rounded-xl border border-slate-200 p-3 bg-slate-50 space-y-2">
-                          <label className="block text-[10px] font-bold text-slate-700">Buena Conducta (Policía) <span className="text-red-500">*</span></label>
+                          <label className="block text-[10px] font-bold text-slate-700">Buena Conducta (Policía) <span className="text-slate-400 font-normal">(Opcional)</span></label>
                           <div className="flex gap-2">
                             <label className="flex-1 flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors shadow-sm">
                               <Upload className="h-3.5 w-3.5" /> Subir
@@ -3450,7 +3461,7 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
                         </div>
 
                         <div className="rounded-xl border border-slate-200 p-3 bg-slate-50 space-y-2">
-                          <label className="block text-[10px] font-bold text-slate-700">Certificado de Sanidad <span className="text-red-500">*</span></label>
+                          <label className="block text-[10px] font-bold text-slate-700">Certificado de Sanidad <span className="text-slate-400 font-normal">(Opcional)</span></label>
                           <div className="flex gap-2">
                             <label className="flex-1 flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors shadow-sm">
                               <Upload className="h-3.5 w-3.5" /> Subir

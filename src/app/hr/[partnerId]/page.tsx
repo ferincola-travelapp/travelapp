@@ -11,47 +11,6 @@ import { DriverPartner, PartnerStatus } from '@/types/partners';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
-// ── Mock Partner Data ─────────────────────────────────────────
-const MOCK_PARTNER: DriverPartner = {
-  id: 'DRV-001',
-  createdAt: Date.now() - 86400000 * 30,
-  updatedAt: Date.now(),
-  firstName: 'Carlos',
-  lastName: 'Mamani',
-  dob: '1988-04-12',
-  email: 'carlos.mamani@gmail.com',
-  phone: '+54 381 456-7890',
-  photoUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Carlos',
-  address: {
-    street: 'Av. Belgrano', number: '1250', floor: '3', apartment: 'B',
-    city: 'San Miguel de Tucumán', province: 'Tucumán', postalCode: '4000',
-  },
-  taxInfo: { taxIdType: 'CUIL', taxIdNumber: '20-88441230-5' },
-  bankInfo: { cbuCvu: '0000003100012345678901', alias: 'carlos.mamani.mp', accountHolder: 'Carlos Mamani' },
-  vehicle: {
-    id: 'VH-001',
-    make: 'Volkswagen', model: 'Gol Trend', year: 2020,
-    color: 'Blanco', licensePlate: 'AB 123 CD',
-    sutrappa: { isActive: true, licenseNumber: 'REM-004512', holder: 'Carlos Mamani' },
-  },
-  driverLicenseUrl: '/docs/lic-001.pdf',
-  criminalRecordUrl: '/docs/reincidencia-001.pdf',
-  conductCertificateUrl: '/docs/conducta-001.pdf',
-  healthCertificateUrl: '/docs/sanidad-001.pdf',
-  status: 'Activo',
-  wallet: {
-    cashBalance: 12450.75,
-    pointsBalance: 3200,
-    transactions: [
-      { id: 'T1', date: Date.now() - 86400000 * 1, type: 'credit', amount: 2800, description: 'Liquidación semanal — 14 viajes' },
-      { id: 'T2', date: Date.now() - 86400000 * 3, type: 'bonus', amount: 500, description: 'Bono rendimiento — 5 estrellas' },
-      { id: 'T3', date: Date.now() - 86400000 * 7, type: 'withdrawal', amount: -5000, description: 'Retiro a CBU' },
-      { id: 'T4', date: Date.now() - 86400000 * 10, type: 'credit', amount: 3200, description: 'Liquidación semanal — 18 viajes' },
-      { id: 'T5', date: Date.now() - 86400000 * 14, type: 'credit', amount: 2950, description: 'Liquidación semanal — 16 viajes' },
-    ],
-  },
-};
-
 // ── Helpers ───────────────────────────────────────────────────
 const statusConfig: Record<PartnerStatus, { color: string; icon: React.ReactNode }> = {
   'Activo': { color: 'bg-emerald-100 text-emerald-700', icon: <CheckCircle className="h-4 w-4" /> },
@@ -110,7 +69,8 @@ export default function PartnerProfilePage({ params }: { params: Promise<{ partn
   const partnerId = unwrappedParams.partnerId;
 
   const [activeTab, setActiveTab] = useState('personal');
-  const [partner, setPartner] = useState<DriverPartner>(MOCK_PARTNER);
+  const [partner, setPartner] = useState<DriverPartner | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'drivers', partnerId), (snap) => {
@@ -159,13 +119,34 @@ export default function PartnerProfilePage({ params }: { params: Promise<{ partn
           }
         } as DriverPartner);
       } else {
-        // Si no está en drivers, también escuchar partners/{partnerId}
+        setPartner(null);
       }
+      setLoading(false);
     }, (error) => {
       console.error("Error loading partner detail:", error);
+      setLoading(false);
     });
     return () => unsub();
   }, [partnerId]);
+
+  if (loading) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-slate-50 p-6 text-sm font-medium text-slate-500">
+        Cargando legajo del conductor...
+      </div>
+    );
+  }
+
+  if (!partner) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center bg-slate-50 p-6 gap-4">
+        <p className="text-sm font-semibold text-slate-600">No se encontró el conductor solicitado ({partnerId}).</p>
+        <Link href="/hr" className="text-sm font-bold text-tech-blue hover:underline flex items-center gap-1.5">
+          <ArrowLeft className="h-4 w-4" /> Volver a RRHH
+        </Link>
+      </div>
+    );
+  }
 
   const statusCfg = statusConfig[partner.status] ?? { color: 'bg-slate-100 text-slate-700', icon: <AlertCircle className="h-4 w-4" /> };
 

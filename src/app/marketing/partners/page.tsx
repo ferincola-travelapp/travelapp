@@ -35,84 +35,10 @@ export interface AffiliateApplicant {
   createdAt: number;
 }
 
-const MOCK_APPLICANTS: AffiliateApplicant[] = [
-  {
-    id: 'APP-101',
-    fullName: 'María Florencia Rossi',
-    dniCuit: '20-34567890-9',
-    dob: '1995-06-15',
-    email: 'florencia.travels@gmail.com',
-    phone: '+54 9 381 445-1234',
-    province: 'Tucumán',
-    city: 'San Miguel de Tucumán',
-    category: 'Aventura & Turismo',
-    socialChannels: 'https://instagram.com/flor_travels, https://tiktok.com/@flor_travels',
-    publicationLinks: [
-      'https://instagram.com/reel/C123456789',
-      'https://tiktok.com/@flor_travels/video/987654321',
-      'https://youtube.com/watch?v=travel_tucuman_01'
-    ],
-    motivationText: 'Me dedico a crear contenido de viajes y aventuras en el norte argentino. Mis seguidores confían en mis recomendaciones y me encantaría promocionar las experiencias de TravelApp.',
-    payoutMethod: 'mp_instant',
-    alias: 'FLOR.TRAVEL.MP',
-    status: 'pending',
-    createdAt: Date.now() - 86400000 * 2,
-  },
-  {
-    id: 'APP-102',
-    fullName: 'Lucas Excursiones & Vlogs',
-    dniCuit: '20-36789012-4',
-    dob: '1992-11-20',
-    email: 'lucas.vlogs@gmail.com',
-    phone: '+54 9 381 556-7890',
-    province: 'Tucumán',
-    city: 'Yerba Buena',
-    category: 'LifeStyle & Vlogs',
-    socialChannels: 'https://youtube.com/lucasvlogs, https://instagram.com/lucas_vlogs',
-    publicationLinks: [
-      'https://instagram.com/p/C987654321',
-      'https://youtube.com/watch?v=valles_calchaquies'
-    ],
-    motivationText: 'Reviso alojamientos y excursiones VIP en Tucumán y Salta. Tengo una comunidad activa de 45.000 seguidores en YouTube.',
-    payoutMethod: 'cbu_weekly',
-    cbuCvu: '0000003100084592019482',
-    alias: 'LUCAS.VLOGS.CBU',
-    accountHolder: 'Lucas Gabriel Benítez',
-    status: 'active',
-    refCode: 'LUCAS_EXCURSION',
-    assignedCouponCode: 'LUCAS15OFF',
-    createdAt: Date.now() - 86400000 * 15,
-  },
-  {
-    id: 'APP-103',
-    fullName: 'Camila Rutas Tucumán',
-    dniCuit: '27-38901234-8',
-    dob: '1998-03-04',
-    email: 'camila.rutas@hotmail.com',
-    phone: '+54 9 381 998-1122',
-    province: 'Tucumán',
-    city: 'Tafí del Valle',
-    category: 'Gastronomía & Salidas',
-    socialChannels: 'https://instagram.com/camila_rutas',
-    publicationLinks: [
-      'https://instagram.com/p/C456789123'
-    ],
-    motivationText: 'Promociono rutas gastronómicas y estancias en Tafí del Valle.',
-    payoutMethod: 'cbu_weekly',
-    cbuCvu: '0000007900011294810293',
-    alias: 'CAMI.RUTAS.TUC',
-    accountHolder: 'Camila Paz',
-    status: 'suspended',
-    refCode: 'CAMI_RUTAS',
-    assignedCouponCode: 'CAMI5OFF',
-    createdAt: Date.now() - 86400000 * 30,
-  }
-];
-
 export default function MarketingPartnersPage() {
   const [activeTab, setActiveTab] = useState<'applicants' | 'tiers' | 'payouts'>('applicants');
   const [tiers, setTiers] = useState<ExperiencePartnerTier[]>(DEFAULT_EXPERIENCE_TIERS);
-  const [applicants, setApplicants] = useState<AffiliateApplicant[]>(MOCK_APPLICANTS);
+  const [applicants, setApplicants] = useState<AffiliateApplicant[]>([]);
   const [selectedApplicant, setSelectedApplicant] = useState<AffiliateApplicant | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'active' | 'suspended'>('all');

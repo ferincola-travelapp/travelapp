@@ -28,63 +28,6 @@ interface StaffMember {
   status: 'Activo' | 'Licencia' | 'Baja';
 }
 
-const MOCK_STAFF: StaffMember[] = [
-  {
-    id: 'EMP-01',
-    name: 'Federico Frinconi',
-    dni: '32111222',
-    cuit: '20-32111222-9',
-    fechaIngreso: '2024-01-15',
-    cargo: 'Director Ejecutivo (CEO)',
-    sucursalId: '1',
-    sucursalName: 'Sucursal Retiro',
-    photoBase64: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Federico',
-    contractPdfBase64: '',
-    reportsToId: '',
-    reportsToName: '',
-    email: 'federico.frinconi@concorde.360.com',
-    phone: '+54 11 5555-0001',
-    commissionPercent: 3.5,
-    status: 'Activo'
-  },
-  {
-    id: 'EMP-02',
-    name: 'Laura Gómez',
-    dni: '35888999',
-    cuit: '27-35888999-4',
-    fechaIngreso: '2025-02-01',
-    cargo: 'Gerente de Experiencias',
-    sucursalId: '2',
-    sucursalName: 'Sucursal Pilar',
-    photoBase64: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Laura',
-    contractPdfBase64: '',
-    reportsToId: 'EMP-01',
-    reportsToName: 'Federico Frinconi',
-    email: 'laura.gomez@concorde.360.com',
-    phone: '+54 11 5555-0002',
-    commissionPercent: 3.0,
-    status: 'Activo'
-  },
-  {
-    id: 'EMP-03',
-    name: 'Martín Cardozo',
-    dni: '38222333',
-    cuit: '20-38222333-5',
-    fechaIngreso: '2025-05-10',
-    cargo: 'Asesor de Ventas & Emisión',
-    sucursalId: '3',
-    sucursalName: 'Sucursal Tucumán',
-    photoBase64: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Martin',
-    contractPdfBase64: '',
-    reportsToId: 'EMP-02',
-    reportsToName: 'Laura Gómez',
-    email: 'martin.cardozo@concorde.360.com',
-    phone: '+54 381 5555-0003',
-    commissionPercent: 2.5,
-    status: 'Activo'
-  }
-];
-
 export default function HRStaffPage() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -129,36 +72,32 @@ export default function HRStaffPage() {
   useEffect(() => {
     // Sincronización en vivo con Firestore
     const unsub = onSnapshot(collection(db, 'hr_staff'), (snapshot) => {
-      if (!snapshot.empty) {
-        const list: StaffMember[] = snapshot.docs.map(docSnap => {
-          const data = docSnap.data();
-          return {
-            id: docSnap.id,
-            name: data.name || '',
-            dni: data.dni || '',
-            cuit: data.cuit || '',
-            fechaIngreso: data.fechaIngreso || '',
-            cargo: data.cargo || '',
-            sucursalId: data.sucursalId || '1',
-            sucursalName: data.sucursalName || (data.sucursalId === '2' ? 'Sucursal Pilar' : data.sucursalId === '3' ? 'Sucursal Tucumán' : 'Sucursal Retiro'),
-            photoBase64: data.photoBase64 || '',
-            contractPdfBase64: data.contractPdfBase64 || '',
-            reportsToId: data.reportsToId || '',
-            reportsToName: data.reportsToName || '',
-            email: data.email || '',
-            phone: data.phone || '',
-            commissionPercent: Number(data.commissionPercent || 3.0),
-            status: data.status || 'Activo'
-          };
-        });
-        setStaff(list);
-      } else {
-        setStaff(MOCK_STAFF);
-      }
+      const list: StaffMember[] = snapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          name: data.name || '',
+          dni: data.dni || '',
+          cuit: data.cuit || '',
+          fechaIngreso: data.fechaIngreso || '',
+          cargo: data.cargo || '',
+          sucursalId: data.sucursalId || '1',
+          sucursalName: data.sucursalName || (data.sucursalId === '2' ? 'Sucursal Pilar' : data.sucursalId === '3' ? 'Sucursal Tucumán' : 'Sucursal Retiro'),
+          photoBase64: data.photoBase64 || '',
+          contractPdfBase64: data.contractPdfBase64 || '',
+          reportsToId: data.reportsToId || '',
+          reportsToName: data.reportsToName || '',
+          email: data.email || '',
+          phone: data.phone || '',
+          commissionPercent: Number(data.commissionPercent || 3.0),
+          status: data.status || 'Activo'
+        };
+      });
+      setStaff(list);
       setLoading(false);
     }, (error) => {
       console.error("Error loading staff:", error);
-      setStaff(MOCK_STAFF);
+      setStaff([]);
       setLoading(false);
     });
     return () => unsub();

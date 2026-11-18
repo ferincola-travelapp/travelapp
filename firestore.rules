@@ -323,7 +323,8 @@ service cloud.firestore {
 
     // --- TRAVELAPP TURISMO EMISIVO & CRM ---
     match /leads/{leadId} {
-      allow read, write: if isAdmin();
+      allow create: if true;
+      allow read, update, delete: if isAuthenticated();
     }
     match /crm_leads/{leadId} {
       allow create: if true;
@@ -338,6 +339,10 @@ service cloud.firestore {
     match /providers/{provId} {
       allow read, write: if isAdmin();
     }
+    match /service_providers/{provId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
     match /rooming_lists/{roomingId} {
       allow read, write: if isAdmin();
     }
@@ -350,6 +355,66 @@ service cloud.firestore {
     }
     match /own_trip_quotes/{quoteId} {
       allow read, write: if isAdmin();
+    }
+
+    // --- TRAVIS IA, OMNICANALIDAD, TELEFONÍA & WEBHOOKS ---
+    match /travisConfig/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /conversations/{convId} {
+      allow read, write: if isAuthenticated();
+      match /messages/{msgId} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+    match /calls/{callId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /payment_webhooks_log/{logId} {
+      allow create: if isAuthenticated();
+      allow read, update, delete: if isAdmin();
+    }
+    match /cash_movements/{movId} {
+      allow read, create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+    match /calendar_events/{eventId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // --- PARTNERS, AFILIADOS, RRHH & REWARDS ---
+    match /partners/{partnerId} {
+      allow read, create: if isAuthenticated();
+      allow update: if isOwner(partnerId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+    match /affiliate_applications/{appId} {
+      allow create: if true;
+      allow read, update, delete: if isAuthenticated();
+    }
+    match /hr_staff/{staffId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    match /role_permissions/{roleId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    match /rewards_merchants/{merchantId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /reward_rules/{ruleId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /reward_items/{itemId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /bus_ticket_claims/{claimId} {
+      allow create: if isAuthenticated();
+      allow read, update, delete: if isAuthenticated();
     }
   }
 }
