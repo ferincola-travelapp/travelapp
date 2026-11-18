@@ -9,6 +9,7 @@ import {
   Calendar,
   Building2,
   BarChart2,
+  RefreshCw,
 } from 'lucide-react';
 import {
   collection,
@@ -35,16 +36,55 @@ import { useAuth } from '@/contexts/AuthContext';
 
 // 1. Flujo y Bancos (Solo Mercado Pago real + Cuentas Manuales en Firestore)
 export function RealFlowAndBanksTab() {
+  const { user } = useAuth();
   const [accounts, setAccounts] = useState<{ id: string; name: string; bank: string; cbu: string; balance: number }[]>([]);
-  const [mpBalance, setMpBalance] = useState<{ available: number; total: number; loaded: boolean }>({
+  const [mpBalance, setMpBalance] = useState<{
+    available: number;
+    total: number;
+    loaded: boolean;
+    loading: boolean;
+    nickname?: string;
+    isTestUser?: boolean;
+    error?: string;
+    updatedAt?: string;
+  }>({
     available: 0,
     total: 0,
     loaded: false,
+    loading: false,
   });
   const [name, setName] = useState('');
   const [bank, setBank] = useState('');
   const [cbu, setCbu] = useState('');
   const [balance, setBalance] = useState('');
+
+  const loadMp = async () => {
+    const firebaseUser = auth.currentUser;
+    if (!firebaseUser) return;
+    setMpBalance((prev) => ({ ...prev, loading: true, error: undefined }));
+    try {
+      const token = await firebaseUser.getIdToken();
+      const res = await fetch('/api/mercadopago/balance', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMpBalance({
+          available: Number(data?.balance?.available_balance || 0),
+          total: Number(data?.balance?.total_amount || 0),
+          loaded: true,
+          loading: false,
+          nickname: data?.user?.nickname,
+          isTestUser: Boolean(data?.user?.isTestUser),
+          updatedAt: data?.updatedAt,
+        });
+      } else {
+        setMpBalance((prev) => ({ ...prev, loading: false, error: `HTTP ${res.status}` }));
+      }
+    } catch {
+      setMpBalance((prev) => ({ ...prev, loading: false, error: 'Sin conexión a API MP' }));
+    }
+  };
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'bank_accounts'), (snap) => {
@@ -59,29 +99,14 @@ export function RealFlowAndBanksTab() {
       );
     });
 
-    const loadMp = async () => {
-      try {
-        const token = await auth.currentUser?.getIdToken();
-        if (!token) return;
-        const res = await fetch('/api/mercadopago/balance', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setMpBalance({
-            available: Number(data?.balance?.available_balance || 0),
-            total: Number(data?.balance?.total_amount || 0),
-            loaded: true,
-          });
-        }
-      } catch {
-        // Silencioso si no hay token MP configurado
-      }
-    };
-    loadMp();
-
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    if (user || auth.currentUser) {
+      loadMp();
+    }
+  }, [user]);
 
   const handleAddAccount = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,16 +133,36 @@ export function RealFlowAndBanksTab() {
             <span className="text-xs font-bold uppercase tracking-wider text-[#0a2a5b]">
               Mercado Pago Oficial
             </span>
-            <Landmark className="w-4 h-4 text-[#0a2a5b]" />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={loadMp}
+                disabled={mpBalance.loading}
+                title="Sincronizar saldo de Mercado Pago"
+                className="p-1 rounded-md text-[#0a2a5b] hover:bg-[#0a2a5b]/10 disabled:opacity-50 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${mpBalance.loading ? 'animate-spin' : ''}`} />
+              </button>
+              <Landmark className="w-4 h-4 text-[#0a2a5b]" />
+            </div>
           </div>
           <p className="text-2xl font-bold text-[#0a2a5b] mt-3">
             ${mpBalance.available.toLocaleString('es-AR')}
           </p>
           <p className="text-[11px] text-slate-500 mt-1">
-            {mpBalance.loaded
-              ? `Saldo total: $${mpBalance.total.toLocaleString('es-AR')}`
-              : 'Conectado a API Mercado Pago'}
+            {mpBalance.error
+              ? `Error al consultar MP: ${mpBalance.error}`
+              : mpBalance.loaded
+                ? `Saldo total: $${mpBalance.total.toLocaleString('es-AR')}${mpBalance.nickname ? ` · ${mpBalance.nickname}` : ''}`
+                : mpBalance.loading
+                  ? 'Sincronizando con Mercado Pago...'
+                  : 'Conectado a API Mercado Pago'}
           </p>
+          {mpBalance.isTestUser && (
+            <p className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-2">
+              Token de prueba (TESTUSER) activo — reemplazá MP_ACCESS_TOKEN en Vercel por el token productivo real.
+            </p>
+          )}
         </div>
 
         {/* Cuentas Manuales Reales */}

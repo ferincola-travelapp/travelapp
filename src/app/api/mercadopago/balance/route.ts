@@ -100,7 +100,8 @@ export async function GET(req: NextRequest) {
         nickname: userData?.company?.corporate_name || userData?.nickname || 'TRAVELAPP S. A. S.',
         email: userData?.email || 'fernando@travelapp.ar',
         collectorId: userData?.id ? String(userData.id) : '3469091946',
-        cuit: userData?.company?.identification || userData?.identification?.number || '30719220343'
+        cuit: userData?.company?.identification || userData?.identification?.number || '30719220343',
+        isTestUser: String(userData?.nickname || '').startsWith('TESTUSER')
       },
       updatedAt: new Date().toISOString()
     });
