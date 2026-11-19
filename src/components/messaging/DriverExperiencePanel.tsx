@@ -111,8 +111,8 @@ export function DriverExperiencePanel() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-50 p-6">
-      <div className="max-w-4xl mx-auto space-y-5">
+    <div className="w-full">
+      <div className="w-full space-y-5">
         {/* Header */}
         <div className="bg-white rounded-2xl border border-slate-200 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>

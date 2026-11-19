@@ -578,18 +578,18 @@ function AutomatedMessagesPanel() {
   };
 
   return (
-    <div className="p-4 space-y-4 overflow-y-auto h-full">
-      <div className="flex items-center justify-between">
+    <div className="w-full space-y-5">
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="font-bold text-slate-800">Mensajes Automáticos</h3>
-          <p className="text-xs text-slate-400 mt-0.5">Se envían por WhatsApp o push según el evento del viaje.</p>
+          <h3 className="font-extrabold text-slate-800 text-base">Mensajes Automáticos</h3>
+          <p className="text-xs text-slate-500 mt-0.5">Se envían automáticamente por WhatsApp o notificación push según cada evento del viaje.</p>
         </div>
         {!creating && (
           <button 
             onClick={() => setCreating(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-tech-blue text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 bg-tech-blue text-white text-xs font-bold rounded-xl hover:bg-blue-700 transition-colors cursor-pointer"
           >
-            <Plus className="h-3.5 w-3.5" /> Nuevo
+            <Plus className="h-4 w-4" /> Nuevo Mensaje Automático
           </button>
         )}
       </div>
@@ -663,8 +663,9 @@ function AutomatedMessagesPanel() {
       {loading ? (
         <div className="flex items-center justify-center h-40 text-slate-400 text-sm">Cargando...</div>
       ) : (
-        messages.map(msg => (
-          <div key={msg.id} className={`rounded-xl border p-4 transition-all ${msg.isActive ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {messages.map(msg => (
+            <div key={msg.id} className={`rounded-2xl border p-4 transition-all ${msg.isActive ? 'bg-white border-slate-200 shadow-xs' : 'bg-slate-50 border-slate-200/70 opacity-65'}`}>
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -767,7 +768,8 @@ function AutomatedMessagesPanel() {
               </div>
             </div>
           </div>
-        ))
+          ))}
+        </div>
       )}
     </div>
   );
@@ -962,10 +964,10 @@ function BroadcastPanel() {
   const scheduledPendingCount = campaigns.filter(c => c.status === 'scheduled').length;
 
   return (
-    <div className="p-4 lg:p-6 space-y-4 overflow-y-auto h-full max-w-5xl mx-auto w-full">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="w-full space-y-5">
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="font-bold text-slate-800 text-base">Centro de Campañas Push, Pop-up In-App y Segmentación</h3>
+          <h3 className="font-extrabold text-slate-800 text-base">Centro de Campañas Push, Pop-up In-App y Segmentación</h3>
           <p className="text-xs text-slate-500 mt-0.5">Enviá promociones en segundo plano o pop-ups dentro de la app (manual o programado).</p>
         </div>
         <div className="flex items-center gap-2">
@@ -1278,12 +1280,12 @@ function BroadcastPanel() {
       )}
 
       {/* Campaign history */}
-      <div>
-        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Historial de Campañas</h4>
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs space-y-3">
+        <h4 className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">Historial de Campañas</h4>
         {campaigns.length === 0 ? (
           <div className="text-center py-8 text-slate-400 text-sm">Sin campañas enviadas</div>
         ) : (
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {campaigns.map(c => (
               <div key={c.id} className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
                 <div className="flex items-start justify-between gap-2">
@@ -1521,11 +1523,54 @@ function ContactPanel({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 type Tab = 'conversations' | 'calls' | 'automated' | 'broadcast' | 'experience';
+const VALID_TABS: Tab[] = ['conversations', 'calls', 'automated', 'broadcast', 'experience'];
 
 export default function MessagesPage() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<Tab>('conversations');
+  const [activeTab, setActiveTabState] = useState<Tab>('conversations');
   const [experienceRole, setExperienceRole] = useState<'passenger' | 'driver'>('passenger');
+  const [showContactDrawer, setShowContactDrawer] = useState(false);
+
+  const selectTab = useCallback((nextTab: Tab) => {
+    setActiveTabState(nextTab);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', nextTab);
+      window.history.replaceState({}, '', url.toString());
+      window.dispatchEvent(new CustomEvent('travelapp:messages-tab', { detail: nextTab }));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const readTabFromUrl = () => {
+      const sp = new URLSearchParams(window.location.search);
+      const qTab = sp.get('tab') as Tab | null;
+      if (qTab && VALID_TABS.includes(qTab)) {
+        setActiveTabState(qTab);
+        return;
+      }
+      const hash = window.location.hash.replace('#', '') as Tab;
+      if (hash && VALID_TABS.includes(hash)) {
+        setActiveTabState(hash);
+      }
+    };
+    readTabFromUrl();
+    const onTabEvent = (e: Event) => {
+      const detail = (e as CustomEvent<string>).detail as Tab | undefined;
+      if (detail && VALID_TABS.includes(detail)) {
+        setActiveTabState(detail);
+      } else {
+        readTabFromUrl();
+      }
+    };
+    window.addEventListener('popstate', readTabFromUrl);
+    window.addEventListener('travelapp:messages-tab', onTabEvent);
+    return () => {
+      window.removeEventListener('popstate', readTabFromUrl);
+      window.removeEventListener('travelapp:messages-tab', onTabEvent);
+    };
+  }, []);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [calls, setCalls] = useState<CallRecord[]>([]);
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
@@ -1593,11 +1638,11 @@ export default function MessagesPage() {
   }, []);
 
   const TABS = [
-    { key: 'conversations' as Tab, label: 'Chats', icon: MessageSquare },
-    { key: 'calls' as Tab, label: 'Llamadas', icon: Phone },
-    { key: 'automated' as Tab, label: 'Automáticos', icon: Zap },
-    { key: 'broadcast' as Tab, label: 'Broadcast', icon: Megaphone },
-    { key: 'experience' as Tab, label: 'App', icon: Sparkles },
+    { key: 'conversations' as Tab, label: 'Chats Omnicanal', desc: 'WhatsApp, IG, Messenger y Web', icon: MessageSquare },
+    { key: 'calls' as Tab, label: 'Llamadas Anura', desc: 'Entrantes y grabaciones', icon: Phone },
+    { key: 'automated' as Tab, label: 'Mensajes Automáticos', desc: 'Disparadores por evento', icon: Zap },
+    { key: 'broadcast' as Tab, label: 'Broadcast / Campañas', desc: 'Push, pop-up y cron', icon: Megaphone },
+    { key: 'experience' as Tab, label: 'Experiencia Apps', desc: 'Pasajero, Conductor y SOS', icon: Sparkles },
   ];
 
   // Filtrado estricto por Unidad de Negocio y Sector del usuario (Super Admin ve todo)
@@ -1614,49 +1659,107 @@ export default function MessagesPage() {
   ).length;
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] bg-slate-50 overflow-hidden">
-      {/* ── Left Sidebar ── */}
-      <div className="w-72 flex-shrink-0 border-r border-slate-200 bg-white flex flex-col">
-        {/* Header */}
-        <div className="p-4 border-b border-slate-100">
-          <div className="flex items-center justify-between">
-            <h2 className="font-black text-slate-800 flex items-center gap-2">
-              <MessageSquare className="h-5 w-5 text-tech-blue" />
-              Mensajería
-            </h2>
-            {totalUnread > 0 && (
-              <span className="bg-tech-blue text-white text-xs font-bold px-2 py-0.5 rounded-full">{totalUnread}</span>
-            )}
+    <div className="w-full space-y-5 pb-8">
+      {/* ── Top Command Bar: Título + Selector Predictivo a lo ancho ── */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="h-9 w-9 rounded-xl bg-tech-blue/10 text-tech-blue flex items-center justify-center shrink-0">
+                <MessageSquare className="h-5 w-5" />
+              </div>
+              <div>
+                <h1 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">
+                  Centro de Mensajería & Experiencia en Apps
+                </h1>
+                <p className="text-xs text-slate-500">
+                  Gestioná chats, llamadas, mensajes automáticos, campañas push y experiencia Pasajero / Conductor desde un solo lugar.
+                </p>
+              </div>
+            </div>
           </div>
-          <p className={`mt-1 text-[10px] font-semibold truncate ${isSuperAdmin(user) ? 'text-purple-600' : 'text-slate-500'}`} title={getUserScopeLabel(user)}>
-            {getUserScopeLabel(user)}
-          </p>
-          {/* Tabs */}
-          <div className="flex gap-0.5 mt-3 bg-slate-100 p-0.5 rounded-lg">
-            {TABS.map(t => {
-              const Icon = t.icon;
-              return (
-                <button
-                  key={t.key}
-                  onClick={() => setActiveTab(t.key)}
-                  className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-md text-[11px] font-bold transition-all ${activeTab === t.key ? 'bg-white text-tech-blue shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">{t.label}</span>
-                  {t.key === 'calls' && pendingCallsCount > 0 && (
-                    <span className="ml-0.5 bg-rose-500 text-white text-[9px] px-1.5 rounded-full">{pendingCallsCount}</span>
-                  )}
-                </button>
-              );
-            })}
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className={`px-3 py-1.5 rounded-xl border text-[11px] font-bold ${
+                isSuperAdmin(user)
+                  ? 'bg-purple-50 border-purple-200 text-purple-700'
+                  : 'bg-slate-50 border-slate-200 text-slate-600'
+              }`}
+            >
+              {getUserScopeLabel(user)}
+            </span>
+            {totalUnread > 0 && (
+              <span className="px-3 py-1.5 rounded-xl bg-tech-blue text-white text-xs font-bold">
+                {totalUnread} sin leer
+              </span>
+            )}
+            {pendingCallsCount > 0 && (
+              <span className="px-3 py-1.5 rounded-xl bg-rose-500 text-white text-xs font-bold">
+                {pendingCallsCount} llamadas pendientes
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Tab Content */}
-        <div className="flex-1 overflow-hidden">
-          {activeTab === 'conversations' && (
-            loadingConvs ? (
-              <div className="flex items-center justify-center h-40 text-slate-400 text-sm">Cargando...</div>
+        {/* 5 Módulos horizontales amplios y predictivos */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2.5">
+          {TABS.map(t => {
+            const Icon = t.icon;
+            const isActive = activeTab === t.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => selectTab(t.key)}
+                className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-tech-blue text-white border-tech-blue shadow-sm'
+                    : 'bg-slate-50/80 text-slate-700 border-slate-200 hover:bg-white hover:border-tech-blue/40'
+                }`}
+              >
+                <div
+                  className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${
+                    isActive ? 'bg-white/15 text-white' : 'bg-white border border-slate-200 text-tech-blue'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-extrabold truncate">{t.label}</span>
+                    {t.key === 'conversations' && totalUnread > 0 && (
+                      <span
+                        className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
+                          isActive ? 'bg-white text-tech-blue' : 'bg-tech-blue text-white'
+                        }`}
+                      >
+                        {totalUnread}
+                      </span>
+                    )}
+                    {t.key === 'calls' && pendingCallsCount > 0 && (
+                      <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 rounded-full">
+                        {pendingCallsCount}
+                      </span>
+                    )}
+                  </div>
+                  <p className={`text-[10px] mt-0.5 truncate ${isActive ? 'text-white/80' : 'text-slate-400'}`}>
+                    {t.desc}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Workspace a pantalla completa según módulo seleccionado ── */}
+      {activeTab === 'conversations' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex flex-col lg:flex-row min-h-[640px] lg:h-[calc(100vh-17.5rem)]">
+          {/* Lista de conversaciones */}
+          <div className="w-full lg:w-80 xl:w-96 flex-shrink-0 border-b lg:border-b-0 lg:border-r border-slate-200 flex flex-col max-h-80 lg:max-h-none">
+            {loadingConvs ? (
+              <div className="flex items-center justify-center h-40 text-slate-400 text-sm">Cargando conversaciones...</div>
             ) : (
               <ConversationList
                 conversations={authorizedConversations}
@@ -1667,61 +1770,76 @@ export default function MessagesPage() {
                 search={search}
                 setSearch={setSearch}
               />
-            )
-          )}
-          {activeTab === 'calls' && (
-            <div className="p-4 text-xs text-slate-500 space-y-2">
-              <p className="font-semibold text-slate-700">Bandeja Telefónica Anura</p>
-              <p>Visualizá las llamadas entrantes/salientes, escuchá grabaciones pendientes y actualizá su estado.</p>
-              <div className="pt-2 border-t border-slate-100 space-y-1">
-                <p>Pendientes: <strong className="text-rose-600">{pendingCallsCount}</strong></p>
-                <p>Total autorizadas: <strong>{authorizedCalls.length}</strong></p>
-              </div>
-            </div>
-          )}
-          {activeTab === 'automated' && <AutomatedMessagesPanel />}
-          {activeTab === 'broadcast' && (
-            <div className="p-4 text-xs text-slate-500 space-y-2">
-              <p className="font-semibold text-slate-700">Campañas Push & Segmentación</p>
-              <p>Creá promociones manuales o programadas en segundo plano y pop-ups dentro de la app, segmentadas por cliente, región, sexo o puntos.</p>
-            </div>
-          )}
-          {activeTab === 'experience' && (
-            <div className="p-4 text-xs text-slate-500 space-y-3">
-              <p className="font-semibold text-slate-700">Experiencia Automática en Apps</p>
-              <p>Configurá textos, tiempos, voz al volante, PIN de seguridad y botón SOS en tiempo real.</p>
-              <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-xl">
-                <button
-                  type="button"
-                  onClick={() => setExperienceRole('passenger')}
-                  className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    experienceRole === 'passenger'
-                      ? 'bg-white text-tech-blue shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  👤 Pasajero
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setExperienceRole('driver')}
-                  className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    experienceRole === 'driver'
-                      ? 'bg-white text-tech-blue shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  🚕 Conductor
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+            )}
+          </div>
 
-      {/* ── Center: Chat Window, Calls, Broadcast or Passenger Experience ── */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {activeTab === 'calls' ? (
+          {/* Ventana de chat */}
+          <div className="flex-1 flex flex-col min-w-0 bg-slate-50/40">
+            {activeConversation ? (
+              <>
+                <div className="px-4 py-2 bg-white border-b border-slate-100 flex items-center justify-end xl:hidden">
+                  <button
+                    type="button"
+                    onClick={() => setShowContactDrawer(v => !v)}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-tech-blue hover:underline cursor-pointer"
+                  >
+                    <UserCheck className="h-3.5 w-3.5" />
+                    {showContactDrawer ? 'Ocultar ficha del contacto' : 'Ver ficha del contacto'}
+                  </button>
+                </div>
+                <div className="flex-1 flex min-h-0">
+                  <div className="flex-1 flex flex-col min-w-0">
+                    <ChatWindow conversation={activeConversation} operatorName={user?.displayName || 'Operador TravelApp'} />
+                  </div>
+                  {showContactDrawer && (
+                    <div className="w-72 flex-shrink-0 border-l border-slate-200 bg-white overflow-y-auto xl:hidden">
+                      <ContactPanel
+                        conversation={activeConversation}
+                        onViewCRM={handleViewCRM}
+                        onClose={() => setShowContactDrawer(false)}
+                      />
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-3 p-8">
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-tech-blue/10 to-indigo-600/10 flex items-center justify-center">
+                  <MessageSquare className="h-10 w-10 text-tech-blue/40" />
+                </div>
+                <div className="text-center max-w-md">
+                  <p className="font-bold text-slate-600 text-base">Bandeja Omnicanal de Chats</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Seleccioná una conversación en la columna izquierda para responder por WhatsApp, Instagram, Messenger o Chat Web.
+                  </p>
+                </div>
+                {conversations.length === 0 && (
+                  <div className="mt-2 bg-sky-50 border border-sky-200 rounded-xl p-4 max-w-sm text-center">
+                    <Bot className="h-8 w-8 text-tech-blue mx-auto mb-2" />
+                    <p className="text-sm font-semibold text-slate-700">Esperando conversaciones</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Las conversaciones aparecerán aquí automáticamente cuando Travis o un cliente inicie un chat.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Ficha del contacto (pantallas amplias xl+) */}
+          <div className="w-72 flex-shrink-0 border-l border-slate-200 bg-white hidden xl:flex flex-col">
+            <div className="px-4 py-3 border-b border-slate-100">
+              <h3 className="text-sm font-bold text-slate-700">Información del Contacto</h3>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <ContactPanel conversation={activeConversation} onViewCRM={handleViewCRM} onClose={() => setActiveConversation(null)} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'calls' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
           <CallsPanel
             calls={authorizedCalls}
             operatorName={user?.displayName || 'Operador TravelApp'}
@@ -1731,50 +1849,64 @@ export default function MessagesPage() {
               if (target) {
                 setActiveConversation(target);
               }
-              setActiveTab('conversations');
+              selectTab('conversations');
             }}
           />
-        ) : activeTab === 'broadcast' ? (
-          <BroadcastPanel />
-        ) : activeTab === 'experience' ? (
-          experienceRole === 'driver' ? <DriverExperiencePanel /> : <PassengerExperiencePanel />
-        ) : activeConversation && activeTab === 'conversations' ? (
-          <ChatWindow conversation={activeConversation} operatorName={user?.displayName || 'Operador TravelApp'} />
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-3">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-tech-blue/10 to-indigo-600/10 flex items-center justify-center">
-              <MessageSquare className="h-10 w-10 text-tech-blue/40" />
-            </div>
-            <div className="text-center">
-              <p className="font-semibold text-slate-500">Centro de Mensajería</p>
-              <p className="text-sm mt-1">
-                {activeTab === 'conversations' ? 'Seleccioná una conversación para empezar' : activeTab === 'automated' ? 'Configurá los mensajes automáticos en el panel izquierdo' : 'Creá y gestioná campañas de broadcast en el panel izquierdo'}
-              </p>
-            </div>
-            {activeTab === 'conversations' && conversations.length === 0 && (
-              <div className="mt-4 bg-sky-50 border border-sky-200 rounded-xl p-4 max-w-sm text-center">
-                <Bot className="h-8 w-8 text-tech-blue mx-auto mb-2" />
-                <p className="text-sm font-semibold text-slate-700">Esperando conversaciones</p>
-                <p className="text-xs text-slate-400 mt-1">
-                  Las conversaciones de WhatsApp, Instagram y Messenger aparecerán aquí automáticamente cuando Travis o un cliente inicie un chat.
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ── Right Panel: Contact Info ── */}
-      {activeTab === 'conversations' && (
-        <div className="w-64 flex-shrink-0 border-l border-slate-200 bg-white hidden xl:flex flex-col">
-          <div className="px-4 py-3 border-b border-slate-100">
-            <h3 className="text-sm font-bold text-slate-700">Información del Contacto</h3>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            <ContactPanel conversation={activeConversation} onViewCRM={handleViewCRM} onClose={() => setActiveConversation(null)} />
-          </div>
         </div>
       )}
+
+      {activeTab === 'automated' && <AutomatedMessagesPanel />}
+
+      {activeTab === 'broadcast' && <BroadcastPanel />}
+
+      {activeTab === 'experience' && (
+        <div className="space-y-5 w-full">
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-tech-blue" />
+                Configuración en Vivo de Experiencia en Apps
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Elegí la aplicación para editar mensajes automáticos, tiempos, cronómetros, PIN de 4 dígitos y botón de pánico SOS en tiempo real.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1.5 rounded-xl shrink-0">
+              <button
+                type="button"
+                onClick={() => setExperienceRole('passenger')}
+                className={`px-4 py-2.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                  experienceRole === 'passenger'
+                    ? 'bg-white text-tech-blue shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                👤 App Pasajero (Fase 1)
+              </button>
+              <button
+                type="button"
+                onClick={() => setExperienceRole('driver')}
+                className={`px-4 py-2.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                  experienceRole === 'driver'
+                    ? 'bg-white text-tech-blue shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                🚕 App Conductor & SOS (Fase 2)
+              </button>
+            </div>
+          </div>
+
+          {experienceRole === 'driver' ? <DriverExperiencePanel /> : <PassengerExperiencePanel />}
+        </div>
+      )}
+
+      {/* SlideOver del Lead para CRM */}
+      <LeadDetailSlideOver
+        lead={crmLead}
+        isOpen={crmSlideOpen}
+        onClose={() => setCrmSlideOpen(false)}
+      />
     </div>
   );
 }

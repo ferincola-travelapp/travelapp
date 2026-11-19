@@ -16,6 +16,22 @@ export const Sidebar = () => {
   const { user } = useAuth();
   
   const [permissions, setPermissions] = useState<Record<string, boolean>>({});
+  const [currentTab, setCurrentTab] = useState<string>('conversations');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const syncTab = () => {
+      const sp = new URLSearchParams(window.location.search);
+      setCurrentTab(sp.get('tab') || 'conversations');
+    };
+    syncTab();
+    window.addEventListener('popstate', syncTab);
+    window.addEventListener('travelapp:messages-tab', syncTab);
+    return () => {
+      window.removeEventListener('popstate', syncTab);
+      window.removeEventListener('travelapp:messages-tab', syncTab);
+    };
+  }, [pathname]);
 
   useEffect(() => {
     if (!user?.role) return;
@@ -29,6 +45,7 @@ export const Sidebar = () => {
         } else if (user.role === 'operator') {
           setPermissions({
             'metrics': true, 'branches': false, 'users': false, 'messages': true,
+            'conversations': true, 'calls': true, 'automated': true, 'broadcast': true, 'experience': true,
             'leads': true, 'agenda': true, 'history': true, 'customers': true, 'travis': true,
             'dashboard': true, 'dispatch': true, 'drivers': true, 'fleet': true,
             'travelcab-create-service': true, 'travelcab-create-category': true, 'settings': false, 'security': false,
@@ -82,7 +99,12 @@ export const Sidebar = () => {
         <nav className="space-y-1">
           {filteredItems.map((item: any, idx: number) => {
             const Icon = item.icon;
-            const isReallyActive = pathname === item.href;
+            const itemTabMatch = typeof item.href === 'string' && item.href.includes('?tab=')
+              ? item.href.split('?tab=')[1]
+              : null;
+            const isReallyActive = itemTabMatch
+              ? pathname.startsWith('/messages') && currentTab === itemTabMatch
+              : pathname === item.href;
             const prevSection = idx > 0 ? (filteredItems[idx - 1] as any).section : null;
             const showSectionHeader = item.section && item.section !== prevSection;
 
@@ -95,6 +117,12 @@ export const Sidebar = () => {
                 )}
                 <Link
                   href={item.href}
+                  onClick={() => {
+                    if (itemTabMatch && typeof window !== 'undefined') {
+                      setCurrentTab(itemTabMatch);
+                      window.dispatchEvent(new CustomEvent('travelapp:messages-tab', { detail: itemTabMatch }));
+                    }
+                  }}
                   className={`flex items-center space-x-3 rounded-lg px-3 py-2 transition-colors ${
                     isReallyActive
                       ? 'bg-tech-blue/10 text-tech-blue font-bold'

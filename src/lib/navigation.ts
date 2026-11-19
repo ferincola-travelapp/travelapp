@@ -39,9 +39,11 @@ export const getSidebarConfig = (pathname: string) => {
     return {
       title: 'Centro de Mensajería',
       items: [
-        { id: 'conversations', label: 'Conversaciones', href: '/messages', icon: MessageSquare },
-        { id: 'automated', label: 'Mensajes Automáticos', href: '/messages#automated', icon: Zap },
-        { id: 'broadcast', label: 'Broadcast / Campañas', href: '/messages#broadcast', icon: Radio },
+        { id: 'conversations', label: 'Chats Omnicanal', href: '/messages?tab=conversations', icon: MessageSquare },
+        { id: 'calls', label: 'Llamadas Anura', href: '/messages?tab=calls', icon: Zap },
+        { id: 'automated', label: 'Mensajes Automáticos', href: '/messages?tab=automated', icon: Bot },
+        { id: 'broadcast', label: 'Broadcast / Campañas', href: '/messages?tab=broadcast', icon: Radio },
+        { id: 'experience', label: 'Experiencia Apps', href: '/messages?tab=experience', icon: Smartphone },
       ]
     };
   }

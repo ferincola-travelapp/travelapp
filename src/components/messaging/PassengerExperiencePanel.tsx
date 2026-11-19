@@ -151,7 +151,7 @@ export function PassengerExperiencePanel() {
   }
 
   return (
-    <div className="p-4 space-y-4 overflow-y-auto h-full">
+    <div className="space-y-4 w-full">
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
         <div>
           <h3 className="font-bold text-slate-800 text-base">
