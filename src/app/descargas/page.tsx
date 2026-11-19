@@ -67,7 +67,7 @@ const CARD_STYLE: Record<
     cta: 'Descargar APK Usuarios',
     roleNote:
       'Para pedir viajes, traslados y probar la experiencia completa de pasajero.',
-    versionLabel: 'Beta v7',
+    versionLabel: 'Beta v8',
     iconBox: 'bg-[#0a2a5b]/10 border-[#0a2a5b]/20',
     iconColor: 'text-[#0a2a5b]',
     btnClass:
@@ -79,7 +79,7 @@ const CARD_STYLE: Record<
     cta: 'Descargar APK Conductores',
     roleNote:
       'Para choferes: recepción de viajes, mapa en vivo y taxímetro digital.',
-    versionLabel: 'Beta v7',
+    versionLabel: 'Beta v8',
     iconBox: 'bg-[#ff5a19]/10 border-[#ff5a19]/25',
     iconColor: 'text-[#ff5a19]',
     btnClass:
