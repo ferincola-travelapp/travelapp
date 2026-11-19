@@ -4,6 +4,7 @@ import Link from 'next/link';
 import {
   Smartphone,
   Car,
+  ShieldCheck,
   Download,
   CheckCircle2,
   UserCheck,
@@ -48,6 +49,7 @@ export const metadata: Metadata = {
 const PUBLIC_APKS = APKS.filter(
   (apk) => apk.id === 'usuario' || apk.id === 'conductor'
 );
+const SUPERVISOR_APK = APKS.find((apk) => apk.id === 'supervisor');
 
 const CARD_STYLE: Record<
   'usuario' | 'conductor',
@@ -265,6 +267,37 @@ export default async function DescargasPage({
               );
             })}
           </div>
+
+          {SUPERVISOR_APK && (
+            <div className="mt-5 bg-white rounded-xl p-5 border border-slate-200/90 shadow-md shadow-slate-200/60 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5 text-center sm:text-left">
+                <div className="p-2.5 rounded-lg bg-[#0a2a5b]/10 border border-[#0a2a5b]/20 text-[#0a2a5b] shrink-0">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                    <h3 className="text-base font-black text-[#0a2a5b]">
+                      {SUPERVISOR_APK.name}
+                    </h3>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700">
+                      Beta v4 · {SUPERVISOR_APK.size}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Para supervisores y guardia de flota: mapa en vivo y alertas SOS de conductores.
+                  </p>
+                </div>
+              </div>
+              <a
+                href={SUPERVISOR_APK.url}
+                download={SUPERVISOR_APK.fileName}
+                className="w-full sm:w-auto shrink-0 inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm transition-colors shadow"
+              >
+                <Download className="w-4 h-4" />
+                Descargar APK Supervisor
+              </a>
+            </div>
+          )}
 
           <div className="mt-6 text-center">
             <a

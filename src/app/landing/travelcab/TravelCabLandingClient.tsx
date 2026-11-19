@@ -1329,6 +1329,10 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
               <a href="/landing/ecosistema" className="py-2 hover:text-white transition-colors">
                 Ecosistema
               </a>
+
+              <a href="/descargas" className="py-2 hover:text-white transition-colors font-semibold text-[#ff8b5e]">
+                Descargar App
+              </a>
             </nav>
 
             {/* Zona Derecha Institucional */}
@@ -1422,6 +1426,9 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
                 </a>
                 <a href="#rewards-summary" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg hover:bg-white/10">
                   Programa Rewards
+                </a>
+                <a href="/descargas" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg hover:bg-white/10 text-[#ff8b5e] font-semibold">
+                  Descargar App (.APK)
                 </a>
               </div>
 

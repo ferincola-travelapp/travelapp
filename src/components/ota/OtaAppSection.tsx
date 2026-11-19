@@ -139,6 +139,14 @@ export function OtaAppSection({
                 )}
 
                 <Link
+                  href="/descargas"
+                  className="flex items-center justify-center gap-2 px-5 py-3 rounded-sm bg-[#FF5A19] hover:bg-[#e84d10] text-white font-black text-xs sm:text-sm transition-colors cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Descargar App (.APK)</span>
+                </Link>
+
+                <Link
                   href="/registro"
                   className="flex items-center justify-center gap-2 px-6 py-3 rounded-sm bg-[#0A2A5B] hover:bg-[#071d3f] text-white font-black text-xs sm:text-sm transition-colors cursor-pointer"
                 >
