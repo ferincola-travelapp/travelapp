@@ -16,6 +16,7 @@ import {
 import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
+import { RouteDeviationAlertBanner } from '@/components/safety/RouteDeviationAlertBanner';
 
 export interface MinimalNavItem {
   key: string;
@@ -144,6 +145,7 @@ export function MinimalModuleShell({
 
       {/* Contenedor Principal */}
       <div className="flex-1 flex flex-col min-w-0">
+        <RouteDeviationAlertBanner />
         {/* Header Minimalista: Campana, Idioma, Perfil y Salir */}
         <header className="sticky top-1 z-20 bg-white/80 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">

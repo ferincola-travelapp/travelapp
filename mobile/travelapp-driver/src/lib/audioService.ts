@@ -8,7 +8,7 @@ let alertSafetyTimer: ReturnType<typeof setTimeout> | null = null;
  * Reproduce la alerta sonora fuerte y continua para el conductor cuando entra una nueva solicitud de viaje.
  * @param _customAudioUrl URL opcional
  */
-export async function playTripRequestAlertSound(_customAudioUrl?: string): Promise<void> {
+export async function playTripRequestAlertSound(spokenMessage?: string): Promise<void> {
   try {
     if (isAlertPlaying) return;
     isAlertPlaying = true;
@@ -21,16 +21,21 @@ export async function playTripRequestAlertSound(_customAudioUrl?: string): Promi
     // Vibración persistente de solicitud entrante
     Vibration.vibrate([0, 500, 200, 500, 200, 500], true);
 
-    // Locución hablada de alerta inmediata
+    // Locución hablada sin mencionar monto (el precio dual se ve en pantalla)
     Speech.stop();
-    Speech.speak('Nueva solicitud de viaje. Tocá la pantalla para aceptar.', {
-      language: 'es-AR',
-      rate: 1.05,
-      pitch: 1.0,
-      onDone: () => { isAlertPlaying = false; },
-      onStopped: () => { isAlertPlaying = false; },
-      onError: () => { isAlertPlaying = false; },
-    });
+    Speech.speak(
+      spokenMessage && spokenMessage.trim()
+        ? spokenMessage
+        : 'Hola conductor, tenés una nueva solicitud de viaje cercana.',
+      {
+        language: 'es-AR',
+        rate: 1.02,
+        pitch: 1.0,
+        onDone: () => { isAlertPlaying = false; },
+        onStopped: () => { isAlertPlaying = false; },
+        onError: () => { isAlertPlaying = false; },
+      }
+    );
   } catch (err) {
     isAlertPlaying = false;
     console.warn('Error playing trip request alert sound:', err);

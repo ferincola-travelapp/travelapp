@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { TopNavbar } from "./TopNavbar";
 import { Sidebar } from "./Sidebar";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { RouteDeviationAlertBanner } from "@/components/safety/RouteDeviationAlertBanner";
 
 /**
  * Routes that should render WITHOUT the chrome (navbar + sidebar).
@@ -82,6 +83,7 @@ function AppShell({
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-tech-blue">
+      <RouteDeviationAlertBanner />
       <TopNavbar />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />

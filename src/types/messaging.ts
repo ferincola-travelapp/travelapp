@@ -21,7 +21,18 @@ export type AutomatedTrigger =
   | 'welcome'
   | 'custom';
 
-export type BroadcastAudience = 'all' | 'passengers' | 'drivers' | 'specific';
+export type BroadcastAudience = 'all' | 'passengers' | 'drivers' | 'specific' | 'segmented';
+
+export interface BroadcastFilters {
+  region?: string;
+  province?: string;
+  city?: string;
+  gender?: 'M' | 'F' | 'X' | 'all';
+  hasPhoto?: 'any' | 'with_photo' | 'without_photo';
+  profileCompleted?: 'any' | 'complete' | 'incomplete';
+  minTrips?: number;
+  minPoints?: number;
+}
 
 // -----------------------------------------------------------------------------
 // Conversación
@@ -412,6 +423,10 @@ export interface BroadcastCampaign {
   message: string;
   audience: BroadcastAudience;
   specificIds?: string[];   // IDs específicos si audience === 'specific'
+  filters?: BroadcastFilters;
+  inAppPopup?: boolean;
+  ctaLabel?: string;
+  ctaTab?: string;
   channel: MessageChannel | 'both';
   soundAlert?: NotificationAudioType;
   category?: NotificationCategory;
@@ -422,6 +437,248 @@ export interface BroadcastCampaign {
   createdBy: string;
   createdAt: number;
 }
+
+// -----------------------------------------------------------------------------
+// Experiencia del Pasajero (Configuración dinámica desde Dashboard)
+// Almacenada en Firestore: system_config/passenger_experience
+// -----------------------------------------------------------------------------
+
+export type ExperienceRecipientTarget = 'passenger' | 'driver' | 'both';
+
+export interface PassengerExperienceConfig {
+  welcomePopup: {
+    enabled: boolean;
+    title: string;
+    message: string;
+    ctaText: string;
+    skipText: string;
+    bonusPoints: number;
+  };
+  searchingModal: {
+    enabled: boolean;
+    title: string;
+    description: string;
+    cancelText: string;
+    lockMapInteraction: boolean;
+  };
+  driverAssignedModal: {
+    enabled: boolean;
+    title: string;
+    subtitle: string;
+    ctaText: string;
+    maskPlateVisibleLastChars: number;
+  };
+  arrivingSoonAlert: {
+    enabled: boolean;
+    minutesBefore: number;
+    title: string;
+    message: string;
+    recipients: ExperienceRecipientTarget;
+  };
+  routeDeviationProtocol: {
+    enabled: boolean;
+    distanceKm: number;
+    durationSeconds: number;
+    responseTimeoutSeconds: number;
+    passengerTitle: string;
+    passengerMessage: string;
+    okButtonText: string;
+    helpButtonText: string;
+    dashboardAlertTitle: string;
+    recipients: ExperienceRecipientTarget;
+  };
+  tripCompletedRating: {
+    enabled: boolean;
+    thankYouTitle: string;
+    thankYouMessage: string;
+    ratingTitle: string;
+    ratingSubtitle: string;
+    submitText: string;
+    skipText: string;
+    allowSkip: boolean;
+    persistUntilRatedOrSkipped: boolean;
+  };
+  updatedAt?: number;
+}
+
+export const DEFAULT_PASSENGER_EXPERIENCE_CONFIG: PassengerExperienceConfig = {
+  welcomePopup: {
+    enabled: true,
+    title: '¡Bienvenido a TravelApp! 🎉',
+    message: 'Completá tu perfil subiendo una foto y sumá +{puntos} Puntos Rewards de regalo para tus próximos viajes.',
+    ctaText: 'Completar perfil y sumar puntos',
+    skipText: 'Más tarde',
+    bonusPoints: 500,
+  },
+  searchingModal: {
+    enabled: true,
+    title: 'Buscando tu conductor...',
+    description: 'Estamos conectando con los choferes habilitados más cercanos a tu ubicación. Aguardá un instante.',
+    cancelText: 'Cancelar Búsqueda',
+    lockMapInteraction: true,
+  },
+  driverAssignedModal: {
+    enabled: true,
+    title: '¡Tu conductor está en camino!',
+    subtitle: 'Verificá los datos del vehículo antes de subir.',
+    ctaText: 'Seguir viaje en el mapa',
+    maskPlateVisibleLastChars: 3,
+  },
+  arrivingSoonAlert: {
+    enabled: true,
+    minutesBefore: 2,
+    title: '⏱️ Tu móvil está por llegar',
+    message: '¡Preparate {nombre}! {conductor} ({vehiculo}) llegará en aproximadamente {eta} minutos.',
+    recipients: 'passenger',
+  },
+  routeDeviationProtocol: {
+    enabled: true,
+    distanceKm: 1.5,
+    durationSeconds: 45,
+    responseTimeoutSeconds: 60,
+    passengerTitle: '⚠️ Desvío de recorrido detectado',
+    passengerMessage: 'Detectamos que el vehículo se apartó más de {km} km de la ruta recomendada. ¿Confirmás que está todo bien?',
+    okButtonText: '✅ Estoy bien',
+    helpButtonText: '🚨 Necesito ayuda',
+    dashboardAlertTitle: 'ALERTA DE DESVÍO DE RECORRIDO',
+    recipients: 'both',
+  },
+  tripCompletedRating: {
+    enabled: true,
+    thankYouTitle: '¡Gracias por viajar con nosotros!',
+    thankYouMessage: 'Esperamos que hayas tenido una excelente experiencia con {conductor}.',
+    ratingTitle: '¿Cómo estuvo tu viaje?',
+    ratingSubtitle: 'Tu calificación ayuda a mantener la calidad y seguridad de TravelCab.',
+    submitText: 'Enviar calificación',
+    skipText: 'Omitir',
+    allowSkip: true,
+    persistUntilRatedOrSkipped: true,
+  },
+};
+
+export type SafetyAlertStatus =
+  | 'awaiting_passenger'
+  | 'passenger_ok'
+  | 'passenger_help_requested'
+  | 'no_response'
+  | 'driver_panic_active'
+  | 'resolved';
+
+export interface SafetyAlertRecord {
+  id: string;
+  type: 'route_deviation' | 'driver_panic';
+  sourceRole?: 'passenger' | 'driver';
+  tripId: string;
+  passengerId: string;
+  passengerName: string;
+  passengerPhone?: string;
+  driverId?: string;
+  driverName?: string;
+  driverPhone?: string;
+  driverPhoto?: string;
+  supervisorId?: string;
+  supervisorCode?: string;
+  vehicleInfo?: string;
+  vehiclePlate?: string;
+  deviationKm: number;
+  thresholdKm: number;
+  driverLocation?: { latitude: number; longitude: number };
+  origin?: string;
+  destination?: string;
+  status: SafetyAlertStatus;
+  escalatedToDashboard: boolean;
+  resolutionNote?: string;
+  resolvedBy?: string;
+  createdAt: number;
+  updatedAt: number;
+  resolvedAt?: number;
+}
+
+// -----------------------------------------------------------------------------
+// Experiencia del Conductor (Configuración dinámica desde Dashboard)
+// Almacenada en Firestore: system_config/driver_experience
+// -----------------------------------------------------------------------------
+
+export interface DriverExperienceConfig {
+  incomingRequest: {
+    enabled: boolean;
+    pushEnabled: boolean;
+    voiceEnabled: boolean;
+    voiceTemplate: string;
+    defaultCommissionPct: number;
+    countdownSeconds: number;
+  };
+  securityPin: {
+    enabled: boolean;
+    requireByDefault: boolean;
+    modalTitle: string;
+    modalSubtitle: string;
+  };
+  arrivingSoonAlert: {
+    enabled: boolean;
+    minutesBefore: number;
+    voiceMessage: string;
+  };
+  routeDeviationAlert: {
+    enabled: boolean;
+    voiceMessage: string;
+  };
+  panicButton: {
+    enabled: boolean;
+    holdSeconds: number;
+    alertTitle: string;
+    alertMessage: string;
+  };
+  accountLifecycle: {
+    approvalTitle: string;
+    approvalMessage: string;
+    docsExpiryWarningDays: number;
+  };
+  updatedAt?: number;
+}
+
+export const DEFAULT_DRIVER_EXPERIENCE_CONFIG: DriverExperienceConfig = {
+  incomingRequest: {
+    enabled: true,
+    pushEnabled: true,
+    voiceEnabled: true,
+    voiceTemplate:
+      'Hola conductor {conductor}, hay un viaje desde {origen} hasta {destino}, está a {distancia} de tu ubicación.',
+    defaultCommissionPct: 15,
+    countdownSeconds: 25,
+  },
+  securityPin: {
+    enabled: true,
+    requireByDefault: false,
+    modalTitle: 'Código de Seguridad de 4 dígitos',
+    modalSubtitle:
+      'Pedile al pasajero el PIN numérico de 4 cifras que figura en su aplicación para iniciar el viaje.',
+  },
+  arrivingSoonAlert: {
+    enabled: true,
+    minutesBefore: 2,
+    voiceMessage:
+      'Estás a menos de {eta} minutos del punto de encuentro con {pasajero}.',
+  },
+  routeDeviationAlert: {
+    enabled: true,
+    voiceMessage:
+      'Atención conductor, se detectó un desvío de {km} kilómetros de la ruta recomendada.',
+  },
+  panicButton: {
+    enabled: true,
+    holdSeconds: 2,
+    alertTitle: '🚨 BOTÓN DE PÁNICO · CONDUCTOR EN EMERGENCIA',
+    alertMessage:
+      'El conductor {conductor} ({vehiculo}) activó el botón de pánico SOS.',
+  },
+  accountLifecycle: {
+    approvalTitle: '✅ ¡Tu cuenta fue habilitada!',
+    approvalMessage:
+      'Hola {conductor}, ya podés conectarte y recibir solicitudes de viaje en TravelApp.',
+    docsExpiryWarningDays: 15,
+  },
+};
 
 // -----------------------------------------------------------------------------
 // Telefonía Anura & Grabaciones de Llamadas

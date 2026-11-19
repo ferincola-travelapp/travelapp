@@ -5,13 +5,15 @@ import {
   collection, query, orderBy, onSnapshot, addDoc, updateDoc,
   doc, serverTimestamp, where, getDocs, limit, deleteDoc
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
 import {
-  Conversation, Message, AutomatedMessage, BroadcastCampaign,
+  Conversation, Message, AutomatedMessage, BroadcastCampaign, BroadcastFilters,
   MessageChannel, AUTOMATED_TRIGGER_LABELS, DEFAULT_AUTOMATED_MESSAGES,
   AutomatedTrigger, NotificationAudioType, NotificationCategory, CallRecord,
 } from '@/types/messaging';
 import { CallsPanel } from '@/components/messaging/CallsPanel';
+import { PassengerExperiencePanel } from '@/components/messaging/PassengerExperiencePanel';
+import { DriverExperiencePanel } from '@/components/messaging/DriverExperiencePanel';
 import { LeadDetailSlideOver } from '@/components/crm/LeadDetailSlideOver';
 import { Lead } from '@/types/crm';
 import { useAuth } from '@/contexts/AuthContext';
@@ -778,8 +780,24 @@ function BroadcastPanel() {
   const [audience, setAudience] = useState<string>('all');
   const [channel, setChannel] = useState('push');
   const [soundAlert, setSoundAlert] = useState<NotificationAudioType>('default');
-  const [category, setCategory] = useState<NotificationCategory>('general');
+  const [category, setCategory] = useState<NotificationCategory>('promo');
   const [scheduledTime, setScheduledTime] = useState<string>('');
+  const [inAppPopup, setInAppPopup] = useState<boolean>(true);
+  const [ctaLabel, setCtaLabel] = useState<string>('');
+  const [ctaTab, setCtaTab] = useState<string>('home');
+  const [filters, setFilters] = useState<BroadcastFilters>({
+    region: '',
+    province: '',
+    city: '',
+    gender: 'all',
+    hasPhoto: 'any',
+    profileCompleted: 'any',
+    minTrips: undefined,
+    minPoints: undefined,
+  });
+  const [previewCount, setPreviewCount] = useState<number | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [processingScheduled, setProcessingScheduled] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [contacts, setContacts] = useState<{ id: string; name: string; phone?: string; role: string; email?: string }[]>([]);
   const [contactSearch, setContactSearch] = useState('');
@@ -799,21 +817,17 @@ function BroadcastPanel() {
       const fetchContacts = async () => {
         try {
           const list: { id: string; name: string; phone?: string; role: string; email?: string }[] = [];
-          
-          // Cargar usuarios de 'users'
           const usersSnap = await getDocs(collection(db, 'users'));
           usersSnap.docs.forEach(doc => {
             const data = doc.data();
             list.push({
               id: doc.id,
-              name: data.displayName || data.fullName || data.email?.split('@')[0] || 'Pasajero',
+              name: data.displayName || data.fullName || data.customerName || data.email?.split('@')[0] || 'Pasajero',
               phone: data.phoneNumber || data.phone || '',
               email: data.email || '',
               role: 'customer'
             });
           });
-
-          // Cargar conductores de 'drivers'
           const driversSnap = await getDocs(collection(db, 'drivers'));
           driversSnap.docs.forEach(doc => {
             const data = doc.data();
@@ -825,8 +839,6 @@ function BroadcastPanel() {
               role: 'driver'
             });
           });
-
-          // Deduplicar
           const uniqueList = list.filter((item, index, self) =>
             item.id && self.findIndex(t => t.id === item.id) === index
           );
@@ -839,35 +851,83 @@ function BroadcastPanel() {
     }
   }, [audience]);
 
+  const getAuthHeaders = async () => {
+    const token = await auth.currentUser?.getIdToken().catch(() => undefined);
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  };
+
+  const handlePreviewAudience = async () => {
+    setPreviewing(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/broadcast', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          previewOnly: true,
+          audience,
+          specificIds: audience === 'specific' ? selectedIds : undefined,
+          filters: audience === 'segmented' ? filters : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) setPreviewCount(data.targetedCount ?? 0);
+    } catch {
+      setPreviewCount(null);
+    }
+    setPreviewing(false);
+  };
+
+  const handleProcessScheduled = async () => {
+    setProcessingScheduled(true);
+    try {
+      const headers = await getAuthHeaders();
+      await fetch('/api/broadcast/process-scheduled', { method: 'POST', headers });
+    } catch (err) {
+      console.error('Error procesando programadas:', err);
+    }
+    setProcessingScheduled(false);
+  };
+
   const handleSend = async () => {
     if (!title.trim() || !message.trim()) return;
     setSending(true);
     try {
       const scheduledAt = scheduledTime ? new Date(scheduledTime).getTime() : undefined;
+      const headers = await getAuthHeaders();
       await fetch('/api/broadcast', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          title: title.trim(), 
-          message: message.trim(), 
-          audience, 
+        headers,
+        body: JSON.stringify({
+          title: title.trim(),
+          message: message.trim(),
+          audience,
           channel,
           soundAlert,
           category,
+          inAppPopup,
+          ctaLabel: ctaLabel.trim() || undefined,
+          ctaTab: ctaLabel.trim() ? ctaTab : undefined,
           specificIds: audience === 'specific' ? selectedIds : undefined,
+          filters: audience === 'segmented' ? filters : undefined,
           scheduledAt
         }),
       });
       setSent(true);
-      setTimeout(() => { 
-        setSent(false); 
-        setComposing(false); 
-        setTitle(''); 
-        setMessage(''); 
+      setTimeout(() => {
+        setSent(false);
+        setComposing(false);
+        setTitle('');
+        setMessage('');
         setSoundAlert('default');
-        setCategory('general');
+        setCategory('promo');
         setScheduledTime('');
         setSelectedIds([]);
+        setCtaLabel('');
+        setPreviewCount(null);
       }, 2000);
     } catch (err) {
       console.error("Error al enviar campaña:", err);
@@ -877,9 +937,10 @@ function BroadcastPanel() {
 
   const AUDIENCE_OPTIONS = [
     { value: 'all', label: '🌎 Todos los Usuarios', desc: 'Pasajeros, Choferes y Afiliados' },
-    { value: 'passengers', label: '👤 Solo Pasajeros', desc: 'Clientes de la app' },
+    { value: 'passengers', label: '👤 Solo Pasajeros', desc: 'Todos los clientes de la app' },
     { value: 'drivers', label: '🚗 Solo Conductores', desc: 'Choferes activos de TravelCab' },
-    { value: 'specific', label: '🎯 Destinatario Específico', desc: 'Buscar por nombre, email o ID' },
+    { value: 'segmented', label: '🎛️ Segmentación Avanzada', desc: 'Por región, provincia, sexo, perfil, viajes o puntos' },
+    { value: 'specific', label: '🎯 Cliente Particular / Específicos', desc: 'Elegir uno o más usuarios exactos' },
   ];
 
   const SOUND_OPTIONS: { value: NotificationAudioType; label: string; desc: string }[] = [
@@ -891,40 +952,54 @@ function BroadcastPanel() {
   ];
 
   const CATEGORY_OPTIONS: { value: NotificationCategory; label: string }[] = [
-    { value: 'general', label: 'ℹ️ General' },
-    { value: 'travelcab', label: '🚕 Tarifas & Viajes' },
     { value: 'promo', label: '🎁 Promociones & Rewards' },
+    { value: 'travelcab', label: '🚕 Tarifas & Viajes' },
+    { value: 'general', label: 'ℹ️ General' },
     { value: 'safety', label: '🛡️ Seguridad & Protocolos' },
     { value: 'maintenance', label: '🔧 Novedad del Sistema' },
   ];
 
+  const scheduledPendingCount = campaigns.filter(c => c.status === 'scheduled').length;
+
   return (
-    <div className="p-4 space-y-4 overflow-y-auto h-full">
-      <div className="flex items-center justify-between">
+    <div className="p-4 lg:p-6 space-y-4 overflow-y-auto h-full max-w-5xl mx-auto w-full">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="font-bold text-slate-800">Centro de Notificaciones Push & Alertas Sonoras</h3>
-          <p className="text-xs text-slate-400 mt-0.5">Enviá avisos masivos, segmentados o individuales con audio integrado.</p>
+          <h3 className="font-bold text-slate-800 text-base">Centro de Campañas Push, Pop-up In-App y Segmentación</h3>
+          <p className="text-xs text-slate-500 mt-0.5">Enviá promociones en segundo plano o pop-ups dentro de la app (manual o programado).</p>
         </div>
-        {!composing && (
-          <button onClick={() => setComposing(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-tech-blue text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors">
-            <Plus className="h-3.5 w-3.5" /> Nueva Notificación
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {scheduledPendingCount > 0 && (
+            <button
+              onClick={handleProcessScheduled}
+              disabled={processingScheduled}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold rounded-lg hover:bg-indigo-100 transition-colors"
+            >
+              <Clock className="h-3.5 w-3.5" />
+              {processingScheduled ? 'Procesando...' : `Despachar programadas (${scheduledPendingCount})`}
+            </button>
+          )}
+          {!composing && (
+            <button onClick={() => setComposing(true)} className="flex items-center gap-1.5 px-3.5 py-2 bg-tech-blue text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors">
+              <Plus className="h-3.5 w-3.5" /> Nueva Campaña / Promo
+            </button>
+          )}
+        </div>
       </div>
 
       {composing && (
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-4">
           <h4 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
-            <Megaphone className="h-4 w-4 text-tech-blue" /> Redactar Notificación & Alerta de Audio
+            <Megaphone className="h-4 w-4 text-tech-blue" /> Redactar Promoción o Mensaje Segmentado
           </h4>
           
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="md:col-span-2">
               <label className="block text-xs font-bold text-slate-500 mb-1">Título</label>
               <input
                 value={title}
                 onChange={e => setTitle(e.target.value)}
-                placeholder="Ej: ¡Lluvia en la ciudad! Multiplicador activo 🌧️"
+                placeholder="Ej: 🎁 ¡20% OFF en tu próximo TravelCab este finde!"
                 className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-tech-blue/20"
               />
             </div>
@@ -943,23 +1018,55 @@ function BroadcastPanel() {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-500 mb-1">Mensaje / Cuerpo de la Notificación</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Mensaje / Cuerpo</label>
             <textarea
               value={message}
               onChange={e => setMessage(e.target.value)}
               rows={3}
-              placeholder="Escribí el texto que aparecerá en los teléfonos..."
+              placeholder="Escribí el texto que aparecerá en la notificación en segundo plano y en el pop-up dentro de la app..."
               className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-tech-blue/20 resize-none"
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50 border border-slate-200 rounded-xl p-3">
+            <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
+              <input
+                type="checkbox"
+                checked={inAppPopup}
+                onChange={e => setInAppPopup(e.target.checked)}
+                className="rounded border-slate-300 text-tech-blue"
+              />
+              Mostrar también como Pop-up In-App
+            </label>
+            <div>
+              <input
+                value={ctaLabel}
+                onChange={e => setCtaLabel(e.target.value)}
+                placeholder="Texto del botón (opcional, ej: Ver Promo)"
+                className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white"
+              />
+            </div>
+            <div>
+              <select
+                value={ctaTab}
+                onChange={e => setCtaTab(e.target.value)}
+                className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white"
+              >
+                <option value="home">Abrir Inicio / Pedir Viaje</option>
+                <option value="rewards">Abrir Rewards / Puntos</option>
+                <option value="experience">Abrir Experiencias</option>
+                <option value="profile">Abrir Completar Perfil</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-500 mb-1">Audiencia Destino</label>
               <div className="space-y-1">
                 {AUDIENCE_OPTIONS.map(o => (
-                  <label key={o.value} className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all ${audience === o.value ? 'border-tech-blue bg-tech-blue/5' : 'border-slate-200 hover:bg-slate-55'}`}>
-                    <input type="radio" name="audience" value={o.value} checked={audience === o.value} onChange={e => setAudience(e.target.value)} className="sr-only" />
+                  <label key={o.value} className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all ${audience === o.value ? 'border-tech-blue bg-tech-blue/5' : 'border-slate-200 hover:bg-slate-50'}`}>
+                    <input type="radio" name="audience" value={o.value} checked={audience === o.value} onChange={e => { setAudience(e.target.value); setPreviewCount(null); }} className="sr-only" />
                     <div>
                       <div className="text-xs font-semibold text-slate-800">{o.label}</div>
                       <div className="text-[10px] text-slate-400">{o.desc}</div>
@@ -972,7 +1079,7 @@ function BroadcastPanel() {
               <label className="block text-xs font-bold text-slate-500 mb-1">Sonido / Alerta de Audio en Celular</label>
               <div className="space-y-1">
                 {SOUND_OPTIONS.map(s => (
-                  <label key={s.value} className={`flex items-center gap-2 p-1.5 rounded-lg border cursor-pointer transition-all ${soundAlert === s.value ? 'border-tech-blue bg-tech-blue/5' : 'border-slate-200 hover:bg-slate-55'}`}>
+                  <label key={s.value} className={`flex items-center gap-2 p-1.5 rounded-lg border cursor-pointer transition-all ${soundAlert === s.value ? 'border-tech-blue bg-tech-blue/5' : 'border-slate-200 hover:bg-slate-50'}`}>
                     <input type="radio" name="soundAlert" value={s.value} checked={soundAlert === s.value} onChange={e => setSoundAlert(e.target.value as NotificationAudioType)} className="sr-only" />
                     <div>
                       <div className="text-xs font-semibold text-slate-800">{s.label}</div>
@@ -984,6 +1091,115 @@ function BroadcastPanel() {
             </div>
           </div>
 
+          {audience === 'segmented' && (
+            <div className="border border-blue-200 rounded-xl p-3 bg-blue-50/40 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-tech-blue">🎛️ Filtros de Segmentación de Clientes</span>
+                <button
+                  type="button"
+                  onClick={handlePreviewAudience}
+                  disabled={previewing}
+                  className="px-2.5 py-1 rounded-lg bg-tech-blue text-white text-[11px] font-bold hover:bg-blue-700"
+                >
+                  {previewing ? 'Calculando...' : 'Calcular Destinatarios'}
+                </button>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">Provincia</label>
+                  <input
+                    value={filters.province || ''}
+                    onChange={e => setFilters({ ...filters, province: e.target.value })}
+                    placeholder="Ej: Tucumán"
+                    className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">Ciudad</label>
+                  <input
+                    value={filters.city || ''}
+                    onChange={e => setFilters({ ...filters, city: e.target.value })}
+                    placeholder="Ej: Yerba Buena"
+                    className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">Región / Zona</label>
+                  <input
+                    value={filters.region || ''}
+                    onChange={e => setFilters({ ...filters, region: e.target.value })}
+                    placeholder="Ej: NOA / Norte"
+                    className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">Sexo / Género</label>
+                  <select
+                    value={filters.gender || 'all'}
+                    onChange={e => setFilters({ ...filters, gender: e.target.value as BroadcastFilters['gender'] })}
+                    className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white"
+                  >
+                    <option value="all">Todos</option>
+                    <option value="F">Femenino (F)</option>
+                    <option value="M">Masculino (M)</option>
+                    <option value="X">Otro (X)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">Foto de perfil</label>
+                  <select
+                    value={filters.hasPhoto || 'any'}
+                    onChange={e => setFilters({ ...filters, hasPhoto: e.target.value as BroadcastFilters['hasPhoto'] })}
+                    className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white"
+                  >
+                    <option value="any">Cualquiera</option>
+                    <option value="with_photo">Con foto cargada</option>
+                    <option value="without_photo">Sin foto (recordatorio)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">Estado de Perfil</label>
+                  <select
+                    value={filters.profileCompleted || 'any'}
+                    onChange={e => setFilters({ ...filters, profileCompleted: e.target.value as BroadcastFilters['profileCompleted'] })}
+                    className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white"
+                  >
+                    <option value="any">Todos</option>
+                    <option value="complete">Perfil Completo</option>
+                    <option value="incomplete">Perfil Incompleto</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">Mínimo de Viajes</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={filters.minTrips ?? ''}
+                    onChange={e => setFilters({ ...filters, minTrips: e.target.value ? Number(e.target.value) : undefined })}
+                    placeholder="Ej: 3"
+                    className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">Mínimo de Puntos</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={filters.minPoints ?? ''}
+                    onChange={e => setFilters({ ...filters, minPoints: e.target.value ? Number(e.target.value) : undefined })}
+                    placeholder="Ej: 500"
+                    className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white"
+                  />
+                </div>
+              </div>
+              {previewCount !== null && (
+                <p className="text-xs font-bold text-emerald-700">
+                  ✅ Coinciden {previewCount} usuarios con los filtros actuales.
+                </p>
+              )}
+            </div>
+          )}
+
           {audience === 'specific' && (
             <div className="border border-slate-200 rounded-lg p-3 bg-slate-50 space-y-2">
               <label className="block text-xs font-bold text-slate-600">Seleccionar Destinatarios Específicos</label>
@@ -991,14 +1207,15 @@ function BroadcastPanel() {
                 type="text"
                 value={contactSearch}
                 onChange={e => setContactSearch(e.target.value)}
-                placeholder="Buscar contacto por nombre o teléfono..."
+                placeholder="Buscar contacto por nombre, email o teléfono..."
                 className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none bg-white"
               />
               <div className="max-h-36 overflow-y-auto space-y-1.5 border border-slate-200 rounded-lg p-2 bg-white">
                 {contacts
-                  .filter(c => 
-                    c.name.toLowerCase().includes(contactSearch.toLowerCase()) || 
-                    c.phone?.includes(contactSearch)
+                  .filter(c =>
+                    c.name.toLowerCase().includes(contactSearch.toLowerCase()) ||
+                    c.phone?.includes(contactSearch) ||
+                    c.email?.toLowerCase().includes(contactSearch.toLowerCase())
                   )
                   .map(c => {
                     const isChecked = selectedIds.includes(c.id);
@@ -1018,7 +1235,7 @@ function BroadcastPanel() {
                         />
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-slate-800 truncate">{c.name}</p>
-                          <p className="text-[10px] text-slate-400 capitalize">{c.role === 'driver' ? '🚗 Chofer' : '👤 Pasajero'} • {c.phone || 'Sin número'}</p>
+                          <p className="text-[10px] text-slate-400">{c.role === 'driver' ? '🚗 Chofer' : '👤 Pasajero'} • {c.phone || c.email || 'Sin contacto'}</p>
                         </div>
                       </label>
                     );
@@ -1053,7 +1270,7 @@ function BroadcastPanel() {
             >
               {sent ? <><Check className="h-4 w-4" /> {scheduledTime ? '¡Programada!' : '¡Enviada!'}</> : sending ? <><RefreshCw className="h-4 w-4 animate-spin" /> Procesando...</> : <><Send className="h-4 w-4" /> {scheduledTime ? 'Programar Campaña' : 'Enviar Campaña'}</>}
             </button>
-            <button onClick={() => setComposing(false)} className="px-4 py-2.5 border border-slate-200 text-slate-655 text-sm font-semibold rounded-xl hover:bg-slate-50">
+            <button onClick={() => setComposing(false)} className="px-4 py-2.5 border border-slate-200 text-slate-600 text-sm font-semibold rounded-xl hover:bg-slate-50">
               Cancelar
             </button>
           </div>
@@ -1083,7 +1300,7 @@ function BroadcastPanel() {
                       )}
                       {c.audience && (
                         <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-blue-50 text-blue-700">
-                          {c.audience === 'drivers' ? '🚗 Solo Choferes' : c.audience === 'passengers' ? '👤 Solo Pasajeros' : c.audience === 'specific' ? '🎯 Específico' : '🌎 Todos'}
+                          {c.audience === 'drivers' ? '🚗 Solo Choferes' : c.audience === 'passengers' ? '👤 Solo Pasajeros' : c.audience === 'specific' ? '🎯 Específico' : c.audience === 'segmented' ? '🎛️ Segmentado' : '🌎 Todos'}
                         </span>
                       )}
                     </div>
@@ -1303,11 +1520,12 @@ function ContactPanel({
 }
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-type Tab = 'conversations' | 'calls' | 'automated' | 'broadcast';
+type Tab = 'conversations' | 'calls' | 'automated' | 'broadcast' | 'experience';
 
 export default function MessagesPage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('conversations');
+  const [experienceRole, setExperienceRole] = useState<'passenger' | 'driver'>('passenger');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [calls, setCalls] = useState<CallRecord[]>([]);
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
@@ -1379,6 +1597,7 @@ export default function MessagesPage() {
     { key: 'calls' as Tab, label: 'Llamadas', icon: Phone },
     { key: 'automated' as Tab, label: 'Automáticos', icon: Zap },
     { key: 'broadcast' as Tab, label: 'Broadcast', icon: Megaphone },
+    { key: 'experience' as Tab, label: 'App', icon: Sparkles },
   ];
 
   // Filtrado estricto por Unidad de Negocio y Sector del usuario (Super Admin ve todo)
@@ -1461,11 +1680,46 @@ export default function MessagesPage() {
             </div>
           )}
           {activeTab === 'automated' && <AutomatedMessagesPanel />}
-          {activeTab === 'broadcast' && <BroadcastPanel />}
+          {activeTab === 'broadcast' && (
+            <div className="p-4 text-xs text-slate-500 space-y-2">
+              <p className="font-semibold text-slate-700">Campañas Push & Segmentación</p>
+              <p>Creá promociones manuales o programadas en segundo plano y pop-ups dentro de la app, segmentadas por cliente, región, sexo o puntos.</p>
+            </div>
+          )}
+          {activeTab === 'experience' && (
+            <div className="p-4 text-xs text-slate-500 space-y-3">
+              <p className="font-semibold text-slate-700">Experiencia Automática en Apps</p>
+              <p>Configurá textos, tiempos, voz al volante, PIN de seguridad y botón SOS en tiempo real.</p>
+              <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setExperienceRole('passenger')}
+                  className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    experienceRole === 'passenger'
+                      ? 'bg-white text-tech-blue shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  👤 Pasajero
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExperienceRole('driver')}
+                  className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    experienceRole === 'driver'
+                      ? 'bg-white text-tech-blue shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  🚕 Conductor
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ── Center: Chat Window or Calls Panel ── */}
+      {/* ── Center: Chat Window, Calls, Broadcast or Passenger Experience ── */}
       <div className="flex-1 flex flex-col min-w-0">
         {activeTab === 'calls' ? (
           <CallsPanel
@@ -1480,6 +1734,10 @@ export default function MessagesPage() {
               setActiveTab('conversations');
             }}
           />
+        ) : activeTab === 'broadcast' ? (
+          <BroadcastPanel />
+        ) : activeTab === 'experience' ? (
+          experienceRole === 'driver' ? <DriverExperiencePanel /> : <PassengerExperiencePanel />
         ) : activeConversation && activeTab === 'conversations' ? (
           <ChatWindow conversation={activeConversation} operatorName={user?.displayName || 'Operador TravelApp'} />
         ) : (

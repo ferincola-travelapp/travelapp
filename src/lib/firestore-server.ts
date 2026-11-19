@@ -100,11 +100,15 @@ function convertToRestFields(obj: any): any {
 }
 
 // 4. CRUD Wrapper functions
-export async function serverGetDoc(collectionName: string, docId: string): Promise<{ exists: boolean; data: () => any; id: string }> {
+export async function serverGetDoc(
+  collectionName: string,
+  docId: string,
+  authToken?: string
+): Promise<{ exists: boolean; data: () => any; id: string }> {
   const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
   if (!projectId) throw new Error('NEXT_PUBLIC_FIREBASE_PROJECT_ID is not defined');
-  
-  const token = await getAuthToken();
+
+  const token = authToken || (await getAuthToken());
   const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${collectionName}/${docId}`;
   
   try {
@@ -135,12 +139,13 @@ export async function serverGetDoc(collectionName: string, docId: string): Promi
 
 export async function serverGetDocs(
   collectionName: string,
-  constraints: { where?: [string, any, any][]; orderBy?: [string, any][]; limit?: number } = {}
+  constraints: { where?: [string, any, any][]; orderBy?: [string, any][]; limit?: number } = {},
+  authToken?: string
 ): Promise<{ empty: boolean; docs: any[] }> {
   const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
   if (!projectId) throw new Error('NEXT_PUBLIC_FIREBASE_PROJECT_ID is not defined');
-  
-  const token = await getAuthToken();
+
+  const token = authToken || (await getAuthToken());
   
   // Se usa runQuery para soportar filtros, ordenamientos y límites
   const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
@@ -231,11 +236,15 @@ export async function serverGetDocs(
   }
 }
 
-export async function serverAddDoc(collectionName: string, data: any): Promise<{ id: string }> {
+export async function serverAddDoc(
+  collectionName: string,
+  data: any,
+  authToken?: string
+): Promise<{ id: string }> {
   const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
   if (!projectId) throw new Error('NEXT_PUBLIC_FIREBASE_PROJECT_ID is not defined');
-  
-  const token = await getAuthToken();
+
+  const token = authToken || (await getAuthToken());
   const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${collectionName}`;
 
   try {
@@ -263,11 +272,16 @@ export async function serverAddDoc(collectionName: string, data: any): Promise<{
   }
 }
 
-export async function serverUpdateDoc(collectionName: string, docId: string, data: any): Promise<void> {
+export async function serverUpdateDoc(
+  collectionName: string,
+  docId: string,
+  data: any,
+  authToken?: string
+): Promise<void> {
   const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
   if (!projectId) throw new Error('NEXT_PUBLIC_FIREBASE_PROJECT_ID is not defined');
-  
-  const token = await getAuthToken();
+
+  const token = authToken || (await getAuthToken());
   
   // En la API REST de Firestore, update se hace con PATCH y especificando updateMask
   const updateMask = Object.keys(data).map(key => `updateMask.fieldPaths=${key}`).join('&');

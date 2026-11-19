@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Switch,
-  TextInput, ActivityIndicator, Animated, ScrollView, Dimensions, Alert, Modal, Image, Linking, Platform, Vibration,
+  TextInput, ActivityIndicator, Animated, ScrollView, Dimensions, Alert, Modal, Image, Linking, Platform, Vibration, AppState,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
@@ -16,6 +16,30 @@ import { TravelCabLogo, TravelAppLogo, TravelExperienceLogo } from '../component
 import { InteractiveMapView } from '../components/InteractiveMapView';
 import { playSeatbeltSafetyPrompt, playCustomVoiceNotification } from '../lib/audioService';
 import { WebView } from 'react-native-webview';
+import * as Notifications from 'expo-notifications';
+import {
+  registerForPushNotificationsAsync,
+  presentLocalNotification,
+  ROUTE_DEVIATION_CATEGORY,
+  ACTION_CONFIRM_OK,
+  ACTION_REQUEST_HELP,
+} from '../lib/notificationsService';
+import {
+  distanceToPolylineKm,
+  estimateEtaMinutes,
+  decodePolyline as decodePolyUtil,
+} from '../lib/geoUtils';
+import {
+  WelcomeFirstLoginModal,
+  PromoPopupModal,
+  DriverAssignedModal,
+  RouteDeviationInteractiveModal,
+  TripCompletedRatingModal,
+  PassengerExpConfig,
+  DEFAULT_CLIENT_PASSENGER_EXP_CONFIG,
+  AcceptedDriverInfo,
+  maskPlate,
+} from '../components/PassengerExperienceModals';
 
 import { OverlappingNativeCarousel } from '../components/OverlappingNativeCarousel';
 
@@ -100,7 +124,7 @@ export const DEFAULT_REGION = {
   longitudeDelta: 0.04,
 };
 
-export const MAP_PROVIDER = Platform.OS === 'android' ? undefined : PROVIDER_GOOGLE;
+export const MAP_PROVIDER = Platform.OS === 'android' ? undefined : ('google' as const);
 
 export const getMapRegion = (coords?: any, userLoc?: any) => {
   if (coords?.latitude && coords?.longitude) {
@@ -137,9 +161,8 @@ export const formatDriverName = (fullName?: string) => {
   return parts[0] || fullName;
 };
 
-export const formatPlate = (plate?: string) => {
-  if (!plate) return 'S/D';
-  return plate.trim().toUpperCase();
+export const formatPlate = (plate?: string, visibleLastChars = 3) => {
+  return maskPlate(plate, visibleLastChars);
 };
 
 export default function HomeScreen() {
@@ -201,6 +224,395 @@ export default function HomeScreen() {
   const unsubGroupMessagesRef = useRef<(() => void) | null>(null);
   const placeAutocompleteTimerRef = useRef<any>(null);
   const processedPaymentTripIdRef = useRef<string | null>(null);
+
+  // ── Experiencia Dinámica del Pasajero (editable desde Dashboard) ──────────
+  const [expConfig, setExpConfig] = useState<PassengerExpConfig>(DEFAULT_CLIENT_PASSENGER_EXP_CONFIG);
+  const [welcomePopupVisible, setWelcomePopupVisible] = useState(false);
+  const [promoModalVisible, setPromoModalVisible] = useState(false);
+  const [activePromo, setActivePromo] = useState<{ title: string; message: string; ctaLabel?: string; ctaTab?: string } | null>(null);
+  const [driverAssignedModalVisible, setDriverAssignedModalVisible] = useState(false);
+  const [deviationModalVisible, setDeviationModalVisible] = useState(false);
+  const [deviationKm, setDeviationKm] = useState(0);
+  const [deviationSecondsLeft, setDeviationSecondsLeft] = useState(60);
+  const [pendingRatingTrip, setPendingRatingTrip] = useState<any>(null);
+  const [ratingModalVisible, setRatingModalVisible] = useState(false);
+  const [ratingEarnedPoints, setRatingEarnedPoints] = useState(0);
+
+  const seenPromoIdsRef = useRef<Set<string>>(new Set());
+  const arrivingNotifiedPhaseRef = useRef<{ onWay?: boolean; inProgress?: boolean }>({});
+  const deviationStartedAtRef = useRef<number | null>(null);
+  const activeSafetyAlertIdRef = useRef<string | null>(null);
+  const deviationDismissedTripRef = useRef<string | null>(null);
+  const lastAssignedTripShownRef = useRef<string | null>(null);
+  const lastAssignedNotifiedTripRef = useRef<string | null>(null);
+
+  // 1. Sincronizar configuración de experiencia en tiempo real desde Firestore
+  useEffect(() => {
+    const unsub = onSnapshot(
+      doc(db, 'system_config', 'passenger_experience'),
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data() as Partial<PassengerExpConfig>;
+          setExpConfig({
+            welcomePopup: { ...DEFAULT_CLIENT_PASSENGER_EXP_CONFIG.welcomePopup, ...(data.welcomePopup || {}) },
+            searchingModal: { ...DEFAULT_CLIENT_PASSENGER_EXP_CONFIG.searchingModal, ...(data.searchingModal || {}) },
+            driverAssignedModal: { ...DEFAULT_CLIENT_PASSENGER_EXP_CONFIG.driverAssignedModal, ...(data.driverAssignedModal || {}) },
+            arrivingSoonAlert: { ...DEFAULT_CLIENT_PASSENGER_EXP_CONFIG.arrivingSoonAlert, ...(data.arrivingSoonAlert || {}) },
+            routeDeviationProtocol: { ...DEFAULT_CLIENT_PASSENGER_EXP_CONFIG.routeDeviationProtocol, ...(data.routeDeviationProtocol || {}) },
+            tripCompletedRating: { ...DEFAULT_CLIENT_PASSENGER_EXP_CONFIG.tripCompletedRating, ...(data.tripCompletedRating || {}) },
+          });
+        }
+      },
+      () => {}
+    );
+    return unsub;
+  }, []);
+
+  // 2. Registrar Push Token + escuchar respuestas interactivas (incluye botones de desvío en 2do plano)
+  const handleDeviationConfirmOk = async (alertIdOverride?: string) => {
+    const targetId = alertIdOverride || activeSafetyAlertIdRef.current;
+    setDeviationModalVisible(false);
+    deviationStartedAtRef.current = null;
+    if (activeTrip?.id) deviationDismissedTripRef.current = activeTrip.id;
+    if (targetId) {
+      try {
+        await updateDoc(doc(db, 'safety_alerts', targetId), {
+          status: 'passenger_ok',
+          escalatedToDashboard: false,
+          updatedAt: Date.now(),
+        });
+      } catch {}
+    }
+    activeSafetyAlertIdRef.current = null;
+  };
+
+  const handleDeviationRequestHelp = async (alertIdOverride?: string) => {
+    const targetId = alertIdOverride || activeSafetyAlertIdRef.current;
+    setDeviationModalVisible(false);
+    if (targetId) {
+      try {
+        await updateDoc(doc(db, 'safety_alerts', targetId), {
+          status: 'passenger_help_requested',
+          escalatedToDashboard: true,
+          updatedAt: Date.now(),
+        });
+      } catch {}
+    }
+    Alert.alert(
+      '🚨 Alerta Enviada',
+      'Activamos la alerta prioritaria en la central de TravelApp. Un operador se comunicará de inmediato.'
+    );
+  };
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    registerForPushNotificationsAsync(user.uid);
+
+    const fgSub = Notifications.addNotificationReceivedListener((notification) => {
+      const content = notification.request.content;
+      const data: any = content.data || {};
+      if (data.category === 'driver_assigned' || data.type === 'driver_assigned') {
+        if (data.driver) {
+          setDriverDetails(data.driver);
+        }
+        setDriverAssignedModalVisible(true);
+      } else if (data.category === 'promo' || data.inAppPopup) {
+        setActivePromo({
+          title: content.title || '🎁 Promoción TravelApp',
+          message: content.body || '',
+          ctaLabel: data.ctaLabel || undefined,
+          ctaTab: data.ctaTab || undefined,
+        });
+        setPromoModalVisible(true);
+      }
+    });
+
+    const respSub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data: any = response.notification.request.content.data || {};
+      if (response.actionIdentifier === ACTION_CONFIRM_OK) {
+        handleDeviationConfirmOk(data.safetyAlertId);
+      } else if (response.actionIdentifier === ACTION_REQUEST_HELP) {
+        handleDeviationRequestHelp(data.safetyAlertId);
+      } else if (data.category === 'driver_assigned' || data.type === 'driver_assigned') {
+        if (data.driver) {
+          setDriverDetails(data.driver);
+        }
+        setDriverAssignedModalVisible(true);
+      } else if (data.ctaTab && ['home', 'experience', 'trips', 'rewards', 'profile'].includes(data.ctaTab)) {
+        setActiveTab(data.ctaTab);
+      }
+    });
+
+    return () => {
+      fgSub.remove();
+      respSub.remove();
+    };
+  }, [user?.uid]);
+
+  // 3. Bienvenida primer login + chequeo de valoración pendiente estilo Uber al reabrir app
+  useEffect(() => {
+    if (!user?.uid) return;
+    let mounted = true;
+    const checkInitialExperience = async () => {
+      try {
+        const userSnap = await getDoc(doc(db, 'users', user.uid));
+        const uData: any = userSnap.exists() ? userSnap.data() : {};
+        if (!mounted) return;
+
+        if (
+          expConfig.welcomePopup.enabled &&
+          !uData.hasSeenWelcomePopup &&
+          !uData.photoURL &&
+          !user.photoURL
+        ) {
+          setWelcomePopupVisible(true);
+        }
+
+        if (expConfig.tripCompletedRating.persistUntilRatedOrSkipped && uData.pendingRatingTripId) {
+          const tSnap = await getDoc(doc(db, 'trips', uData.pendingRatingTripId));
+          if (tSnap.exists()) {
+            const tData: any = { id: tSnap.id, ...tSnap.data() };
+            if (!tData.rated && !tData.ratingDismissed) {
+              setPendingRatingTrip(tData);
+              setRatingEarnedPoints(Number(tData.rewardsPointsEarned || 0));
+              setRatingModalVisible(true);
+            } else {
+              await setDoc(doc(db, 'users', user.uid), { pendingRatingTripId: null }, { merge: true });
+            }
+          }
+        }
+      } catch {}
+    };
+    checkInitialExperience();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.uid, expConfig.welcomePopup.enabled]);
+
+  // 4. Escuchar promociones in-app enviadas desde BroadcastPanel
+  useEffect(() => {
+    if (!user?.uid) return;
+    const mountedAt = Date.now() - 5000;
+    const q = query(collection(db, 'notifications'), orderBy('createdAt', 'desc'), limit(5));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        snap.docs.forEach((d) => {
+          const data: any = d.data();
+          if (seenPromoIdsRef.current.has(d.id)) return;
+          const createdAt = Number(data.createdAt || data.timestamp || 0);
+          if (createdAt < mountedAt) {
+            seenPromoIdsRef.current.add(d.id);
+            return;
+          }
+          const targetsMe =
+            data.audience === 'all' ||
+            data.audience === 'passengers' ||
+            data.targetUserId === user.uid ||
+            (Array.isArray(data.specificIds) && data.specificIds.includes(user.uid));
+
+          if (targetsMe && data.inAppPopup !== false) {
+            seenPromoIdsRef.current.add(d.id);
+            setActivePromo({
+              title: data.title || '📢 Novedad TravelApp',
+              message: data.message || '',
+              ctaLabel: data.ctaLabel || undefined,
+              ctaTab: data.ctaTab || undefined,
+            });
+            setPromoModalVisible(true);
+          }
+        });
+      },
+      () => {}
+    );
+    return unsub;
+  }, [user?.uid]);
+
+  // 5. Monitoreo en tiempo real de ETA (Aviso próximo a llegada) y Desvío de Recorrido (> km editable)
+  useEffect(() => {
+    if (!activeTrip || !activeTrip.driverLocation) return;
+
+    const driverLoc = {
+      latitude: Number(activeTrip.driverLocation.latitude ?? activeTrip.driverLocation.lat),
+      longitude: Number(activeTrip.driverLocation.longitude ?? activeTrip.driverLocation.lng),
+    };
+    if (isNaN(driverLoc.latitude) || isNaN(driverLoc.longitude)) return;
+
+    if (expConfig.arrivingSoonAlert.enabled) {
+      const targetPhase = activeTrip.status === 'on_way' ? 'onWay' : activeTrip.status === 'in_progress' ? 'inProgress' : null;
+      const targetCoord = activeTrip.status === 'on_way' ? originCoords : activeTrip.status === 'in_progress' ? destinationCoords : null;
+
+      if (targetPhase && targetCoord && !arrivingNotifiedPhaseRef.current[targetPhase]) {
+        const destPt = {
+          latitude: Number(targetCoord.latitude ?? targetCoord.lat),
+          longitude: Number(targetCoord.longitude ?? targetCoord.lng),
+        };
+        if (!isNaN(destPt.latitude) && !isNaN(destPt.longitude)) {
+          const etaMins = estimateEtaMinutes(driverLoc, destPt);
+          if (etaMins <= Number(expConfig.arrivingSoonAlert.minutesBefore || 2)) {
+            arrivingNotifiedPhaseRef.current[targetPhase] = true;
+            const vehicleLabel = driverDetails?.model || 'tu móvil';
+            const msgBody = (expConfig.arrivingSoonAlert.message || '')
+              .replace('{nombre}', firstName)
+              .replace('{conductor}', driverDetails?.name || 'tu conductor')
+              .replace('{vehiculo}', vehicleLabel)
+              .replace('{eta}', String(etaMins));
+            showOverlayNotification(msgBody);
+            playNotificationSoundAndVibrate();
+            presentLocalNotification({
+              title: expConfig.arrivingSoonAlert.title,
+              body: msgBody,
+              channelId: 'trip_updates',
+            });
+          }
+        }
+      }
+    }
+
+    if (
+      expConfig.routeDeviationProtocol.enabled &&
+      activeTrip.status === 'in_progress' &&
+      routePolyline &&
+      deviationDismissedTripRef.current !== activeTrip.id &&
+      !activeSafetyAlertIdRef.current
+    ) {
+      const polyPts = decodePolyUtil(routePolyline);
+      if (polyPts.length >= 2) {
+        const distKm = distanceToPolylineKm(driverLoc, polyPts);
+        const thresholdKm = Number(expConfig.routeDeviationProtocol.distanceKm || 1.5);
+        const sustainedMs = Number(expConfig.routeDeviationProtocol.durationSeconds || 45) * 1000;
+
+        if (distKm >= thresholdKm) {
+          if (!deviationStartedAtRef.current) {
+            deviationStartedAtRef.current = Date.now();
+          } else if (Date.now() - deviationStartedAtRef.current >= sustainedMs) {
+            const timeoutSecs = Number(expConfig.routeDeviationProtocol.responseTimeoutSeconds || 60);
+            setDeviationKm(distKm);
+            setDeviationSecondsLeft(timeoutSecs);
+            setDeviationModalVisible(true);
+            playNotificationSoundAndVibrate();
+
+            addDoc(collection(db, 'safety_alerts'), {
+              type: 'route_deviation',
+              tripId: activeTrip.id,
+              passengerId: user.uid,
+              passengerName: firstName,
+              passengerPhone: userPhone || '',
+              driverId: driverDetails?.id || activeTrip.driverId || '',
+              driverName: driverDetails?.name || activeTrip.driverName || '',
+              driverPhone: driverDetails?.phone || '',
+              vehicleInfo: `${driverDetails?.brand || ''} ${driverDetails?.vehicleModelName || driverDetails?.model || ''} ${driverDetails?.color || ''}`.trim(),
+              vehiclePlate: activeTrip.vehiclePlate || driverDetails?.plate || '',
+              deviationKm: Number(distKm.toFixed(2)),
+              thresholdKm,
+              driverLocation: driverLoc,
+              origin: activeTrip.origin || origin,
+              destination: activeTrip.destination || destination,
+              status: 'awaiting_passenger',
+              escalatedToDashboard: false,
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+            })
+              .then((ref) => {
+                activeSafetyAlertIdRef.current = ref.id;
+                presentLocalNotification({
+                  title: expConfig.routeDeviationProtocol.passengerTitle,
+                  body: (expConfig.routeDeviationProtocol.passengerMessage || '').replace(
+                    '{km}',
+                    String(thresholdKm)
+                  ),
+                  channelId: 'safety_alerts',
+                  categoryIdentifier: ROUTE_DEVIATION_CATEGORY,
+                  data: { safetyAlertId: ref.id, tripId: activeTrip.id },
+                });
+              })
+              .catch(() => {});
+          }
+        } else {
+          deviationStartedAtRef.current = null;
+        }
+      }
+    }
+  }, [activeTrip?.driverLocation, activeTrip?.status, expConfig]);
+
+  // 6. Cuenta regresiva del modal de desvío -> si el pasajero no responde, escala alerta roja al Dashboard
+  useEffect(() => {
+    if (!deviationModalVisible) return;
+    if (deviationSecondsLeft <= 0) {
+      setDeviationModalVisible(false);
+      if (activeSafetyAlertIdRef.current) {
+        updateDoc(doc(db, 'safety_alerts', activeSafetyAlertIdRef.current), {
+          status: 'no_response',
+          escalatedToDashboard: true,
+          updatedAt: Date.now(),
+        }).catch(() => {});
+      }
+      return;
+    }
+    const timer = setTimeout(() => setDeviationSecondsLeft((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [deviationModalVisible, deviationSecondsLeft]);
+
+  const triggerPendingRatingFlow = async (completedTripObj: any, ptsEarned: number) => {
+    arrivingNotifiedPhaseRef.current = {};
+    deviationStartedAtRef.current = null;
+    activeSafetyAlertIdRef.current = null;
+    setDeviationModalVisible(false);
+    setDriverAssignedModalVisible(false);
+
+    if (expConfig.tripCompletedRating.enabled && completedTripObj?.id) {
+      if (expConfig.tripCompletedRating.persistUntilRatedOrSkipped) {
+        await setDoc(
+          doc(db, 'users', user.uid),
+          { pendingRatingTripId: completedTripObj.id },
+          { merge: true }
+        ).catch(() => {});
+      }
+      setPendingRatingTrip(completedTripObj);
+      setRatingEarnedPoints(ptsEarned);
+      setRatingModalVisible(true);
+    } else {
+      setEarnedPoints(ptsEarned);
+      setTripCompletedModalVisible(true);
+    }
+  };
+
+  const handleSubmitPendingRating = async ({
+    rating,
+    tags,
+    tipAmount,
+  }: {
+    rating: number;
+    tags: string[];
+    tipAmount: number;
+  }) => {
+    if (!pendingRatingTrip?.id) {
+      setRatingModalVisible(false);
+      return;
+    }
+    await updateDoc(doc(db, 'trips', pendingRatingTrip.id), {
+      rated: true,
+      rating,
+      feedbackTags: tags,
+      tipAmount,
+      ratedAt: Timestamp.now(),
+    });
+    await setDoc(doc(db, 'users', user.uid), { pendingRatingTripId: null }, { merge: true });
+    setRatingModalVisible(false);
+    setPendingRatingTrip(null);
+    showOverlayNotification('¡Gracias por valorar tu viaje! ⭐');
+  };
+
+  const handleSkipPendingRating = async () => {
+    if (pendingRatingTrip?.id) {
+      await updateDoc(doc(db, 'trips', pendingRatingTrip.id), {
+        ratingDismissed: true,
+      }).catch(() => {});
+    }
+    await setDoc(doc(db, 'users', user.uid), { pendingRatingTripId: null }, { merge: true }).catch(() => {});
+    setRatingModalVisible(false);
+    setPendingRatingTrip(null);
+  };
 
   useEffect(() => {
     return () => {
@@ -363,7 +775,7 @@ export default function HomeScreen() {
   const [earnedPoints, setEarnedPoints] = useState(0);
   const [isEcosystemExpanded, setIsEcosystemExpanded] = useState(false);
   const bounceAnim = useRef(new Animated.Value(0)).current;
-  const mapRef = useRef<MapView | null>(null);
+  const mapRef = useRef<any>(null);
   const [isMapReady, setIsMapReady] = useState(false);
 
   // Escuchador de autenticación y errores de Google Maps API (gm_authFailure)
@@ -1424,7 +1836,9 @@ export default function HomeScreen() {
 
       const tripData: any = {
         passengerId: user.uid,
+        passengerName: firstName,
         userName: firstName,
+        passengerPhoto: userPhotoURL || user?.photoURL || null,
         passengerPhone: userPhone || '',
         origin,
         destination,
@@ -1479,7 +1893,7 @@ export default function HomeScreen() {
           if (searchTimer) clearTimeout(searchTimer);
 
           let fallbackDriverDoc: any = null;
-          if (!data.driverCarPhoto || !data.driverProfilePhoto || !data.vehiclePlate) {
+          if (!data.driverCarPhoto || (!data.driverProfilePhoto && !data.driverAvatar && !data.driverPhoto) || !data.vehiclePlate || !data.vehicleBrand || !data.vehicleColor) {
             try {
               const dSnap = await getDoc(doc(db, 'drivers', data.driverId));
               if (dSnap.exists()) fallbackDriverDoc = dSnap.data();
@@ -1488,27 +1902,49 @@ export default function HomeScreen() {
 
           const rawDriverName = data.driverName || fallbackDriverDoc?.name || 'Conductor';
           const firstNameOnly = formatDriverName(rawDriverName);
-          const realPlate = formatPlate(
-            data.vehiclePlate || data.driverPlate || fallbackDriverDoc?.activeVehicle?.plate || fallbackDriverDoc?.plate || 'S/D'
-          );
+          const rawPlateVal =
+            data.vehiclePlate || data.driverPlate || fallbackDriverDoc?.activeVehicle?.plate || fallbackDriverDoc?.plate || 'S/D';
+          const maskedPlateVal = formatPlate(rawPlateVal, expConfig.driverAssignedModal.maskPlateVisibleLastChars || 3);
+          const realBrand = data.vehicleBrand || fallbackDriverDoc?.activeVehicle?.brand || fallbackDriverDoc?.vehicleBrand || '';
+          const realModelName = data.vehicleModel || fallbackDriverDoc?.activeVehicle?.model || fallbackDriverDoc?.vehicleModel || '';
+          const realColor = data.vehicleColor || fallbackDriverDoc?.activeVehicle?.color || fallbackDriverDoc?.vehicleColor || '';
           const realModel =
-            data.vehicleModel ||
-            (fallbackDriverDoc?.activeVehicle
-              ? `${fallbackDriverDoc.activeVehicle.brand || ''} ${fallbackDriverDoc.activeVehicle.color ? `(${fallbackDriverDoc.activeVehicle.color})` : ''}`.trim()
-              : fallbackDriverDoc?.vehicleBrand || 'Vehículo Habilitado');
+            [realBrand, realModelName].filter(Boolean).join(' ').trim() +
+            (realColor ? ` (${realColor})` : '');
           const realRating = Number(data.driverRating || fallbackDriverDoc?.rating || 5.0).toFixed(1);
           const realTotalTrips = Number(data.driverTotalTrips ?? fallbackDriverDoc?.totalTrips ?? 0);
+          const realDriverAvatar =
+            data.driverProfilePhoto ||
+            data.driverAvatar ||
+            data.driverPhoto ||
+            fallbackDriverDoc?.photoURL ||
+            fallbackDriverDoc?.photoUrl ||
+            fallbackDriverDoc?.avatar ||
+            fallbackDriverDoc?.profilePhoto ||
+            fallbackDriverDoc?.selfieUrl ||
+            '';
+          const realCarPhoto =
+            data.driverCarPhoto ||
+            data.vehiclePhoto ||
+            data.vehiclePhotoUrl ||
+            fallbackDriverDoc?.activeVehicle?.photoUrl ||
+            fallbackDriverDoc?.activeVehicle?.vehiclePhoto ||
+            fallbackDriverDoc?.vehiclePhotoUrl ||
+            '';
 
-          const driverDetailsObj = {
+          const driverDetailsObj: AcceptedDriverInfo & { phone?: string } = {
             id: data.driverId,
             name: firstNameOnly,
-            plate: realPlate,
-            model: realModel,
+            plate: rawPlateVal,
+            brand: realBrand || 'Verificada',
+            vehicleModelName: realModelName || realBrand || 'Habilitado',
+            color: realColor || 'Estándar',
+            model: realModel || 'Vehículo Habilitado',
             rating: realRating,
             totalTrips: realTotalTrips,
             phone: data.driverPhone || fallbackDriverDoc?.phone || '',
-            avatar: data.driverProfilePhoto || fallbackDriverDoc?.photoUrl || '',
-            carPhoto: data.driverCarPhoto || fallbackDriverDoc?.activeVehicle?.photoUrl || fallbackDriverDoc?.vehiclePhotoUrl || '',
+            avatar: realDriverAvatar,
+            carPhoto: realCarPhoto,
           };
 
           // DEBITAR PUNTOS REWARDS UNA SOLA VEZ SI EL VIAJE FUE SOLICITADO CON PUNTOS
@@ -1552,33 +1988,66 @@ export default function HomeScreen() {
           setDriverDetails(driverDetailsObj);
           setActiveTrip({ id: snap.id, ...data });
           setRequestFlowStep('active');
+
+          if (expConfig.driverAssignedModal.enabled && lastAssignedTripShownRef.current !== snap.id) {
+            lastAssignedTripShownRef.current = snap.id;
+            setDriverAssignedModalVisible(true);
+          }
+
+          if (expConfig.driverAssignedModal.enabled && lastAssignedNotifiedTripRef.current !== snap.id) {
+            lastAssignedNotifiedTripRef.current = snap.id;
+            if (AppState.currentState !== 'active') {
+              presentLocalNotification({
+                title: expConfig.driverAssignedModal.title || '¡Tu conductor está en camino!',
+                body: `${driverDetailsObj.name} (⭐ ${driverDetailsObj.rating} · ${driverDetailsObj.totalTrips} viajes) va en ${driverDetailsObj.brand} ${driverDetailsObj.vehicleModelName} ${driverDetailsObj.color} · Dominio ${maskedPlateVal}. Tocá para ver foto de perfil y vehículo.`,
+                channelId: 'trip_updates',
+                imageUrl: driverDetailsObj.avatar || driverDetailsObj.carPhoto || undefined,
+                data: {
+                  category: 'driver_assigned',
+                  tripId: snap.id,
+                  driver: driverDetailsObj,
+                },
+              });
+            }
+          }
+
           showOverlayNotification(
-            `¡Viaje aceptado! ${driverDetailsObj.name} (⭐ ${driverDetailsObj.rating}) está en camino en ${driverDetailsObj.model} · Dominio: ${driverDetailsObj.plate}`
+            `¡Viaje aceptado! ${driverDetailsObj.name} (⭐ ${driverDetailsObj.rating}) está en camino en ${driverDetailsObj.model} · Dominio: ${maskedPlateVal}`
           );
           playNotificationSoundAndVibrate();
         }
 
-        // 2. En camino al pasajero (actualizar ubicación)
+        // 2. En camino al pasajero (actualizar ubicación y estado en vivo)
         if (data.status === 'on_way') {
-          setActiveTrip((prev: any) => prev ? { ...prev, status: 'on_way' } : null);
+          setActiveTrip({ id: snap.id, ...data });
         }
 
         // 3. Chofer llegó
         if (data.status === 'arrived') {
-          setActiveTrip((prev: any) => prev ? { ...prev, status: 'arrived' } : null);
-          showOverlayNotification("¡Tu conductor ha llegado! Te espera en el punto de encuentro.");
-          playNotificationSoundAndVibrate();
+          setActiveTrip((prev: any) => {
+            if (prev?.status !== 'arrived') {
+              showOverlayNotification("¡Tu conductor ha llegado! Te espera en el punto de encuentro.");
+              playNotificationSoundAndVibrate();
+            }
+            return { id: snap.id, ...data };
+          });
         }
 
         // 4. Viaje en curso
         if (data.status === 'in_progress') {
-          setActiveTrip((prev: any) => prev ? { ...prev, status: 'in_progress' } : null);
-          showOverlayNotification("Viaje iniciado. ¡Disfrutá tu viaje!");
-          playNotificationSoundAndVibrate();
+          setActiveTrip((prev: any) => {
+            if (prev?.status !== 'in_progress') {
+              showOverlayNotification("Viaje iniciado. ¡Disfrutá tu viaje!");
+              playNotificationSoundAndVibrate();
+            }
+            return { id: snap.id, ...data };
+          });
         }
 
         // 5. Completado
         if (data.status === 'completed') {
+          const completedTripObj = { id: snap.id, ...data };
+          const ptsEarned = Number(data.rewardsPointsEarned || 0);
           setActiveTrip((prev: any) => prev ? { ...prev, status: 'completed', finalPrice: data.finalPrice } : null);
           const userEmail = user?.email || 'tu correo';
           showOverlayNotification(`¡Viaje finalizado! Enviamos tu recibo digital a ${userEmail} 📧`);
@@ -1614,7 +2083,8 @@ export default function HomeScreen() {
             setRoutePolyline('');
             setRouteDistance(0);
             setRouteDuration(0);
-          }, 2000);
+            triggerPendingRatingFlow(completedTripObj, ptsEarned);
+          }, 1200);
 
           unsubTrip();
           unsubTripRef.current = null;
@@ -1783,19 +2253,36 @@ export default function HomeScreen() {
       }
 
       const driverName = formatDriverName(matchedDriver.name || 'Conductor');
-      const driverPlate = formatPlate(matchedDriver.activeVehicle?.plate || matchedDriver.plate || '');
+      const rawDriverPlate = matchedDriver.activeVehicle?.plate || matchedDriver.plate || '';
+      const driverPlate = formatPlate(rawDriverPlate, expConfig.driverAssignedModal.maskPlateVisibleLastChars || 3);
+      const vBrand = matchedDriver.activeVehicle?.brand || matchedDriver.vehicleBrand || '';
+      const vModelName = matchedDriver.activeVehicle?.model || matchedDriver.vehicleModel || '';
+      const vColor = matchedDriver.activeVehicle?.color || matchedDriver.vehicleColor || '';
       const vehicleModel = matchedDriver.activeVehicle
-        ? `${matchedDriver.activeVehicle.brand || ''} ${matchedDriver.activeVehicle.color ? `(${matchedDriver.activeVehicle.color})` : ''}`.trim()
-        : matchedDriver.vehicleBrand || 'Vehículo Oficial';
+        ? `${vBrand} ${vModelName} ${vColor ? `(${vColor})` : ''}`.trim()
+        : vBrand || 'Vehículo Oficial';
       const vehicleInfo = `${vehicleModel} · Dominio ${driverPlate}`;
       const driverRatingStr = Number(matchedDriver.rating || 5.0).toFixed(1);
-      const driverAvatar = matchedDriver.photoUrl || '';
-      const driverCarPhoto = matchedDriver.activeVehicle?.photoUrl || matchedDriver.vehiclePhotoUrl || '';
+      const driverAvatar =
+        matchedDriver.photoURL ||
+        matchedDriver.photoUrl ||
+        matchedDriver.avatar ||
+        matchedDriver.profilePhoto ||
+        matchedDriver.selfieUrl ||
+        '';
+      const driverCarPhoto =
+        matchedDriver.activeVehicle?.photoUrl ||
+        matchedDriver.activeVehicle?.vehiclePhoto ||
+        matchedDriver.vehiclePhotoUrl ||
+        '';
 
-      const linkedDriverDetails = {
+      const linkedDriverDetails: AcceptedDriverInfo & { phone?: string } = {
         id: matchedDriver.id,
         name: driverName,
-        plate: driverPlate,
+        plate: rawDriverPlate || driverPlate,
+        brand: vBrand || 'Verificada',
+        vehicleModelName: vModelName || vBrand || 'Habilitado',
+        color: vColor || 'Estándar',
         model: vehicleModel,
         rating: driverRatingStr,
         totalTrips: Number(matchedDriver.totalTrips || 0),
@@ -1809,8 +2296,9 @@ export default function HomeScreen() {
         const estimatedPrice = calculateFare(selectedCategory);
         const tripData: any = {
           passengerId: user?.uid || 'anonymous',
-          passengerName: user?.displayName || 'Pasajero',
-          passengerPhone: user?.phoneNumber || '',
+          passengerName: firstName || user?.displayName || 'Pasajero',
+          passengerPhoto: userPhotoURL || user?.photoURL || null,
+          passengerPhone: userPhone || user?.phoneNumber || '',
           origin,
           destination,
           originCoords: { lat: originCoords.lat || originCoords.latitude, lng: originCoords.lng || originCoords.longitude, latitude: originCoords.latitude || originCoords.lat, longitude: originCoords.longitude || originCoords.lng },
@@ -2098,10 +2586,11 @@ export default function HomeScreen() {
         });
       }
 
-      setEarnedPoints(selectedPayment === 'Rewards' ? 0 : configuredPoints);
-      setTripCompletedModalVisible(true);
+      const finalPts = selectedPayment === 'Rewards' ? 0 : configuredPoints;
+      const completedSnapObj = { ...activeTrip, status: 'completed', rewardsPointsEarned: finalPts };
       setRequestFlowStep('idle');
       setActiveTrip(null);
+      await triggerPendingRatingFlow(completedSnapObj, finalPts);
     } catch (err) {
       console.warn('Error al finalizar viaje:', err);
       Alert.alert('Error', 'No se pudo cerrar el viaje. Verificá tu conexión.');
@@ -2165,7 +2654,9 @@ export default function HomeScreen() {
                     <Text style={styles.driverNameLabel}>{formatDriverName(driverDetails.name)}</Text>
                     <Text style={styles.driverCarPlate}>
                       {driverDetails.model || 'Vehículo Habilitado'} · Dominio:{' '}
-                      <Text style={{ fontFamily: 'Quicksand-Bold', color: Colors.primary }}>{formatPlate(driverDetails.plate)}</Text>
+                      <Text style={{ fontFamily: 'Quicksand-Bold', color: Colors.primary }}>
+                        {formatPlate(driverDetails.plate, expConfig.driverAssignedModal.maskPlateVisibleLastChars)}
+                      </Text>
                     </Text>
                     <Text style={styles.driverRatingText}>
                       ⭐ {driverDetails.rating || '5.0'} · <Text style={{ color: Colors.textMuted }}>{driverDetails.totalTrips ?? 0} viajes realizados</Text>
@@ -2176,7 +2667,7 @@ export default function HomeScreen() {
                 {driverDetails.carPhoto ? (
                   <View style={{ marginTop: 6 }}>
                     <Text style={{ fontSize: 10, fontFamily: 'Quicksand-Bold', color: Colors.textMuted, marginBottom: 4 }}>
-                      Foto real del vehículo ({formatPlate(driverDetails.plate)}):
+                      Foto real del vehículo ({formatPlate(driverDetails.plate, expConfig.driverAssignedModal.maskPlateVisibleLastChars)}):
                     </Text>
                     <Image source={{ uri: driverDetails.carPhoto }} style={styles.carPhotoTrackingImg} />
                   </View>
@@ -2503,7 +2994,10 @@ export default function HomeScreen() {
         <>
           {/* MAPA DE FONDO EN INICIO */}
       {activeTab === 'home' && requestFlowStep === 'searching' && (
-        <View style={styles.mapContainer}>
+        <View
+          style={styles.mapContainer}
+          pointerEvents={expConfig.searchingModal.lockMapInteraction ? 'none' : 'auto'}
+        >
           {loadingLocation ? (
             <ActivityIndicator size="large" color={Colors.primary} style={StyleSheet.absoluteFill} />
           ) : (
@@ -5103,19 +5597,19 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
-      {/* MODAL DE BÚSQUEDA DE CHOFER */}
+      {/* MODAL DE BÚSQUEDA DE CHOFER (EDITABLE Y BLOQUEA MAPA) */}
       <Modal
-        visible={requestFlowStep === 'searching'}
+        visible={requestFlowStep === 'searching' && expConfig.searchingModal.enabled}
         transparent
         animationType="fade"
       >
         <View style={styles.searchingOverlay}>
           <View style={styles.searchingBox}>
             <ActivityIndicator size="large" color={Colors.accent} />
-            <Text style={styles.searchingTitle}>Buscando tu conductor...</Text>
-            <Text style={styles.searchingDesc}>Analizando choferes y tarifas activas en tu zona. Aguarda un momento.</Text>
+            <Text style={styles.searchingTitle}>{expConfig.searchingModal.title}</Text>
+            <Text style={styles.searchingDesc}>{expConfig.searchingModal.description}</Text>
             <TouchableOpacity style={styles.cancelSearchBtn} onPress={cancelSearch}>
-              <Text style={styles.cancelSearchText}>Cancelar Búsqueda</Text>
+              <Text style={styles.cancelSearchText}>{expConfig.searchingModal.cancelText}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -5321,6 +5815,59 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </Animated.View>
       )}
+
+      {/* MODALES DE EXPERIENCIA DINÁMICA DEL PASAJERO */}
+      <WelcomeFirstLoginModal
+        visible={welcomePopupVisible}
+        config={expConfig.welcomePopup}
+        onCompleteProfile={async () => {
+          setWelcomePopupVisible(false);
+          await setDoc(doc(db, 'users', user.uid), { hasSeenWelcomePopup: true }, { merge: true }).catch(() => {});
+          setActiveTab('profile');
+          setTimeout(() => handlePickProfileImage(), 350);
+        }}
+        onDismiss={async () => {
+          setWelcomePopupVisible(false);
+          await setDoc(doc(db, 'users', user.uid), { hasSeenWelcomePopup: true }, { merge: true }).catch(() => {});
+        }}
+      />
+
+      <PromoPopupModal
+        visible={promoModalVisible}
+        promo={activePromo}
+        onAction={(tab) => {
+          setPromoModalVisible(false);
+          if (tab && ['home', 'experience', 'trips', 'rewards', 'profile'].includes(tab)) {
+            setActiveTab(tab as any);
+          }
+        }}
+        onClose={() => setPromoModalVisible(false)}
+      />
+
+      <DriverAssignedModal
+        visible={driverAssignedModalVisible}
+        driver={driverDetails}
+        config={expConfig.driverAssignedModal}
+        onClose={() => setDriverAssignedModalVisible(false)}
+      />
+
+      <RouteDeviationInteractiveModal
+        visible={deviationModalVisible}
+        deviationKm={deviationKm}
+        secondsLeft={deviationSecondsLeft}
+        config={expConfig.routeDeviationProtocol}
+        onConfirmOk={() => handleDeviationConfirmOk()}
+        onRequestHelp={() => handleDeviationRequestHelp()}
+      />
+
+      <TripCompletedRatingModal
+        visible={ratingModalVisible}
+        trip={pendingRatingTrip}
+        earnedPoints={ratingEarnedPoints}
+        config={expConfig.tripCompletedRating}
+        onSubmit={handleSubmitPendingRating}
+        onSkip={handleSkipPendingRating}
+      />
     </View>
   );
 }

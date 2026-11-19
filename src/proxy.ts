@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { findApkBySlug } from "./app/descargas/apkConfig";
 
 /**
  * PUBLIC_ROUTES – paths that never require authentication.
@@ -24,16 +25,12 @@ export function proxy(request: NextRequest) {
   }
 
   // ─── 0. DIRECT APK DOWNLOAD SHORTLINKS (WHATSAPP 1-CLICK) ──────────────────
-  const DIRECT_APK_REDIRECTS: Record<string, string> = {
-    "/apk/usuario": "https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-usuario.apk?alt=media&token=37935279-e972-46f4-96ad-efc841a1c7ee",
-    "/apk/conductor": "https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-conductor.apk?alt=media&token=de915007-552a-4f06-88a4-a3ae6bcaea90",
-    "/apk/supervisor": "https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-supervisor.apk?alt=media&token=82a48a99-ee4e-4693-bbe3-9848c99d36cd",
-    "/descargar/usuario": "https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-usuario.apk?alt=media&token=37935279-e972-46f4-96ad-efc841a1c7ee",
-    "/descargar/conductor": "https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-conductor.apk?alt=media&token=de915007-552a-4f06-88a4-a3ae6bcaea90",
-    "/descargar/supervisor": "https://firebasestorage.googleapis.com/v0/b/mvp-travelapp.firebasestorage.app/o/apks%2Ftravelapp-supervisor.apk?alt=media&token=82a48a99-ee4e-4693-bbe3-9848c99d36cd",
-  };
-  if (DIRECT_APK_REDIRECTS[cleanPath]) {
-    return NextResponse.redirect(DIRECT_APK_REDIRECTS[cleanPath], 307);
+  const apkShortMatch = cleanPath.match(/^\/(?:apk|descargar)\/([^/]+)$/i);
+  if (apkShortMatch) {
+    const matchedApk = findApkBySlug(apkShortMatch[1]);
+    if (matchedApk) {
+      return NextResponse.redirect(matchedApk.url, 307);
+    }
   }
 
   // ─── 1. DOMAIN-SPECIFIC REWRITES (TOP PRIORITY) ────────────────────────────

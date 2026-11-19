@@ -17,6 +17,8 @@ import { db, auth } from '../lib/firebase';
 import { Colors, API_BASE_URL } from '../lib/constants';
 import { TravelCabLogo } from '../components/BrandLogos';
 import { InteractiveMapView } from '../components/InteractiveMapView';
+import { PanicSosButton } from '../components/PanicSosButton';
+import { registerDriverForPushNotificationsAsync } from '../lib/notificationsService';
 import { playTripRequestAlertSound, stopTripRequestAlertSound, playSeatbeltSafetyPrompt, playCustomVoiceNotification } from '../lib/audioService';
 
 const { width, height } = Dimensions.get('window');
@@ -340,6 +342,10 @@ export default function DashboardScreen() {
 
   // Vehículos
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [panicConfig, setPanicConfig] = useState<{ enabled: boolean; holdSeconds: number }>({
+    enabled: true,
+    holdSeconds: 2,
+  });
   const [showAddVehicleForm, setShowAddVehicleForm] = useState(false);
   const [newBrand, setNewBrand] = useState('');
   const [newPlate, setNewPlate] = useState('');
@@ -598,7 +604,12 @@ export default function DashboardScreen() {
         // Solo reproducir si es nueva (no escuchada previamente en esta sesión) y de los últimos 30 segundos
         if (notifTime > lastNotifProcessed.current && (Date.now() - notifTime < 30000)) {
           lastNotifProcessed.current = notifTime;
-          if (notif.audience === 'all' || notif.audience === 'drivers' || notif.targetUserId === user.uid) {
+          const targetsMe =
+            notif.audience === 'all' ||
+            notif.audience === 'drivers' ||
+            notif.targetUserId === user.uid ||
+            (Array.isArray(notif.specificIds) && notif.specificIds.includes(user.uid));
+          if (targetsMe) {
             if (notif.soundAlert === 'driver_alert') {
               playTripRequestAlertSound();
               Alert.alert(
@@ -625,6 +636,24 @@ export default function DashboardScreen() {
       unsubNotifications();
     };
   }, [isOnline, user?.uid]);
+
+  // Registrar Push Token del conductor y escuchar config dinámica de SOS
+  useEffect(() => {
+    if (!user?.uid) return;
+    registerDriverForPushNotificationsAsync(user.uid);
+    const unsubExp = onSnapshot(doc(db, 'system_config', 'driver_experience'), (snap) => {
+      if (snap.exists()) {
+        const p = snap.data()?.panicButton;
+        if (p) {
+          setPanicConfig({
+            enabled: p.enabled !== false,
+            holdSeconds: Number(p.holdSeconds || 2),
+          });
+        }
+      }
+    });
+    return () => unsubExp();
+  }, [user?.uid]);
 
   // Enviar ubicación periódicamente cuando está online con protección total contra crashes
   useEffect(() => {
@@ -978,6 +1007,17 @@ export default function DashboardScreen() {
             <Ionicons name="calculator-outline" size={24} color={Colors.white} style={{ marginRight: 8 }} />
             <Text style={[styles.taximeterBtnText, { fontSize: 15, fontWeight: '800' }]}>Taxímetro Digital</Text>
           </TouchableOpacity>
+        )}
+
+        {/* Botón de Pánico SOS (Mantener 2s para no disparar accidentalmente) */}
+        {isOnline && panicConfig.enabled && (
+          <View style={{ marginTop: 10 }}>
+            <PanicSosButton
+              holdSeconds={panicConfig.holdSeconds}
+              activeTrip={activeTrip}
+              currentLocation={currentLocation}
+            />
+          </View>
         )}
       </View>
 

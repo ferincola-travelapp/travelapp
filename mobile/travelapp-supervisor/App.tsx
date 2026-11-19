@@ -5,6 +5,7 @@ import { ActivityIndicator, View, StyleSheet, Text, Animated } from 'react-nativ
 import { useFonts, Quicksand_400Regular, Quicksand_500Medium, Quicksand_600SemiBold, Quicksand_700Bold } from '@expo-google-fonts/quicksand';
 import * as Updates from 'expo-updates';
 import RootNavigator from './src/navigation/RootNavigator';
+import { SupervisorPanicOverlay } from './src/components/SupervisorPanicOverlay';
 import { Colors } from './src/lib/constants';
 import { TravelAppLogo } from './src/components/BrandLogos';
 
@@ -65,6 +66,7 @@ export default function App() {
       <StatusBar style="light" />
       <View style={{ flex: 1 }}>
         <RootNavigator />
+        <SupervisorPanicOverlay />
 
         {showSplash && (
           <Animated.View style={[styles.splashContainer, { opacity: splashOpacity }]}>

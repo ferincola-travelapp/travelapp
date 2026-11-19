@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Switch, Modal, TextInput, Linking, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Switch, Modal, TextInput, Linking, ScrollView, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, onSnapshot, updateDoc, Timestamp, collection, query, orderBy, addDoc, deleteDoc, increment } from 'firebase/firestore';
@@ -9,7 +9,9 @@ import { db, auth } from '../lib/firebase';
 import { Colors, GOOGLE_MAPS_KEY } from '../lib/constants';
 import { InteractiveMapView } from '../components/InteractiveMapView';
 import { playSeatbeltSafetyPrompt, playCustomVoiceNotification } from '../lib/audioService';
-import { decodePolyline } from '../lib/geoUtils';
+import { decodePolyline, distanceToPolylineKm, estimateEtaMinutes, haversineDistanceKm } from '../lib/geoUtils';
+import { presentDriverLocalNotification } from '../lib/notificationsService';
+import { PanicSosButton } from '../components/PanicSosButton';
 
 const STEPS = [
   { status: 'on_way', label: 'En camino al pasajero', action: 'Llegué al punto de encuentro', next: 'arrived' },
@@ -33,10 +35,40 @@ export default function ActiveTripScreen() {
   const [driverLocation, setDriverLocation] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
-  // Switch de PIN Opcional (a elección del conductor)
+  // Switch de PIN de 4 dígitos (editable / obligatorio si se activa)
   const [requirePin, setRequirePin] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
   const [inputPin, setInputPin] = useState('');
+  const pinInitializedRef = useRef(false);
+
+  // Configuración dinámica y monitores de seguridad (2 min llegada + desvío)
+  const [driverExpCfg, setDriverExpCfg] = useState<any>({
+    securityPin: {
+      enabled: true,
+      requireByDefault: false,
+      modalTitle: 'Código de Seguridad de 4 dígitos',
+      modalSubtitle: 'Pedile al pasajero el PIN numérico de 4 cifras que figura en su aplicación para iniciar el viaje.',
+    },
+    arrivingSoonAlert: {
+      enabled: true,
+      minutesBefore: 2,
+      voiceMessage: 'Estás a menos de {eta} minutos del punto de encuentro con {pasajero}.',
+    },
+    routeDeviationAlert: {
+      enabled: true,
+      voiceMessage: 'Atención conductor, se detectó un desvío de {km} kilómetros de la ruta recomendada.',
+    },
+    panicButton: { enabled: true, holdSeconds: 2 },
+  });
+  const [sharedDeviationCfg, setSharedDeviationCfg] = useState<any>({
+    distanceKm: 1.5,
+    durationSeconds: 45,
+    recipients: 'both',
+  });
+  const [safetyWarningBanner, setSafetyWarningBanner] = useState<string | null>(null);
+  const arrivingSoonNotifiedRef = useRef(false);
+  const deviationStartedAtRef = useRef<number | null>(null);
+  const deviationAlertedRef = useRef(false);
 
   // Chat en Vivo con el Pasajero (habilitado tras aceptar el viaje)
   const [showChatModal, setShowChatModal] = useState(false);
@@ -49,10 +81,48 @@ export default function ActiveTripScreen() {
   const [hasSpokenTrafficAlert, setHasSpokenTrafficAlert] = useState(false);
 
   useEffect(() => {
+    const unsubDriverExp = onSnapshot(doc(db, 'system_config', 'driver_experience'), (snap) => {
+      if (snap.exists()) {
+        const d = snap.data() || {};
+        setDriverExpCfg((prev: any) => ({
+          ...prev,
+          ...d,
+          securityPin: { ...prev.securityPin, ...(d.securityPin || {}) },
+          arrivingSoonAlert: { ...prev.arrivingSoonAlert, ...(d.arrivingSoonAlert || {}) },
+          routeDeviationAlert: { ...prev.routeDeviationAlert, ...(d.routeDeviationAlert || {}) },
+          panicButton: { ...prev.panicButton, ...(d.panicButton || {}) },
+        }));
+      }
+    });
+
+    const unsubSharedExp = onSnapshot(doc(db, 'system_config', 'passenger_experience'), (snap) => {
+      if (snap.exists()) {
+        const d = snap.data() || {};
+        if (d.routeDeviationProtocol) {
+          setSharedDeviationCfg(d.routeDeviationProtocol);
+        }
+        if (d.arrivingSoonAlert?.minutesBefore) {
+          setDriverExpCfg((prev: any) => ({
+            ...prev,
+            arrivingSoonAlert: {
+              ...prev.arrivingSoonAlert,
+              minutesBefore: prev.arrivingSoonAlert?.minutesBefore || d.arrivingSoonAlert.minutesBefore,
+            },
+          }));
+        }
+      }
+    });
+
     const unsub = onSnapshot(doc(db, 'trips', tripId), snap => {
       if (!snap.exists()) return;
       const data: any = { id: snap.id, ...snap.data() };
       setTrip(data);
+      if (!pinInitializedRef.current) {
+        pinInitializedRef.current = true;
+        if (typeof data.requirePin === 'boolean') {
+          setRequirePin(data.requirePin);
+        }
+      }
       // Si recién fue aceptado, pasarlo automáticamente a on_way sin pisar arrived o in_progress
       if (data.status === 'accepted') {
         updateDoc(doc(db, 'trips', tripId), { status: 'on_way', updatedAt: Timestamp.now() }).catch(() => {});
@@ -73,20 +143,104 @@ export default function ActiveTripScreen() {
       setUnreadCount(passengerMsgs.length);
     });
 
-    // Tracking de ubicación
+    // Tracking GPS frecuente (cada 4s) para alimentar aviso 2 min y desvío en ambas apps
     const trackLocation = async () => {
       try {
-        const loc = await Location.getCurrentPositionAsync({});
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
         const coords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
         setDriverLocation(coords);
         await updateDoc(doc(db, 'trips', tripId), { driverLocation: coords });
       } catch {}
     };
     trackLocation();
-    const interval = setInterval(trackLocation, 8000);
+    const interval = setInterval(trackLocation, 4000);
 
-    return () => { unsub(); unsubMsgs(); clearInterval(interval); };
+    return () => { unsubDriverExp(); unsubSharedExp(); unsub(); unsubMsgs(); clearInterval(interval); };
   }, [tripId]);
+
+  // Inicializar PIN por defecto si la config del dashboard lo requiere
+  useEffect(() => {
+    if (
+      driverExpCfg?.securityPin?.requireByDefault &&
+      trip &&
+      typeof trip.requirePin !== 'boolean' &&
+      !requirePin
+    ) {
+      setRequirePin(true);
+    }
+  }, [driverExpCfg?.securityPin?.requireByDefault, trip?.id]);
+
+  // Monitoreo en vivo de aviso 2 minutos al origen y desvío de recorrido
+  useEffect(() => {
+    if (!trip || !driverLocation) return;
+
+    // 1. Aviso de llegada al pasajero (2 min editables)
+    if (
+      trip.status === 'on_way' &&
+      driverExpCfg.arrivingSoonAlert?.enabled &&
+      !arrivingSoonNotifiedRef.current &&
+      trip.originCoords
+    ) {
+      const distKm = haversineDistanceKm(driverLocation, trip.originCoords);
+      const eta = estimateEtaMinutes(distKm);
+      const thresholdMin = Number(driverExpCfg.arrivingSoonAlert.minutesBefore || 2);
+      if (eta > 0 && eta <= thresholdMin) {
+        arrivingSoonNotifiedRef.current = true;
+        const paxName = trip.passengerName || trip.userName || 'el pasajero';
+        const spoken = String(driverExpCfg.arrivingSoonAlert.voiceMessage || '')
+          .replace(/\{eta\}/gi, String(eta))
+          .replace(/\{pasajero\}/gi, paxName);
+        if (spoken) {
+          playCustomVoiceNotification(spoken);
+        }
+        presentDriverLocalNotification({
+          title: `⏱️ Estás a ${eta} min del pasajero`,
+          body: `Próximo al punto de encuentro con ${paxName}.`,
+          channelId: 'trip_updates',
+        });
+      }
+    }
+
+    // 2. Monitoreo de desvío de camino recomendado durante el viaje
+    if (
+      trip.status === 'in_progress' &&
+      driverExpCfg.routeDeviationAlert?.enabled &&
+      (sharedDeviationCfg.recipients === 'driver' || sharedDeviationCfg.recipients === 'both')
+    ) {
+      const routePts = liveRouteCoords || (trip.routePolyline ? decodePolyline(trip.routePolyline) : []);
+      if (routePts.length > 1) {
+        const devKm = distanceToPolylineKm(driverLocation, routePts);
+        const limitKm = Number(sharedDeviationCfg.distanceKm || 1.5);
+        const holdSec = Number(sharedDeviationCfg.durationSeconds || 45);
+        if (devKm >= limitKm) {
+          if (!deviationStartedAtRef.current) deviationStartedAtRef.current = Date.now();
+          const elapsed = (Date.now() - deviationStartedAtRef.current) / 1000;
+          if (elapsed >= holdSec) {
+            setSafetyWarningBanner(
+              `⚠️ Desvío detectado (${devKm.toFixed(1)} km del recorrido). Se notificó por seguridad.`
+            );
+            if (!deviationAlertedRef.current) {
+              deviationAlertedRef.current = true;
+              const voiceMsg = String(driverExpCfg.routeDeviationAlert.voiceMessage || '')
+                .replace(/\{km\}/gi, devKm.toFixed(1));
+              if (voiceMsg) playCustomVoiceNotification(voiceMsg);
+              presentDriverLocalNotification({
+                title: '⚠️ Desvío de recorrido detectado',
+                body: `Te apartaste ${devKm.toFixed(1)} km de la ruta recomendada.`,
+                channelId: 'safety_alerts',
+              });
+            }
+          }
+        } else {
+          deviationStartedAtRef.current = null;
+          deviationAlertedRef.current = false;
+          setSafetyWarningBanner(null);
+        }
+      }
+    } else {
+      setSafetyWarningBanner(null);
+    }
+  }, [trip?.status, driverLocation?.latitude, driverLocation?.longitude, driverExpCfg, sharedDeviationCfg]);
 
   // Cálculo de ruta y alerta de tránsito en tiempo real con Google Directions API
   useEffect(() => {
@@ -123,7 +277,7 @@ export default function ActiveTripScreen() {
               setTrafficAlertBanner(msg);
               if (!hasSpokenTrafficAlert) {
                 setHasSpokenTrafficAlert(true);
-                playCustomVoiceNotification('Atención conductor', msg);
+                playCustomVoiceNotification(`Atención conductor: ${msg}`);
               }
             } else {
               setTrafficAlertBanner(null);
@@ -357,11 +511,22 @@ export default function ActiveTripScreen() {
   };
 
   const handleVerifyPin = () => {
+    const cleanInput = inputPin.replace(/\D/g, '').trim();
+    if (cleanInput.length !== 4) {
+      Alert.alert(
+        'Código incompleto',
+        'Ingresá el código numérico completo de 4 dígitos del pasajero para iniciar el viaje.'
+      );
+      return;
+    }
     const expectedPin = String(trip?.securityPin || trip?.pin || '').trim();
-    if (!expectedPin || inputPin.trim() === expectedPin) {
+    if (!expectedPin || cleanInput === expectedPin) {
       executeStepAdvance('in_progress');
     } else {
-      Alert.alert('PIN Incorrecto', 'El PIN de seguridad ingresado no coincide con el del pasajero. Verificalo o iniciá sin PIN si ya validaste su identidad.');
+      Alert.alert(
+        'Código Incorrecto',
+        'El código de 4 dígitos no coincide con el del pasajero. Hasta no validarlo no podés iniciar el viaje.'
+      );
     }
   };
 
@@ -388,16 +553,26 @@ export default function ActiveTripScreen() {
         routeCoordinates={liveRouteCoords || (trip?.routePolyline ? decodePolyline(trip.routePolyline) : null)}
       />
 
-      {/* Header */}
+      {/* Header + Botón Pánico SOS compacto */}
       <View style={[styles.header, { paddingTop: insets.top > 0 ? insets.top + 10 : 40 }]}>
         <View style={[styles.statusDot, { backgroundColor: Colors.success }]} />
-        <Text style={styles.headerTitle}>{currentStep?.label || 'Viaje activo'}</Text>
+        <Text style={[styles.headerTitle, { flex: 1 }]} numberOfLines={1}>
+          {currentStep?.label || 'Viaje activo'}
+        </Text>
+        {driverExpCfg?.panicButton?.enabled !== false && (
+          <PanicSosButton
+            compact
+            holdSeconds={driverExpCfg?.panicButton?.holdSeconds || 2}
+            activeTrip={trip}
+            currentLocation={driverLocation}
+          />
+        )}
       </View>
 
       {trafficAlertBanner && (
         <View style={{
           position: 'absolute',
-          top: insets.top > 0 ? insets.top + 56 : 86,
+          top: insets.top > 0 ? insets.top + 60 : 90,
           left: 16,
           right: 16,
           backgroundColor: '#DC2626',
@@ -416,13 +591,42 @@ export default function ActiveTripScreen() {
         </View>
       )}
 
+      {safetyWarningBanner && (
+        <View style={{
+          position: 'absolute',
+          top: (insets.top > 0 ? insets.top + 60 : 90) + (trafficAlertBanner ? 52 : 0),
+          left: 16,
+          right: 16,
+          backgroundColor: '#B45309',
+          borderRadius: 14,
+          paddingVertical: 10,
+          paddingHorizontal: 14,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+          elevation: 6,
+        }}>
+          <Ionicons name="alert-circle" size={20} color="#FEF08A" />
+          <Text style={{ flex: 1, color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>
+            {safetyWarningBanner}
+          </Text>
+        </View>
+      )}
+
       {/* Panel inferior */}
       <View style={styles.panel}>
-        {/* Pasajero, Chat y Llamada */}
+        {/* Pasajero (con foto), Chat y Llamada */}
         <View style={styles.passengerRow}>
-          <View style={styles.passengerAvatar}>
-            <Ionicons name="person" size={22} color={Colors.white} />
-          </View>
+          {trip.passengerPhoto || trip.userPhoto ? (
+            <Image
+              source={{ uri: trip.passengerPhoto || trip.userPhoto }}
+              style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, borderColor: Colors.primary }}
+            />
+          ) : (
+            <View style={styles.passengerAvatar}>
+              <Ionicons name="person" size={22} color={Colors.white} />
+            </View>
+          )}
           <View style={{ flex: 1 }}>
             <Text style={styles.passengerName}>{passengerDisplayName}</Text>
             <Text style={styles.passengerDest} numberOfLines={1}>📍 {trip.destination}</Text>
@@ -484,30 +688,50 @@ export default function ActiveTripScreen() {
           })}
         </View>
 
-        {/* Switch de PIN Opcional (Configurable por el conductor antes de iniciar) */}
+        {/* Switch de PIN de 4 dígitos (una vez activado, bloquea inicio hasta verificar los 4 dígitos) */}
         {(trip.status === 'arrived' || trip.status === 'on_way' || trip.status === 'accepted') && (
           <View style={styles.pinSwitchContainer}>
             <View style={{ flex: 1, paddingRight: 8 }}>
-              <Text style={styles.pinSwitchTitle}>🔒 Solicitar PIN de seguridad (Opcional)</Text>
-              <Text style={styles.pinSwitchSub}>Activá esta opción si deseás pedirle el PIN de 4 dígitos al pasajero al abordar</Text>
+              <Text style={styles.pinSwitchTitle}>🔒 Solicitar código de 4 cifras</Text>
+              <Text style={styles.pinSwitchSub}>
+                {requirePin
+                  ? 'Activo: hasta que no ingreses los 4 dígitos del pasajero no inicia el viaje'
+                  : 'Activá esta opción para exigir el código numérico de 4 cifras al llegar'}
+              </Text>
             </View>
             <Switch
               value={requirePin}
-              onValueChange={setRequirePin}
+              onValueChange={(val) => {
+                setRequirePin(val);
+                updateDoc(doc(db, 'trips', tripId), { requirePin: val }).catch(() => {});
+              }}
               trackColor={{ false: Colors.border, true: Colors.primary }}
             />
           </View>
         )}
 
-        {/* Ganancia y Método de Pago */}
+        {/* Ganancia Neta vs Total a Cobrar y Método de Pago */}
         <View style={styles.earningsRow}>
           <View>
-            <Text style={styles.earningsLabel}>Ganancia del viaje</Text>
+            <Text style={styles.earningsLabel}>
+              Tu viaje: ${Number(
+                trip.driverNetAmount ||
+                  Math.round(
+                    Number(trip.estimatedPrice || trip.price || 0) *
+                      (1 - Number(trip.driverCommissionPct ?? 15) / 100)
+                  )
+              ).toLocaleString('es-AR')}
+            </Text>
             <Text style={{ fontSize: 11, fontWeight: '700', color: trip.paymentMethod === 'Rewards' ? '#D97706' : Colors.textSecondary }}>
               Pago: {trip.paymentMethod === 'Rewards' ? '✨ Puntos Rewards' : (trip.paymentMethod || 'Efectivo')}
             </Text>
           </View>
-          <Text style={styles.earnings}>${trip.estimatedPrice || trip.price || 0} ARS</Text>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={{ fontSize: 10, fontWeight: '700', color: Colors.textMuted }}>COBRAR</Text>
+            <Text style={styles.earnings}>
+              ${Number(trip.estimatedPrice || trip.price || 0).toLocaleString('es-AR')}
+            </Text>
+          </View>
         </View>
 
         {/* Botón de avance */}
@@ -542,14 +766,19 @@ export default function ActiveTripScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Modal de Verificación de PIN Opcional */}
+        {/* Modal de Verificación Obligatoria de PIN (4 dígitos numéricos) */}
         <Modal visible={showPinModal} transparent animationType="slide">
           <View style={styles.modalBackdrop}>
             <View style={styles.modalContent}>
               <Ionicons name="shield-checkmark" size={48} color={Colors.primary} />
-              <Text style={styles.modalTitle}>Ingresar PIN del Pasajero</Text>
-              <Text style={styles.modalSub}>Solicitá el PIN de 4 dígitos que figura en el teléfono del usuario:</Text>
-              
+              <Text style={styles.modalTitle}>
+                {driverExpCfg?.securityPin?.modalTitle || 'Código de Seguridad de 4 dígitos'}
+              </Text>
+              <Text style={styles.modalSub}>
+                {driverExpCfg?.securityPin?.modalSubtitle ||
+                  'Solicitá el PIN numérico de 4 dígitos que figura en el celular del pasajero. Es obligatorio para iniciar:'}
+              </Text>
+
               <TextInput
                 style={styles.pinInput}
                 keyboardType="number-pad"
@@ -557,26 +786,23 @@ export default function ActiveTripScreen() {
                 placeholder="••••"
                 placeholderTextColor={Colors.textMuted}
                 value={inputPin}
-                onChangeText={setInputPin}
+                onChangeText={(txt) => setInputPin(txt.replace(/\D/g, '').slice(0, 4))}
               />
 
               <View style={styles.modalBtnsRow}>
                 <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setShowPinModal(false)}>
                   <Text style={styles.modalCancelText}>Cancelar</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.modalConfirmBtn} onPress={handleVerifyPin}>
+                <TouchableOpacity
+                  style={[
+                    styles.modalConfirmBtn,
+                    inputPin.replace(/\D/g, '').length !== 4 && { opacity: 0.5 },
+                  ]}
+                  onPress={handleVerifyPin}
+                >
                   <Text style={styles.modalConfirmText}>Verificar & Iniciar</Text>
                 </TouchableOpacity>
               </View>
-
-              <TouchableOpacity
-                style={{ marginTop: 8, paddingVertical: 6 }}
-                onPress={() => executeStepAdvance('in_progress')}
-              >
-                <Text style={{ fontSize: 12, fontWeight: '700', color: Colors.textSecondary, textDecorationLine: 'underline' }}>
-                  Iniciar viaje sin PIN (Opcional)
-                </Text>
-              </TouchableOpacity>
             </View>
           </View>
         </Modal>
