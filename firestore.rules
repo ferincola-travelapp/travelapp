@@ -396,6 +396,18 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
+    match /job_openings/{jobId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /job_applications/{appId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+    match /settings/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
     match /role_permissions/{roleId} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();

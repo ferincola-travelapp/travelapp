@@ -11,7 +11,8 @@ import {
 } from "@/components/experience/ExperienceSearchEngine";
 import { ExperienceCatalogCarousel } from "@/components/experience/ExperienceCatalogCarousel";
 import { ExperienceTravisSection } from "@/components/experience/ExperienceTravisSection";
-import { ExperienceFooter } from "@/components/experience/ExperienceFooter";
+import { ExperienceFooter, ExperienceFooterConfig } from "@/components/experience/ExperienceFooter";
+import { OtaPromoPushPop } from "@/components/ota/OtaPromoPushPop";
 import { TravisOmnichannelWidget } from "@/components/shared/TravisOmnichannelWidget";
 import { X, Phone, Mail, MessageCircle, CheckCircle2 } from "lucide-react";
 
@@ -61,6 +62,51 @@ export default function ExperienceLandingClient({
   const [contactMessage, setContactMessage] = useState("");
   const [contactSent, setContactSent] = useState(false);
 
+  // Canales oficiales sincronizados desde CMS (landing_experience)
+  const officialPhone =
+    cms?.contacto?.telefono?.trim() ||
+    cms?.header?.phoneFormatted?.trim() ||
+    cms?.header?.phone?.trim() ||
+    "0810-220-0018";
+  const officialPhoneHref = `tel:${officialPhone.replace(/[^+\d]/g, "") || "08102200018"}`;
+  const officialEmail = cms?.contacto?.email?.trim() || "hola@travelapp.ar";
+  const officialWhatsapp =
+    cms?.contacto?.whatsapp?.trim() ||
+    cms?.redesSociales?.whatsapp?.trim() ||
+    "https://wa.me/5493812000712";
+  const officialWhatsappDigits = officialWhatsapp.replace(/\D/g, "") || "5493812000712";
+  const officialWhatsappDisplay =
+    cms?.contacto?.whatsappDisplay?.trim() ||
+    (officialWhatsappDigits === "5493812000712"
+      ? "+54 9 381 200-0712"
+      : `+${officialWhatsappDigits}`);
+  const messengerUrl = cms?.redesSociales?.messenger?.trim() || "https://m.me/travelapp.ar";
+  const instagramUrl = cms?.redesSociales?.instagram?.trim() || "https://instagram.com/travelapp.ar";
+  const instagramDmUrl = cms?.redesSociales?.instagramDm?.trim() || "https://ig.me/m/travelapp.ar";
+  const instagramHandle = cms?.redesSociales?.instagramHandle?.trim() || "@travelapp.ar";
+
+  const footerConfig: ExperienceFooterConfig = React.useMemo(
+    () => ({
+      description: cms?.footer?.description || "",
+      email: officialEmail,
+      phone: officialPhone,
+      whatsappUrl: officialWhatsapp,
+      whatsappDisplay: officialWhatsappDisplay,
+      facebookUrl: cms?.redesSociales?.facebook ?? "https://facebook.com/travelapp.ar",
+      instagramUrl: cms?.redesSociales?.instagram ?? "https://instagram.com/travelapp.ar",
+      tiktokUrl: cms?.redesSociales?.tiktok ?? "",
+      youtubeUrl: cms?.redesSociales?.youtube ?? "",
+      linkedinUrl: cms?.redesSociales?.linkedin ?? "",
+      arcaQr: cms?.sellosLegales?.arcaQr || "",
+      atavyt: cms?.sellosLegales?.atavyt,
+      baseDatosSello: cms?.sellosLegales?.baseDatosSello,
+      privacidad: cms?.legales?.privacidad || "",
+      terminos: cms?.legales?.terminos || "",
+      copyrightText: cms?.footer?.copyrightText || "",
+    }),
+    [cms, officialEmail, officialPhone, officialWhatsapp, officialWhatsappDisplay]
+  );
+
   const handleOpenConsultar = (experienceTitle?: string) => {
     if (experienceTitle) {
       setContactSubject(experienceTitle);
@@ -81,7 +127,7 @@ export default function ExperienceLandingClient({
 • *Nombre:* ${contactName}
 • *Teléfono:* ${contactPhone}
 • *Mensaje:* ${contactMessage}`;
-    const url = `https://wa.me/5493812000712?text=${encodeURIComponent(text)}`;
+    const url = `https://wa.me/${officialWhatsappDigits}?text=${encodeURIComponent(text)}`;
     window.open(url, "_blank");
     setContactSent(true);
     setTimeout(() => {
@@ -94,6 +140,8 @@ export default function ExperienceLandingClient({
     <div className="min-h-screen bg-white text-[#1d1d1f] font-sans antialiased overflow-x-hidden selection:bg-[#0071e3] selection:text-white">
       {/* 1. HEADER AZUL TECH #0a2a5b */}
       <ExperienceHeader
+        phone={officialPhone}
+        logoUrl={cms?.header?.logo}
         onOpenQuienesSomos={(tab) => setQuienesSomosModal(tab)}
         onOpenContacto={() => handleOpenConsultar()}
         onSelectSearchMode={(mode) => setSearchMode(mode)}
@@ -110,6 +158,8 @@ export default function ExperienceLandingClient({
         activeMode={searchMode}
         onModeChange={(mode) => setSearchMode(mode)}
         onFilterExcursions={(filters) => setExcursionFilters(filters)}
+        config={cms?.searchConfig}
+        whatsappDigits={officialWhatsappDigits}
       />
 
       {/* 4. SECTOR 3: GRILLA DE TARJETAS ESTILO APPLE.COM/LA */}
@@ -119,27 +169,41 @@ export default function ExperienceLandingClient({
       />
 
       {/* 5. SECCIÓN 4: TRAVIS CONCIERGE Y CANALES OFICIALES */}
-      <ExperienceTravisSection />
+      <ExperienceTravisSection
+        config={cms?.travisSection}
+        contact={{
+          whatsappUrl: officialWhatsapp,
+          whatsappDisplay: officialWhatsappDisplay,
+          messengerUrl,
+          instagramDmUrl,
+          instagramHandle,
+          phone: officialPhone,
+        }}
+      />
 
       {/* 6. FOOTER OFICIAL */}
       <ExperienceFooter
+        config={footerConfig}
         onOpenQuienesSomos={() => setQuienesSomosModal("vision")}
         onOpenContacto={() => handleOpenConsultar()}
         onSelectSearchMode={(mode) => setSearchMode(mode)}
       />
+
+      {/* Push Pop Minimalista (configurable desde CMS, cupón opcional) */}
+      <OtaPromoPushPop config={cms?.promoPushPop} />
 
       {/* Burbuja Flotante Omnicanal Travis */}
       <TravisOmnichannelWidget
         businessUnit="Experiences"
         primaryColor="#0a2a5b"
         brandName="TravelApp Experience"
-        whatsappUrl="https://wa.me/5493812000712"
+        whatsappUrl={officialWhatsapp}
       />
 
       {/* MODAL INSTITUCIONAL: NOSOTROS */}
       {quienesSomosModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4 overflow-y-auto">
-          <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl p-6 sm:p-8 text-[#1d1d1f] animate-in fade-in zoom-in-95 duration-200">
+          <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl p-6 sm:p-8 text-[#1d1d1f] animate-in fade-in zoom-in-95 duration-200 max-h-[85vh] overflow-y-auto">
             <button
               type="button"
               onClick={() => setQuienesSomosModal(null)}
@@ -174,11 +238,9 @@ export default function ExperienceLandingClient({
                 <h3 className="text-2xl font-semibold text-[#1d1d1f] tracking-tight">
                   Nuestra Visión
                 </h3>
-                <p className="text-[15px] text-[#86868b] leading-relaxed">
-                  Ser la plataforma líder de turismo receptivo inteligente en
-                  Argentina y Sudamérica, transformando la manera en que los
-                  viajeros descubren experiencias auténticas y conectando
-                  prestadores locales con tecnología de vanguardia.
+                <p className="text-[15px] text-[#86868b] leading-relaxed whitespace-pre-line">
+                  {cms?.quienesSomos?.vision?.trim() ||
+                    "Ser la plataforma líder de turismo receptivo inteligente en Argentina y Sudamérica, transformando la manera en que los viajeros descubren experiencias auténticas y conectando prestadores locales con tecnología de vanguardia."}
                 </p>
               </div>
             )}
@@ -188,11 +250,9 @@ export default function ExperienceLandingClient({
                 <h3 className="text-2xl font-semibold text-[#1d1d1f] tracking-tight">
                   Nuestra Misión
                 </h3>
-                <p className="text-[15px] text-[#86868b] leading-relaxed">
-                  Diseñar, coordinar y brindar experiencias turísticas genuinas
-                  en territorio, integrando la calidez del anfitrión local con
-                  la eficiencia de nuestra infraestructura tecnológica y
-                  asistencia permanente.
+                <p className="text-[15px] text-[#86868b] leading-relaxed whitespace-pre-line">
+                  {cms?.quienesSomos?.mision?.trim() ||
+                    "Diseñar, coordinar y brindar experiencias turísticas genuinas en territorio, integrando la calidez del anfitrión local con la eficiencia de nuestra infraestructura tecnológica y asistencia permanente."}
                 </p>
               </div>
             )}
@@ -202,27 +262,33 @@ export default function ExperienceLandingClient({
                 <h3 className="text-2xl font-semibold text-[#1d1d1f] tracking-tight">
                   Nuestros Valores
                 </h3>
-                <div className="space-y-2.5 text-sm text-[#86868b]">
-                  <div className="p-3.5 rounded-2xl bg-[#f5f5f7]">
-                    <strong className="text-[#1d1d1f] block">
-                      Autenticidad y Respeto Cultural
-                    </strong>
-                    Valoramos las raíces y las comunidades que nos reciben.
+                {cms?.quienesSomos?.valores?.trim() ? (
+                  <p className="text-[15px] text-[#86868b] leading-relaxed whitespace-pre-line">
+                    {cms.quienesSomos.valores}
+                  </p>
+                ) : (
+                  <div className="space-y-2.5 text-sm text-[#86868b]">
+                    <div className="p-3.5 rounded-2xl bg-[#f5f5f7]">
+                      <strong className="text-[#1d1d1f] block">
+                        Autenticidad y Respeto Cultural
+                      </strong>
+                      Valoramos las raíces y las comunidades que nos reciben.
+                    </div>
+                    <div className="p-3.5 rounded-2xl bg-[#f5f5f7]">
+                      <strong className="text-[#1d1d1f] block">
+                        Seguridad Operativa
+                      </strong>
+                      Estándares estrictos de guías matriculados, seguros y
+                      unidades habilitadas.
+                    </div>
+                    <div className="p-3.5 rounded-2xl bg-[#f5f5f7]">
+                      <strong className="text-[#1d1d1f] block">
+                        Innovación Centrada en las Personas
+                      </strong>
+                      Tecnología simple y transparente al servicio del viajero.
+                    </div>
                   </div>
-                  <div className="p-3.5 rounded-2xl bg-[#f5f5f7]">
-                    <strong className="text-[#1d1d1f] block">
-                      Seguridad Operativa
-                    </strong>
-                    Estándares estrictos de guías matriculados, seguros y
-                    unidades habilitadas.
-                  </div>
-                  <div className="p-3.5 rounded-2xl bg-[#f5f5f7]">
-                    <strong className="text-[#1d1d1f] block">
-                      Innovación Centrada en las Personas
-                    </strong>
-                    Tecnología simple y transparente al servicio del viajero.
-                  </div>
-                </div>
+                )}
               </div>
             )}
           </div>
@@ -252,7 +318,7 @@ export default function ExperienceLandingClient({
             {/* Canales Oficiales Directos */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-5 text-xs">
               <a
-                href={`https://wa.me/5493812000712?text=${encodeURIComponent(
+                href={`https://wa.me/${officialWhatsappDigits}?text=${encodeURIComponent(
                   contactSubject
                     ? `Hola Travis, quiero consultar por la excursión: ${contactSubject}`
                     : "Hola Travis, necesito asesoramiento en TravelApp Experience."
@@ -264,12 +330,12 @@ export default function ExperienceLandingClient({
                 <MessageCircle className="w-4 h-4 text-[#25D366] mb-1.5" />
                 <div className="text-[#86868b]">WhatsApp Travis</div>
                 <div className="font-semibold text-[#1d1d1f]">
-                  +54 9 381 200-0712
+                  {officialWhatsappDisplay}
                 </div>
               </a>
 
               <a
-                href="https://m.me/travelapp.ar"
+                href={messengerUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-3 rounded-2xl bg-[#f5f5f7] hover:bg-[#e5e5ea] transition-colors"
@@ -280,33 +346,33 @@ export default function ExperienceLandingClient({
               </a>
 
               <a
-                href="https://ig.me/m/travelapp.ar"
+                href={instagramDmUrl || instagramUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-3 rounded-2xl bg-[#f5f5f7] hover:bg-[#e5e5ea] transition-colors"
               >
                 <MessageCircle className="w-4 h-4 text-[#E1306C] mb-1.5" />
                 <div className="text-[#86868b]">Instagram DM</div>
-                <div className="font-semibold text-[#1d1d1f]">@travelapp.ar</div>
+                <div className="font-semibold text-[#1d1d1f]">{instagramHandle}</div>
               </a>
 
               <a
-                href="tel:08102200018"
+                href={officialPhoneHref}
                 className="p-3 rounded-2xl bg-[#f5f5f7] hover:bg-[#e5e5ea] transition-colors"
               >
                 <Phone className="w-4 h-4 text-[#0a2a5b] mb-1.5" />
                 <div className="text-[#86868b]">Teléfono</div>
-                <div className="font-semibold text-[#1d1d1f]">0810-220-0018</div>
+                <div className="font-semibold text-[#1d1d1f]">{officialPhone}</div>
               </a>
 
               <a
-                href="mailto:hola@travelapp.ar"
+                href={`mailto:${officialEmail}`}
                 className="p-3 rounded-2xl bg-[#f5f5f7] hover:bg-[#e5e5ea] transition-colors col-span-2 sm:col-span-2"
               >
                 <Mail className="w-4 h-4 text-[#0071e3] mb-1.5" />
                 <div className="text-[#86868b]">Correo Electrónico</div>
                 <div className="font-semibold text-[#1d1d1f]">
-                  hola@travelapp.ar
+                  {officialEmail}
                 </div>
               </a>
             </div>

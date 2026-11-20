@@ -16,6 +16,8 @@ export interface HeroSlideItem {
   ctaText?: string;
   ctaHref?: string;
   ctaUrl?: string;
+  secondaryCtaText?: string;
+  secondaryCtaUrl?: string;
   overlayOpacity?: number;
 }
 
@@ -140,6 +142,12 @@ export function ExperienceHeroSlider({
   const [isPlaying, setIsPlaying] = useState(true);
 
   useEffect(() => {
+    if (currentIndex >= activeSlides.length) {
+      setCurrentIndex(0);
+    }
+  }, [activeSlides.length, currentIndex]);
+
+  useEffect(() => {
     if (activeSlides.length <= 1 || !isPlaying) return;
     const timer = setInterval(() => {
       setCurrentIndex((prev) => (prev + 1) % activeSlides.length);
@@ -147,7 +155,7 @@ export function ExperienceHeroSlider({
     return () => clearInterval(timer);
   }, [activeSlides.length, isPlaying]);
 
-  const currentSlide = activeSlides[currentIndex] || DEFAULT_SLIDES[0];
+  const currentSlide = activeSlides[currentIndex] || activeSlides[0] || DEFAULT_SLIDES[0];
 
   const handlePrev = () => {
     setCurrentIndex((prev) =>
@@ -237,10 +245,10 @@ export function ExperienceHeroSlider({
           </a>
 
           <a
-            href="#catalogo-excursiones"
+            href={currentSlide.secondaryCtaUrl || "#catalogo-excursiones"}
             className="px-[22px] py-[9px] rounded-full border border-white/85 text-white hover:bg-white hover:text-[#1d1d1f] text-[14px] sm:text-[15px] font-normal tracking-[-0.01em] transition-colors"
           >
-            Reservar
+            {currentSlide.secondaryCtaText || "Reservar"}
           </a>
         </div>
       </div>

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { TravisOmnichannelWidget } from "@/components/shared/TravisOmnichannelWidget";
+import { OtaPromoPushPop } from "@/components/ota/OtaPromoPushPop";
 import {
   ArrowRight,
   Gift,
@@ -186,18 +187,62 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
   // Auto-avance del Hero Slider
   useEffect(() => {
     const slidesCount = cmsData.heroSlides?.length || 1;
+    if (currentSlide >= slidesCount) {
+      setCurrentSlide(0);
+    }
     if (slidesCount <= 1) return;
     const interval = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % slidesCount);
     }, 6500);
     return () => clearInterval(interval);
-  }, [cmsData.heroSlides]);
+  }, [cmsData.heroSlides, currentSlide]);
 
-  const slides = cmsData.heroSlides || DEFAULT_REWARDS_CMS_DATA.heroSlides;
-  const howItWorks = cmsData.howItWorks || DEFAULT_REWARDS_CMS_DATA.howItWorks;
-  const rawBenefits = cmsData.benefits || DEFAULT_REWARDS_CMS_DATA.benefits;
-  const ctaBlock = cmsData.ctaBlock || DEFAULT_REWARDS_CMS_DATA.ctaBlock;
-  const businessSection = cmsData.businessSection || DEFAULT_REWARDS_CMS_DATA.businessSection;
+  const slides =
+    Array.isArray(cmsData.heroSlides) && cmsData.heroSlides.length > 0
+      ? cmsData.heroSlides
+      : DEFAULT_REWARDS_CMS_DATA.heroSlides;
+  const howItWorks =
+    Array.isArray(cmsData.howItWorks) && cmsData.howItWorks.length > 0
+      ? cmsData.howItWorks
+      : DEFAULT_REWARDS_CMS_DATA.howItWorks;
+  const rawBenefits =
+    Array.isArray(cmsData.benefits) && cmsData.benefits.length > 0
+      ? cmsData.benefits
+      : DEFAULT_REWARDS_CMS_DATA.benefits;
+  const ctaBlock = { ...DEFAULT_REWARDS_CMS_DATA.ctaBlock, ...(cmsData.ctaBlock || {}) };
+  const businessSection = {
+    ...DEFAULT_REWARDS_CMS_DATA.businessSection,
+    ...(cmsData.businessSection || {}),
+  };
+
+  // Canales oficiales sincronizados desde CMS (landing_rewards)
+  const officialPhone = cmsData.contacto?.telefono?.trim() || "0810-220-0018";
+  const officialPhoneHref = `tel:${officialPhone.replace(/[^+\d]/g, "") || "08102200018"}`;
+  const officialEmail = cmsData.contacto?.email?.trim() || "hola@travelapp.ar";
+  const partnerEmail = businessSection.email?.trim() || "partners@travelapp.ar";
+  const officialWhatsapp =
+    cmsData.contacto?.whatsapp?.trim() ||
+    cmsData.redesSociales?.whatsapp?.trim() ||
+    "https://wa.me/5493812000712";
+  const officialWhatsappDigits = officialWhatsapp.replace(/\D/g, "") || "5493812000712";
+  const officialWhatsappDisplay =
+    cmsData.contacto?.whatsappDisplay?.trim() ||
+    (officialWhatsappDigits === "5493812000712"
+      ? "+54 9 381 200-0712"
+      : `+${officialWhatsappDigits}`);
+  const messengerUrl = cmsData.redesSociales?.messenger?.trim() || "https://m.me/travelapp.ar";
+  const instagramDmUrl = cmsData.redesSociales?.instagramDm?.trim() || "https://ig.me/m/travelapp.ar";
+  const instagramHandle = cmsData.redesSociales?.instagramHandle?.trim() || "@travelapp.ar";
+
+  const heroMetrics =
+    Array.isArray(cmsData.heroMetrics) && cmsData.heroMetrics.length > 0
+      ? cmsData.heroMetrics
+      : [
+          { value: "1 Km = 10 Pts", label: "Conversión directa en viajes" },
+          { value: "+50 Marcas", label: "Gastronomía, turismo y retail" },
+          { value: "100% Digital", label: "Acreditación automática" },
+          { value: "$0 Costo", label: "Membresía libre de mantenimiento", highlight: true },
+        ];
 
   // Imágenes editoriales por defecto para el mosaico 2x2 estilo apple.com/la
   const defaultPanelImages = [
@@ -255,11 +300,11 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
           {/* Acciones Derecha: Teléfono Oficial + Login / Activación */}
           <div className="hidden md:flex items-center gap-3 shrink-0">
             <a
-              href="tel:08102200018"
+              href={officialPhoneHref}
               className="inline-flex items-center gap-1.5 text-[12px] font-medium text-white/90 hover:text-white px-2.5 py-1.5 transition-colors"
             >
               <Phone className="w-3.5 h-3.5 text-[#e85d04]" />
-              <span>0810-220-0018</span>
+              <span>{officialPhone}</span>
             </a>
 
             <Link
@@ -320,11 +365,11 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
               Comercios Partners
             </a>
             <a
-              href="tel:08102200018"
+              href={officialPhoneHref}
               className="flex items-center gap-2 py-2 text-white font-medium"
             >
               <Phone className="w-4 h-4 text-[#e85d04]" />
-              0810-220-0018
+              {officialPhone}
             </a>
             <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
               <Link
@@ -350,7 +395,8 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
       <div className="w-full bg-[#f5f5f7] border-b border-[#d2d2d7]/70 py-2.5 px-4 text-center">
         <p className="text-[12px] text-[#1d1d1f] tracking-tight">
           <span className="font-semibold text-[#0a2a5b]">TravelApp Rewards:</span>{" "}
-          Sumá 10 Puntos Travel por cada kilómetro recorrido o reserva confirmada.{" "}
+          {cmsData.ribbonText?.trim() ||
+            "Sumá 10 Puntos Travel por cada kilómetro recorrido o reserva confirmada."}{" "}
           <Link
             href="/canjes"
             className="text-[#d95b00] hover:underline font-medium inline-flex items-center gap-0.5 ml-1"
@@ -366,6 +412,10 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
       <section className="relative w-full h-[600px] md:h-[660px] bg-[#000000] overflow-hidden select-none">
         {slides.map((slide: any, idx: number) => {
           const isCurrent = currentSlide === idx;
+          const overlayVal =
+            typeof slide.overlayOpacity === "number"
+              ? Math.min(0.92, Math.max(0.1, slide.overlayOpacity / 100))
+              : 0.6;
           return (
             <div
               key={idx}
@@ -380,9 +430,12 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
                   "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=2000&q=85"
                 }
                 alt={slide.title || "TravelApp Rewards"}
-                className="w-full h-full object-cover object-center opacity-55 scale-100 transition-transform duration-1000"
+                className="w-full h-full object-cover object-center scale-100 transition-transform duration-1000"
               />
-              <div className="absolute inset-0 bg-gradient-to-b from-[#000000]/80 via-[#0a2a5b]/45 to-[#000000]/90" />
+              <div
+                className="absolute inset-0 bg-gradient-to-b from-[#000000] via-[#0a2a5b]/70 to-[#000000]"
+                style={{ opacity: overlayVal }}
+              />
 
               {/* Contenido Editorial Centrado Estilo Apple */}
               <div className="relative z-20 max-w-[980px] mx-auto h-full px-6 pt-16 pb-24 flex flex-col items-center justify-between text-center text-white">
@@ -419,40 +472,20 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
                   </div>
                 </div>
 
-                {/* Barra Inferior de Métricas de Precisión (Corte Arquitectónico) */}
+                {/* Barra Inferior de Métricas de Precisión (Editable desde CMS) */}
                 <div className="w-full max-w-4xl border-t border-white/15 pt-6 grid grid-cols-2 sm:grid-cols-4 gap-6 text-left">
-                  <div>
-                    <p className="text-[22px] sm:text-[26px] font-semibold tracking-tight text-white">
-                      1 Km = 10 Pts
-                    </p>
-                    <p className="text-[12px] text-white/65">
-                      Conversión directa en viajes
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[22px] sm:text-[26px] font-semibold tracking-tight text-white">
-                      +50 Marcas
-                    </p>
-                    <p className="text-[12px] text-white/65">
-                      Gastronomía, turismo y retail
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[22px] sm:text-[26px] font-semibold tracking-tight text-white">
-                      100% Digital
-                    </p>
-                    <p className="text-[12px] text-white/65">
-                      Acreditación automática
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[22px] sm:text-[26px] font-semibold tracking-tight text-[#e85d04]">
-                      $0 Costo
-                    </p>
-                    <p className="text-[12px] text-white/65">
-                      Membresía libre de mantenimiento
-                    </p>
-                  </div>
+                  {heroMetrics.slice(0, 4).map((m: any, mIdx: number) => (
+                    <div key={mIdx}>
+                      <p
+                        className={`text-[22px] sm:text-[26px] font-semibold tracking-tight ${
+                          m.highlight || mIdx === 3 ? "text-[#e85d04]" : "text-white"
+                        }`}
+                      >
+                        {m.value}
+                      </p>
+                      <p className="text-[12px] text-white/65">{m.label}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -781,10 +814,10 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
                 {businessSection?.buttonText || "Quiero ser Partner"}
               </a>
               <a
-                href="mailto:partners@travelapp.ar"
+                href={`mailto:${partnerEmail}`}
                 className="text-[13px] text-white/80 hover:text-white underline underline-offset-4"
               >
-                partners@travelapp.ar
+                {partnerEmail}
               </a>
             </div>
           </div>
@@ -868,19 +901,19 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
                     : "Ver canales oficiales de Travis"}
                 </button>
                 <a
-                  href="https://wa.me/5493812000712?text=Hola%20Travis,%20quiero%20consultar%20sobre%20mis%20puntos%20TravelApp%20Rewards"
+                  href={`https://wa.me/${officialWhatsappDigits}?text=${encodeURIComponent("Hola Travis, quiero consultar sobre mis puntos TravelApp Rewards")}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-6 py-2.5 rounded-full border border-[#0a2a5b] text-[#0a2a5b] hover:bg-[#0a2a5b] hover:text-white text-[13px] font-medium transition-colors"
                 >
-                  WhatsApp Directo (+54 9 381 200-0712)
+                  WhatsApp Directo ({officialWhatsappDisplay})
                 </a>
               </div>
 
               {showTravisChannels && (
                 <div className="pt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 border-t border-[#d2d2d7]">
                   <a
-                    href="https://wa.me/5493812000712?text=Hola%20Travis,%20quiero%20consultar%20sobre%20TravelApp%20Rewards"
+                    href={`https://wa.me/${officialWhatsappDigits}?text=${encodeURIComponent("Hola Travis, quiero consultar sobre TravelApp Rewards")}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="bg-white border border-[#d2d2d7] hover:border-[#0a2a5b] p-3.5 flex items-center gap-3 transition-colors"
@@ -890,12 +923,12 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
                     </div>
                     <div>
                       <p className="text-[12px] font-semibold text-[#1d1d1f]">WhatsApp</p>
-                      <p className="text-[11px] text-[#6e6e73]">+54 9 381 200-0712</p>
+                      <p className="text-[11px] text-[#6e6e73]">{officialWhatsappDisplay}</p>
                     </div>
                   </a>
 
                   <a
-                    href="https://m.me/travelapp"
+                    href={messengerUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="bg-white border border-[#d2d2d7] hover:border-[#0a2a5b] p-3.5 flex items-center gap-3 transition-colors"
@@ -905,12 +938,12 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
                     </div>
                     <div>
                       <p className="text-[12px] font-semibold text-[#1d1d1f]">Messenger</p>
-                      <p className="text-[11px] text-[#6e6e73]">@travelapp</p>
+                      <p className="text-[11px] text-[#6e6e73]">Chat Oficial</p>
                     </div>
                   </a>
 
                   <a
-                    href="https://ig.me/m/travelapp.ar"
+                    href={instagramDmUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="bg-white border border-[#d2d2d7] hover:border-[#0a2a5b] p-3.5 flex items-center gap-3 transition-colors"
@@ -920,12 +953,12 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
                     </div>
                     <div>
                       <p className="text-[12px] font-semibold text-[#1d1d1f]">Instagram DM</p>
-                      <p className="text-[11px] text-[#6e6e73]">@travelapp.ar</p>
+                      <p className="text-[11px] text-[#6e6e73]">{instagramHandle}</p>
                     </div>
                   </a>
 
                   <a
-                    href="tel:08102200018"
+                    href={officialPhoneHref}
                     className="bg-white border border-[#d2d2d7] hover:border-[#0a2a5b] p-3.5 flex items-center gap-3 transition-colors"
                   >
                     <div className="w-8 h-8 rounded-full bg-[#0a2a5b] text-white flex items-center justify-center shrink-0">
@@ -933,7 +966,7 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
                     </div>
                     <div>
                       <p className="text-[12px] font-semibold text-[#1d1d1f]">Centro Telefónico</p>
-                      <p className="text-[11px] text-[#6e6e73]">0810-220-0018</p>
+                      <p className="text-[11px] text-[#6e6e73]">{officialPhone}</p>
                     </div>
                   </a>
                 </div>
@@ -959,66 +992,77 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
                 />
               </div>
               <p className="text-[12px] text-white/65 leading-relaxed max-w-xs">
-                Programa oficial de fidelización y beneficios del ecosistema TravelApp S.A.S. Acumulá y canjeá en todo el país.
+                {cmsData.footer?.description?.trim() ||
+                  "Programa oficial de fidelización y beneficios del ecosistema TravelApp S.A.S. Acumulá y canjeá en todo el país."}
               </p>
 
-              {/* Iconos Oficiales de Redes Sociales */}
+              {/* Iconos Oficiales de Redes Sociales (se ocultan si quedan vacíos en CMS) */}
               <div className="flex items-center gap-2.5 pt-1">
-                <a
-                  href={cmsData.redesSociales?.facebook || "https://facebook.com/travelapp.ar"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Facebook"
-                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-[#1877F2] transition-colors flex items-center justify-center"
-                >
-                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
-                    <path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z" />
-                  </svg>
-                </a>
-                <a
-                  href={cmsData.redesSociales?.instagram || "https://instagram.com/travelapp.ar"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Instagram"
-                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-[#E1306C] transition-colors flex items-center justify-center"
-                >
-                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
-                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
-                  </svg>
-                </a>
-                <a
-                  href={cmsData.redesSociales?.tiktok || "https://tiktok.com/@travelapp.ar"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="TikTok"
-                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-black transition-colors flex items-center justify-center"
-                >
-                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
-                    <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z" />
-                  </svg>
-                </a>
-                <a
-                  href={cmsData.redesSociales?.youtube || "https://youtube.com/@travelapp_ar"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="YouTube"
-                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-[#FF0000] transition-colors flex items-center justify-center"
-                >
-                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
-                    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
-                  </svg>
-                </a>
-                <a
-                  href="https://linkedin.com/company/travelapp-sas"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="LinkedIn"
-                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-[#0A66C2] transition-colors flex items-center justify-center"
-                >
-                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
-                    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
-                  </svg>
-                </a>
+                {cmsData.redesSociales?.facebook?.trim() && (
+                  <a
+                    href={cmsData.redesSociales.facebook.trim()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Facebook"
+                    className="w-8 h-8 rounded-full bg-white/10 hover:bg-[#1877F2] transition-colors flex items-center justify-center"
+                  >
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
+                      <path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z" />
+                    </svg>
+                  </a>
+                )}
+                {cmsData.redesSociales?.instagram?.trim() && (
+                  <a
+                    href={cmsData.redesSociales.instagram.trim()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Instagram"
+                    className="w-8 h-8 rounded-full bg-white/10 hover:bg-[#E1306C] transition-colors flex items-center justify-center"
+                  >
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
+                      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
+                    </svg>
+                  </a>
+                )}
+                {cmsData.redesSociales?.tiktok?.trim() && (
+                  <a
+                    href={cmsData.redesSociales.tiktok.trim()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="TikTok"
+                    className="w-8 h-8 rounded-full bg-white/10 hover:bg-black transition-colors flex items-center justify-center"
+                  >
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
+                      <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z" />
+                    </svg>
+                  </a>
+                )}
+                {cmsData.redesSociales?.youtube?.trim() && (
+                  <a
+                    href={cmsData.redesSociales.youtube.trim()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="YouTube"
+                    className="w-8 h-8 rounded-full bg-white/10 hover:bg-[#FF0000] transition-colors flex items-center justify-center"
+                  >
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
+                      <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
+                    </svg>
+                  </a>
+                )}
+                {cmsData.redesSociales?.linkedin?.trim() && (
+                  <a
+                    href={cmsData.redesSociales.linkedin.trim()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="LinkedIn"
+                    className="w-8 h-8 rounded-full bg-white/10 hover:bg-[#0A66C2] transition-colors flex items-center justify-center"
+                  >
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
+                      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+                    </svg>
+                  </a>
+                )}
               </div>
             </div>
 
@@ -1061,24 +1105,24 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
               </h4>
               <ul className="space-y-2 text-white/70">
                 <li>
-                  <a href="mailto:hola@travelapp.ar" className="hover:text-white transition-colors">
-                    Contacto: <span className="text-white">hola@travelapp.ar</span>
+                  <a href={`mailto:${officialEmail}`} className="hover:text-white transition-colors">
+                    Contacto: <span className="text-white">{officialEmail}</span>
                   </a>
                 </li>
                 <li>
-                  <a href="tel:08102200018" className="hover:text-white transition-colors">
-                    Teléfono: <span className="text-white">0810-220-0018</span>
+                  <a href={officialPhoneHref} className="hover:text-white transition-colors">
+                    Teléfono: <span className="text-white">{officialPhone}</span>
                   </a>
                 </li>
                 <li>
                   <a
-                    href="https://wa.me/5493812000712"
+                    href={officialWhatsapp}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="hover:text-white transition-colors"
                   >
                     WhatsApp (Travis):{" "}
-                    <span className="text-white">+54 9 381 200-0712</span>
+                    <span className="text-white">{officialWhatsappDisplay}</span>
                   </a>
                 </li>
               </ul>
@@ -1122,15 +1166,25 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
           {/* Barra Institucional QR ARCA + ATAVyT + RNBD */}
           <div className="py-6 border-b border-white/10 flex flex-wrap items-center justify-between gap-6">
             <div className="flex flex-wrap items-center gap-6">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 bg-white p-1 flex items-center justify-center shrink-0">
-                  <QrCode className="w-8 h-8 text-[#0a2a5b]" />
+              {cmsData.sellosLegales?.arcaQr?.trim() ? (
+                <div className="flex items-center gap-2.5">
+                  <RenderLegalSeal content={cmsData.sellosLegales.arcaQr} alt="ARCA" />
+                  <div className="text-[11px] leading-tight">
+                    <div className="font-semibold text-white">Inscripción ARCA</div>
+                    <div className="text-white/60">Data Fiscal Oficial</div>
+                  </div>
                 </div>
-                <div className="text-[11px] leading-tight">
-                  <div className="font-semibold text-white">Inscripción ARCA</div>
-                  <div className="text-white/60">Data Fiscal Oficial</div>
+              ) : (
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 bg-white p-1 flex items-center justify-center shrink-0">
+                    <QrCode className="w-8 h-8 text-[#0a2a5b]" />
+                  </div>
+                  <div className="text-[11px] leading-tight">
+                    <div className="font-semibold text-white">Inscripción ARCA</div>
+                    <div className="text-white/60">Data Fiscal Oficial</div>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="flex items-center gap-2.5 pl-6 border-l border-white/15">
                 <div className="px-2.5 py-1.5 bg-white/10 border border-white/20 text-[11px] font-semibold text-white tracking-tight">
@@ -1142,24 +1196,20 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
                 </div>
               </div>
 
-              <div className="flex items-center gap-2.5 pl-6 border-l border-white/15">
-                <div className="px-2.5 py-1.5 bg-white/10 border border-white/20 text-[11px] font-semibold text-white tracking-tight">
-                  RNBD
+              {cmsData.sellosLegales?.baseDatosSello?.trim() ? (
+                <div className="flex items-center gap-2.5 pl-6 border-l border-white/15">
+                  <RenderLegalSeal content={cmsData.sellosLegales.baseDatosSello} alt="Base de Datos" />
                 </div>
-                <div className="text-[11px] leading-tight">
-                  <div className="font-semibold text-white">Base de Datos</div>
-                  <div className="text-white/60">Ley N° 25.326 PDP</div>
+              ) : (
+                <div className="flex items-center gap-2.5 pl-6 border-l border-white/15">
+                  <div className="px-2.5 py-1.5 bg-white/10 border border-white/20 text-[11px] font-semibold text-white tracking-tight">
+                    RNBD
+                  </div>
+                  <div className="text-[11px] leading-tight">
+                    <div className="font-semibold text-white">Base de Datos</div>
+                    <div className="text-white/60">Ley N° 25.326 PDP</div>
+                  </div>
                 </div>
-              </div>
-
-              {cmsData.sellosLegales && (
-                <>
-                  <RenderLegalSeal content={cmsData.sellosLegales?.arcaQr} alt="ARCA" />
-                  <RenderLegalSeal
-                    content={cmsData.sellosLegales?.baseDatosSello}
-                    alt="Base de Datos"
-                  />
-                </>
               )}
             </div>
 
@@ -1208,42 +1258,43 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
             </div>
 
             {legalModal === "privacidad" && (
-              <p className="text-[13px] text-[#515154] leading-relaxed">
-                TravelApp S.A.S. protege los datos personales y el historial transaccional de los miembros del programa TravelApp Rewards en cumplimiento de la Ley N° 25.326 de Protección de Datos Personales. Podés ejercer tus derechos de acceso, rectificación o supresión escribiendo a{" "}
-                <strong className="text-[#1d1d1f]">hola@travelapp.ar</strong>.
+              <p className="text-[13px] text-[#515154] leading-relaxed whitespace-pre-line">
+                {cmsData.legales?.privacidad?.trim() ||
+                  `TravelApp S.A.S. protege los datos personales y el historial transaccional de los miembros del programa TravelApp Rewards en cumplimiento de la Ley N° 25.326 de Protección de Datos Personales. Podés ejercer tus derechos de acceso, rectificación o supresión escribiendo a ${officialEmail}.`}
               </p>
             )}
 
             {legalModal === "terminos" && (
-              <p className="text-[13px] text-[#515154] leading-relaxed">
-                Los Puntos Travel se acreditan automáticamente por servicios efectivamente completados y abonados dentro del ecosistema TravelApp. Los vouchers emitidos en el catálogo de canjes están sujetos a disponibilidad y vigencia informada en cada comercio adherido.
+              <p className="text-[13px] text-[#515154] leading-relaxed whitespace-pre-line">
+                {cmsData.legales?.terminos?.trim() ||
+                  "Los Puntos Travel se acreditan automáticamente por servicios efectivamente completados y abonados dentro del ecosistema TravelApp. Los vouchers emitidos en el catálogo de canjes están sujetos a disponibilidad y vigencia informada en cada comercio adherido."}
               </p>
             )}
 
             {legalModal === "contacto" && (
               <div className="space-y-3 text-[13px]">
                 <a
-                  href="https://wa.me/5493812000712"
+                  href={officialWhatsapp}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center justify-between p-3.5 bg-[#f5f5f7] hover:bg-[#e8e8ed] transition-colors"
                 >
                   <span className="font-medium">WhatsApp Oficial (Travis)</span>
-                  <span className="font-semibold text-[#0a2a5b]">+54 9 381 200-0712</span>
+                  <span className="font-semibold text-[#0a2a5b]">{officialWhatsappDisplay}</span>
                 </a>
                 <a
-                  href="tel:08102200018"
+                  href={officialPhoneHref}
                   className="flex items-center justify-between p-3.5 bg-[#f5f5f7] hover:bg-[#e8e8ed] transition-colors"
                 >
                   <span className="font-medium">Atención Telefónica</span>
-                  <span className="font-semibold text-[#0a2a5b]">0810-220-0018</span>
+                  <span className="font-semibold text-[#0a2a5b]">{officialPhone}</span>
                 </a>
                 <a
-                  href="mailto:hola@travelapp.ar"
+                  href={`mailto:${officialEmail}`}
                   className="flex items-center justify-between p-3.5 bg-[#f5f5f7] hover:bg-[#e8e8ed] transition-colors"
                 >
                   <span className="font-medium">Correo Electrónico</span>
-                  <span className="font-semibold text-[#0a2a5b]">hola@travelapp.ar</span>
+                  <span className="font-semibold text-[#0a2a5b]">{officialEmail}</span>
                 </a>
               </div>
             )}
@@ -1308,11 +1359,14 @@ export default function RewardsLandingClient({ initialCms }: { initialCms?: any 
         </div>
       )}
 
+      {/* Push Pop Minimalista (configurable desde CMS, cupón opcional) */}
+      <OtaPromoPushPop config={cmsData.promoPushPop} />
+
       {/* Widget Flotante Omnicanal Travis */}
       <TravisOmnichannelWidget
         businessUnit="Rewards"
-        whatsappUrl={cmsData.redesSociales?.whatsapp || "https://wa.me/5493812000712"}
-        messengerUrl="https://m.me/travelapp"
+        whatsappUrl={officialWhatsapp}
+        messengerUrl={messengerUrl}
         instagramUrl={cmsData.redesSociales?.instagram || "https://instagram.com/travelapp.ar"}
         primaryColor="#0a2a5b"
         brandName="Rewards"

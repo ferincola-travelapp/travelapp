@@ -6,16 +6,24 @@ import Link from "next/link";
 import { Phone, ChevronDown, Menu, X } from "lucide-react";
 
 interface ExperienceHeaderProps {
+  phone?: string;
+  logoUrl?: string;
   onOpenQuienesSomos?: (tab: "vision" | "mision" | "valores") => void;
   onOpenContacto?: () => void;
   onSelectSearchMode?: (mode: "excursiones" | "traslados") => void;
 }
 
 export function ExperienceHeader({
+  phone = "0810-220-0018",
+  logoUrl = "/assets/experience_blanco.svg",
   onOpenQuienesSomos,
   onOpenContacto,
   onSelectSearchMode,
 }: ExperienceHeaderProps) {
+  const cleanPhone = phone?.trim() || "0810-220-0018";
+  const phoneHref = `tel:${cleanPhone.replace(/[^+\d]/g, "") || "08102200018"}`;
+  const resolvedLogo = logoUrl?.trim() || "/assets/experience_blanco.svg";
+  const isExternalOrDataLogo = /^https?:\/\/|^data:/i.test(resolvedLogo);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [nosotrosDropdownOpen, setNosotrosDropdownOpen] = useState(false);
   const [serviciosDropdownOpen, setServiciosDropdownOpen] = useState(false);
@@ -44,14 +52,22 @@ export function ExperienceHeader({
             href="/landing/experience"
             className="flex items-center shrink-0 focus:outline-none group"
           >
-            <Image
-              src="/assets/experience_blanco.svg"
-              alt="TravelApp Experience"
-              width={240}
-              height={64}
-              priority
-              className="h-11 sm:h-12 w-auto object-contain transition-opacity group-hover:opacity-90"
-            />
+            {isExternalOrDataLogo ? (
+              <img
+                src={resolvedLogo}
+                alt="TravelApp Experience"
+                className="h-11 sm:h-12 w-auto object-contain transition-opacity group-hover:opacity-90"
+              />
+            ) : (
+              <Image
+                src={resolvedLogo}
+                alt="TravelApp Experience"
+                width={240}
+                height={64}
+                priority
+                className="h-11 sm:h-12 w-auto object-contain transition-opacity group-hover:opacity-90"
+              />
+            )}
           </Link>
 
           {/* NAVEGACIÓN DESKTOP (Estilo Apple: tipografía limpia, sin recargos visuales, orden exacto) */}
@@ -203,25 +219,25 @@ export function ExperienceHeader({
             </div>
           </nav>
 
-          {/* 7. TELÉFONO: ICONO + 0810-220-0018 */}
+          {/* 7. TELÉFONO OFICIAL */}
           <div className="hidden lg:flex items-center shrink-0">
             <a
-              href="tel:08102200018"
+              href={phoneHref}
               className="flex items-center gap-1.5 text-[13px] font-medium text-white/90 hover:text-white transition-colors"
             >
               <Phone className="w-3.5 h-3.5 text-white/80" />
-              <span className="tracking-tight">0810-220-0018</span>
+              <span className="tracking-tight">{cleanPhone}</span>
             </a>
           </div>
 
           {/* CONTROLES MOBILE */}
           <div className="flex lg:hidden items-center gap-4">
             <a
-              href="tel:08102200018"
+              href={phoneHref}
               className="flex items-center gap-1 text-xs font-medium text-white/90"
             >
               <Phone className="w-3.5 h-3.5" />
-              <span>0810-220-0018</span>
+              <span>{cleanPhone}</span>
             </a>
 
             <button

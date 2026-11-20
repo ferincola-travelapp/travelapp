@@ -4,8 +4,60 @@ import React, { useState } from "react";
 import Image from "next/image";
 import { Phone, ChevronDown } from "lucide-react";
 
-export function ExperienceTravisSection() {
+export interface ExperienceTravisConfig {
+  enabled?: boolean;
+  title?: string;
+  subtitle?: string;
+  highlights?: string[];
+  ctaText?: string;
+}
+
+export interface ExperienceTravisContact {
+  whatsappUrl?: string;
+  whatsappDisplay?: string;
+  messengerUrl?: string;
+  instagramDmUrl?: string;
+  instagramHandle?: string;
+  phone?: string;
+}
+
+export function ExperienceTravisSection({
+  config,
+  contact,
+}: {
+  config?: ExperienceTravisConfig;
+  contact?: ExperienceTravisContact;
+}) {
   const [channelsOpen, setChannelsOpen] = useState(false);
+
+  if (config?.enabled === false) return null;
+
+  const title = config?.title || "Travis. Tu asistente personal de viaje.";
+  const subtitle =
+    config?.subtitle ||
+    "Planificá excursiones, coordiná traslados punto a punto y recibí asistencia en ruta las 24 horas.";
+  const highlights =
+    Array.isArray(config?.highlights) && config.highlights.length > 0
+      ? config.highlights.filter(Boolean)
+      : [
+          "Cotización inmediata",
+          "Coordinación de pick-up en hotel",
+          "Estado de rutas y clima en tiempo real",
+        ];
+  const ctaText = config?.ctaText || "Hablar con Travis";
+
+  const waBase = contact?.whatsappUrl?.trim() || "https://wa.me/5493812000712";
+  const waHref = waBase.includes("?")
+    ? waBase
+    : `${waBase}?text=${encodeURIComponent(
+        "Hola Travis, quiero consultar por excursiones y traslados"
+      )}`;
+  const waDisplay = contact?.whatsappDisplay?.trim() || "+54 9 381 200-0712";
+  const messengerHref = contact?.messengerUrl?.trim() || "https://m.me/travelapp.ar";
+  const instagramDmHref = contact?.instagramDmUrl?.trim() || "https://ig.me/m/travelapp.ar";
+  const instagramHandle = contact?.instagramHandle?.trim() || "@travelapp.ar";
+  const phone = contact?.phone?.trim() || "0810-220-0018";
+  const phoneHref = `tel:${phone.replace(/[^+\d]/g, "") || "08102200018"}`;
 
   return (
     <section className="w-full bg-[#f5f5f7] py-16 sm:py-24 px-4 sm:px-6 border-t border-[#e5e5ea]">
@@ -24,20 +76,21 @@ export function ExperienceTravisSection() {
 
         {/* TÍTULO Y DESCRIPCIÓN ESTILO APPLE */}
         <h2 className="text-[32px] sm:text-[44px] font-semibold text-[#1d1d1f] tracking-[-0.02em] leading-[1.1]">
-          Travis. Tu asistente personal de viaje.
+          {title}
         </h2>
 
         <p className="mt-3 text-[17px] sm:text-[21px] font-normal text-[#86868b] tracking-[-0.01em] leading-[1.35] max-w-2xl">
-          Planificá excursiones, coordiná traslados punto a punto y recibí asistencia en ruta las 24 horas.
+          {subtitle}
         </p>
 
         {/* RESUMEN EDITORIAL DE CAPACIDADES */}
         <div className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[13px] font-medium text-[#1d1d1f]/75">
-          <span>Cotización inmediata</span>
-          <span className="text-[#d2d2d7]">·</span>
-          <span>Coordinación de pick-up en hotel</span>
-          <span className="text-[#d2d2d7]">·</span>
-          <span>Estado de rutas y clima en tiempo real</span>
+          {highlights.map((item, idx) => (
+            <React.Fragment key={idx}>
+              {idx > 0 && <span className="text-[#d2d2d7]">·</span>}
+              <span>{item}</span>
+            </React.Fragment>
+          ))}
         </div>
 
         {/* LLAMADO A LA ACCIÓN QUE DESPLIEGA LOS CANALES DE ATENCIÓN */}
@@ -47,7 +100,7 @@ export function ExperienceTravisSection() {
             onClick={() => setChannelsOpen((prev) => !prev)}
             className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-[#0071e3] hover:bg-[#0077ed] text-white text-[15px] font-normal tracking-[-0.01em] transition-colors cursor-pointer"
           >
-            <span>Hablar con Travis</span>
+            <span>{ctaText}</span>
             <ChevronDown
               className={`w-4 h-4 transition-transform duration-300 ${
                 channelsOpen ? "rotate-180" : ""
@@ -56,13 +109,13 @@ export function ExperienceTravisSection() {
           </button>
         </div>
 
-        {/* DOCK DE CANALES OFICIALES (WhatsApp / Messenger / Instagram DM / Teléfono 0810-220-0018) */}
+        {/* DOCK DE CANALES OFICIALES */}
         {channelsOpen && (
           <div className="mt-8 w-full max-w-3xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
             
-            {/* 1. WHATSAPP OFICIAL (+5493812000712) */}
+            {/* 1. WHATSAPP OFICIAL */}
             <a
-              href="https://wa.me/5493812000712?text=Hola%20Travis%2C%20quiero%20consultar%20por%20excursiones%20y%20traslados"
+              href={waHref}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-3.5 p-4 rounded-2xl bg-white border border-[#d2d2d7] hover:border-[#86868b] transition-all text-left group"
@@ -77,14 +130,14 @@ export function ExperienceTravisSection() {
                   WhatsApp
                 </div>
                 <div className="text-[12px] text-[#86868b] truncate">
-                  +54 9 381 200-0712
+                  {waDisplay}
                 </div>
               </div>
             </a>
 
             {/* 2. MESSENGER OFICIAL */}
             <a
-              href="https://m.me/travelapp.ar"
+              href={messengerHref}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-3.5 p-4 rounded-2xl bg-white border border-[#d2d2d7] hover:border-[#86868b] transition-all text-left group"
@@ -106,7 +159,7 @@ export function ExperienceTravisSection() {
 
             {/* 3. INSTAGRAM (DM) OFICIAL */}
             <a
-              href="https://ig.me/m/travelapp.ar"
+              href={instagramDmHref}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-3.5 p-4 rounded-2xl bg-white border border-[#d2d2d7] hover:border-[#86868b] transition-all text-left group"
@@ -121,14 +174,14 @@ export function ExperienceTravisSection() {
                   Instagram DM
                 </div>
                 <div className="text-[12px] text-[#86868b] truncate">
-                  @travelapp.ar
+                  {instagramHandle}
                 </div>
               </div>
             </a>
 
-            {/* 4. TELÉFONO OFICIAL 0810-220-0018 */}
+            {/* 4. TELÉFONO OFICIAL */}
             <a
-              href="tel:08102200018"
+              href={phoneHref}
               className="flex items-center gap-3.5 p-4 rounded-2xl bg-white border border-[#d2d2d7] hover:border-[#86868b] transition-all text-left group"
             >
               <div className="w-10 h-10 rounded-full bg-[#0a2a5b] text-white flex items-center justify-center shrink-0">
@@ -136,7 +189,7 @@ export function ExperienceTravisSection() {
               </div>
               <div className="min-w-0">
                 <div className="text-[14px] font-semibold text-[#1d1d1f]">
-                  0810-220-0018
+                  {phone}
                 </div>
                 <div className="text-[12px] text-[#86868b] truncate">
                   Atención telefónica

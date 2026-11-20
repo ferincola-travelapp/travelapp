@@ -286,9 +286,22 @@ const DEFAULT_CMS_DATA = {
   resumenRewards: {
     title: "Tus Viajes Tienen Premio",
     subtitle: "Acumula puntos automáticamente en cada trayecto que realizas. Canjéalos por viajes gratis, prioridades y beneficios en todo el ecosistema de TravelApp.",
-    pointsText: "300 pts de Bienvenida",
+    pointsText: "Sumá Puntos en Cada Viaje",
     badgeText: "PROGRAMA REWARDS",
     imageUrl: "https://images.unsplash.com/photo-1513151233558-d860c5398176?auto=format&fit=crop&w=800&q=80"
+  },
+  promoPushPop: {
+    enabled: false,
+    badge: "NOVEDAD TRAVELCAB",
+    title: "Traslados Programados y Aeropuerto con Tarifa Fija",
+    subtitle: "Cotizá en segundos tu traslado en la ciudad o al aeropuerto y sumá puntos TravelApp Rewards.",
+    showDiscountCode: false,
+    discountCode: "",
+    discountBadge: "",
+    imageUrl: "https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&w=900&q=80",
+    ctaText: "Cotizar Ahora",
+    ctaUrl: "#web-dispatcher-card",
+    delaySeconds: 4
   },
   redesSociales: {
     facebook: "https://facebook.com/travelcab",
@@ -455,6 +468,29 @@ const RenderLegalSeal = ({ content, alt }: { content?: string; alt: string }) =>
   );
 };
 
+function mergeTravelCabCms(raw: any) {
+  if (!raw || typeof raw !== 'object') return DEFAULT_CMS_DATA;
+  return {
+    ...DEFAULT_CMS_DATA,
+    ...raw,
+    pasajeroHero: { ...DEFAULT_CMS_DATA.pasajeroHero, ...(raw.pasajeroHero || {}) },
+    conductorHero: { ...DEFAULT_CMS_DATA.conductorHero, ...(raw.conductorHero || {}) },
+    tiposTrabajo: { ...DEFAULT_CMS_DATA.tiposTrabajo, ...(raw.tiposTrabajo || {}) },
+    resumenRewards: { ...DEFAULT_CMS_DATA.resumenRewards, ...(raw.resumenRewards || {}) },
+    promoPushPop: { ...DEFAULT_CMS_DATA.promoPushPop, ...(raw.promoPushPop || {}) },
+    redesSociales: { ...DEFAULT_CMS_DATA.redesSociales, ...(raw.redesSociales || {}) },
+    sellosLegales: { ...DEFAULT_CMS_DATA.sellosLegales, ...(raw.sellosLegales || {}) },
+    contact: { ...DEFAULT_CMS_DATA.contact, ...(raw.contact || {}) },
+    footer: { ...DEFAULT_CMS_DATA.footer, ...(raw.footer || {}) },
+    faq: {
+      ...DEFAULT_CMS_DATA.faq,
+      ...(raw.faq || {}),
+      items: Array.isArray(raw.faq?.items) ? raw.faq.items : DEFAULT_CMS_DATA.faq.items,
+    },
+    legales: { ...DEFAULT_CMS_DATA.legales, ...(raw.legales || {}) },
+  };
+}
+
 export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
@@ -538,8 +574,18 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
   const [isLoadingTariffs, setIsLoadingTariffs] = useState(true);
 
   // --- ESTADOS DE CMS Y REGISTRO ---
-  const [cmsData, setCmsData] = useState<any>(initialCms ? { ...DEFAULT_CMS_DATA, ...initialCms } : DEFAULT_CMS_DATA);
+  const [cmsData, setCmsData] = useState<any>(() => mergeTravelCabCms(initialCms));
   const [viewMode, setViewMode] = useState<'passenger' | 'driver'>('passenger');
+
+  const rawTcWhatsapp =
+    cmsData.redesSociales?.whatsapp ||
+    cmsData.contact?.whatsapp ||
+    cmsData.dispatcher?.whatsappConfig?.phone ||
+    '5493812000712';
+  const tcWhatsappDigits = String(rawTcWhatsapp).replace(/\D/g, '') || '5493812000712';
+  const tcWhatsappUrl = String(rawTcWhatsapp).startsWith('http')
+    ? String(rawTcWhatsapp)
+    : `https://wa.me/${tcWhatsappDigits}`;
 
   // Modales
   const [legalModal, setLegalModal] = useState<{ isOpen: boolean; type: 'terms' | 'privacy' | 'about' }>({ isOpen: false, type: 'terms' });
@@ -605,10 +651,7 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
     // 1. Escucha reactiva en tiempo real al CMS de Firestore
     const unsubCms = onSnapshot(doc(db, 'cms', 'landing_travelcab'), (snap) => {
       if (snap.exists()) {
-        setCmsData({
-          ...DEFAULT_CMS_DATA,
-          ...snap.data()
-        });
+        setCmsData(mergeTravelCabCms(snap.data()));
       }
     }, (err) => {
       console.log('Error listening to CMS data:', err.message);
@@ -1650,10 +1693,15 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
                     alt={cmsData.pasajeroHero?.title || 'TravelCab Usuarios y Pasajeros'}
                     className="absolute inset-0 w-full h-full object-cover"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                  <div
+                    className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent"
+                    style={{
+                      backgroundColor: `rgba(0, 0, 0, ${Math.min(0.9, Math.max(0.1, Number(cmsData.pasajeroHero?.opacity ?? 55) / 100)) * 0.65})`,
+                    }}
+                  />
                   <div className="relative z-10 h-full flex flex-col justify-end p-6 sm:p-10 lg:p-14 text-white max-w-2xl">
-                    <span className="text-xs font-semibold uppercase tracking-[0.16em] text-white/80 mb-2">
-                      TravelCab · Movilidad Institucional
+                    <span className="text-xs font-semibold uppercase tracking-[0.16em] text-white/85 mb-2">
+                      {cmsData.pasajeroHero?.badge || 'TravelCab · Movilidad Institucional'}
                     </span>
                     <h1 className="text-3xl sm:text-5xl font-semibold tracking-tight leading-[1.08] mb-3 drop-shadow-sm">
                       {cmsData.pasajeroHero?.title || DEFAULT_CMS_DATA.pasajeroHero.title}
@@ -1743,7 +1791,12 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
               alt={cmsData.conductorHero?.title || 'TravelCab Conductores Profesionales'}
               className="absolute inset-0 w-full h-full object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/30 to-black/60" />
+            <div
+              className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/25 to-black/70"
+              style={{
+                backgroundColor: `rgba(0, 0, 0, ${Math.min(0.9, Math.max(0.1, Number(cmsData.conductorHero?.opacity ?? 55) / 100)) * 0.65})`,
+              }}
+            />
 
             <div className="mx-auto max-w-[1200px] w-full px-4 sm:px-6 py-14 lg:py-20 relative z-10">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
@@ -1765,6 +1818,12 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
                     </button>
                   </div>
 
+                  {cmsData.conductorHero?.badge && (
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/85">
+                      {cmsData.conductorHero.badge}
+                    </p>
+                  )}
+
                   <h1 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-white leading-[1.08] drop-shadow-md">
                     {cmsData.conductorHero?.title || DEFAULT_CMS_DATA.conductorHero.title}
                   </h1>
@@ -1779,11 +1838,11 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
                       onClick={() => { setDRegStep(0); setDRegSubmitted(false); setRegisterModal({ isOpen: true, role: 'driver' }); }}
                       className="w-full sm:w-auto inline-flex items-center justify-center rounded-full bg-[#0071e3] hover:bg-[#0077ed] px-7 py-3 text-center text-sm font-medium text-white transition-all cursor-pointer"
                     >
-                      Registrarme
+                      {cmsData.conductorHero?.ctaText || 'Registrarme'}
                     </button>
 
                     <a
-                      href={`https://wa.me/${cmsData.dispatcher?.whatsappConfig?.phone || '5493812000712'}?text=${encodeURIComponent('Hola Travis! Quiero pedir información para sumarme como conductor en TravelCab.')}`}
+                      href={`https://wa.me/${tcWhatsappDigits}?text=${encodeURIComponent('Hola Travis! Quiero pedir información para sumarme como conductor en TravelCab.')}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-full border border-white/60 bg-white/10 backdrop-blur-md px-6 py-3 text-center text-sm font-medium text-white hover:bg-white hover:text-[#0a2a5b] transition-all"
@@ -1845,10 +1904,10 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
                         onClick={() => { setDRegStep(0); setDRegSubmitted(false); setRegisterModal({ isOpen: true, role: 'driver' }); }}
                         className="w-full py-3 rounded-full bg-[#0a2a5b] hover:bg-[#071d3f] text-white text-xs font-semibold transition-colors cursor-pointer"
                       >
-                        Registrarme
+                        {cmsData.conductorHero?.ctaText || 'Registrarme'}
                       </button>
                       <a
-                        href={`https://wa.me/${cmsData.dispatcher?.whatsappConfig?.phone || '5493812000712'}?text=${encodeURIComponent('Hola Travis! Quiero pedir información para sumarme como conductor en TravelCab.')}`}
+                        href={`https://wa.me/${tcWhatsappDigits}?text=${encodeURIComponent('Hola Travis! Quiero pedir información para sumarme como conductor en TravelCab.')}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="w-full py-3 rounded-full border border-slate-300 text-center text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
@@ -2053,10 +2112,10 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
                 <div className="pt-2">
                   <button
                     onClick={() => { setPRegStep(1); setPRegData({ firstName: '', lastName: '', email: '', phone: '', photoUrl: '' }); setRegisterModal({ isOpen: true, role: 'passenger' }); }}
-                    className="inline-flex items-center gap-2 rounded-2xl bg-tech-blue text-white px-6 py-3.5 text-sm font-bold shadow-md hover:brightness-110 active:scale-95 transition-all"
+                    className="inline-flex items-center gap-2 rounded-2xl bg-tech-blue text-white px-6 py-3.5 text-sm font-bold shadow-md hover:brightness-110 active:scale-95 transition-all cursor-pointer"
                     style={{ backgroundColor: '#0a2a5b' }}
                   >
-                    Registrarme y Ganar 300 pts
+                    Crear Cuenta TravelCab
                     <Sparkles className="h-4 w-4 text-vial-orange" />
                   </button>
                 </div>
@@ -2258,9 +2317,11 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
             </div>
 
             <div className="space-y-6 text-center lg:text-left">
-              <span className="text-xs font-extrabold uppercase tracking-widest text-emerald-600 bg-emerald-100/50 px-3.5 py-1.5 rounded-full">
-                {cmsData.resumenRewards?.pointsText || DEFAULT_CMS_DATA.resumenRewards.pointsText}
-              </span>
+              {cmsData.resumenRewards?.pointsText && (
+                <span className="inline-block text-xs font-extrabold uppercase tracking-widest text-emerald-600 bg-emerald-100/50 px-3.5 py-1.5 rounded-full">
+                  {cmsData.resumenRewards.pointsText}
+                </span>
+              )}
               <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-tech-blue leading-tight">
                 {cmsData.resumenRewards?.title || DEFAULT_CMS_DATA.resumenRewards.title}
               </h2>
@@ -2364,10 +2425,12 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
               Políticas de Privacidad
             </button>
             <a 
-              href="/rrhh"
+              href="https://travelapp.ar/#trabaja-con-nosotros"
+              target="_blank"
+              rel="noopener noreferrer"
               className="hover:text-vial-orange transition-colors flex items-center gap-1"
             >
-              Trabaja con Nosotros
+              Trabajá con Nosotros
               <ExternalLink className="h-3 w-3" />
             </a>
           </div>
@@ -2468,10 +2531,10 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
       {/* -------- BOTÓN FLOTANTE TRAVIS (OMNICANAL) -------- */}
       <TravisOmnichannelWidget 
         businessUnit="TravelCab" 
-        whatsappUrl={cmsData.contact?.whatsapp || DEFAULT_CMS_DATA.contact.whatsapp}
+        whatsappUrl={tcWhatsappUrl}
         messengerUrl={cmsData.redesSociales?.messenger || DEFAULT_CMS_DATA.redesSociales.messenger}
         instagramUrl={cmsData.redesSociales?.instagram || DEFAULT_CMS_DATA.redesSociales.instagram || "https://instagram.com/travelcab.ar"}
-        primaryColor="#ff7b1a" // Vial orange
+        primaryColor="#ff7b1a"
         brandName="TravelCab"
       />
 
@@ -2710,7 +2773,7 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
                   </div>
                   <h3 className="text-lg font-black text-tech-blue">Registro de Pasajero</h3>
                   <p className="text-xs text-slate-500 leading-normal">
-                    Registrate hoy y recibí **{rewardsConfig.welcomePointsBonus || 20} puntos Rewards** de bienvenida automáticamente en tu cuenta.
+                    Registrate hoy y empezá a acumular puntos <strong className="text-[#0a2a5b]">TravelApp Rewards</strong> automáticamente en tu cuenta.
                   </p>
                 </div>
 
@@ -3921,16 +3984,11 @@ export default function TravelCabLanding({ initialCms }: { initialCms?: any }) {
         </div>
       )}
 
-      {/* PushPop Promocional editable desde CMS */}
-      <OtaPromoPushPop config={(cmsData as any).promoPushPop} />
-
-      {/* Travis Omnichannel Live Chat */}
-      <TravisOmnichannelWidget
-        businessUnit="TravelCab"
-        primaryColor="#FF5A19"
+      {/* PushPop Promocional / Aviso Minimalista editable desde CMS */}
+      <OtaPromoPushPop
+        config={(cmsData as any).promoPushPop}
         brandName="TravelCab"
-        whatsappUrl={cmsData.dispatcher?.whatsappConfig?.phone ? `https://wa.me/${cmsData.dispatcher.whatsappConfig.phone}` : "https://wa.me/5493812000712"}
-        instagramUrl="https://instagram.com/travelcab.ar"
+        storageKey="travelcab_promo_dismissed_v1"
       />
 
     </div>

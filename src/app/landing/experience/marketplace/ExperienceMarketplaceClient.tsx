@@ -37,7 +37,7 @@ import { collection, doc, onSnapshot, addDoc, query, limit } from "firebase/fire
 import { db } from "@/lib/firebase";
 import { Tour, calculateTimeToPayDeadline } from "@/types/experiences";
 import { ExperienceHeader } from "@/components/experience/ExperienceHeader";
-import { ExperienceFooter } from "@/components/experience/ExperienceFooter";
+import { ExperienceFooter, ExperienceFooterConfig } from "@/components/experience/ExperienceFooter";
 import { TravisOmnichannelWidget } from "@/components/shared/TravisOmnichannelWidget";
 
 interface ExperienceMarketplaceClientProps {
@@ -293,6 +293,47 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
     );
     return () => unsubCms();
   }, []);
+
+  // Canales oficiales y Footer sincronizados desde CMS (landing_experience)
+  const officialPhone =
+    cmsData?.contacto?.telefono?.trim() ||
+    cmsData?.header?.phoneFormatted?.trim() ||
+    cmsData?.header?.phone?.trim() ||
+    "0810-220-0018";
+  const officialEmail = cmsData?.contacto?.email?.trim() || "hola@travelapp.ar";
+  const officialWhatsapp =
+    cmsData?.contacto?.whatsapp?.trim() ||
+    cmsData?.redesSociales?.whatsapp?.trim() ||
+    cmsData?.travisWhatsapp?.trim() ||
+    "https://wa.me/5493812000712";
+  const officialWhatsappDigits = officialWhatsapp.replace(/\D/g, "") || "5493812000712";
+  const officialWhatsappDisplay =
+    cmsData?.contacto?.whatsappDisplay?.trim() ||
+    (officialWhatsappDigits === "5493812000712"
+      ? "+54 9 381 200-0712"
+      : `+${officialWhatsappDigits}`);
+
+  const footerConfig: ExperienceFooterConfig = useMemo(
+    () => ({
+      description: cmsData?.footer?.description || "",
+      email: officialEmail,
+      phone: officialPhone,
+      whatsappUrl: officialWhatsapp,
+      whatsappDisplay: officialWhatsappDisplay,
+      facebookUrl: cmsData?.redesSociales?.facebook ?? "https://facebook.com/travelapp.ar",
+      instagramUrl: cmsData?.redesSociales?.instagram ?? "https://instagram.com/travelapp.ar",
+      tiktokUrl: cmsData?.redesSociales?.tiktok ?? "",
+      youtubeUrl: cmsData?.redesSociales?.youtube ?? "",
+      linkedinUrl: cmsData?.redesSociales?.linkedin ?? "",
+      arcaQr: cmsData?.sellosLegales?.arcaQr || "",
+      atavyt: cmsData?.sellosLegales?.atavyt,
+      baseDatosSello: cmsData?.sellosLegales?.baseDatosSello,
+      privacidad: cmsData?.legales?.privacidad || "",
+      terminos: cmsData?.legales?.terminos || "",
+      copyrightText: cmsData?.footer?.copyrightText || "",
+    }),
+    [cmsData, officialEmail, officialPhone, officialWhatsapp, officialWhatsappDisplay]
+  );
 
   // Tracking de Afiliados / Promotores
   const [affiliateRef, setAffiliateRef] = useState<string>("");
@@ -787,23 +828,26 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
     >
       {/* 1. HEADER OFICIAL AZUL TECH (#0a2a5b) */}
       <ExperienceHeader
+        phone={officialPhone}
+        logoUrl={cmsData?.header?.logo}
         onOpenContacto={() => openConsultarModal()}
       />
 
-      {/* 2. HERO EDITORIAL DEL MARKETPLACE (ESTILO APPLE) */}
+      {/* 2. HERO EDITORIAL DEL MARKETPLACE (ESTILO APPLE — EDITABLE DESDE CMS) */}
       <section className="bg-white border-b border-black/[0.06] pt-12 pb-10 px-4 sm:px-6 lg:px-8">
         <div className="max-w-[1380px] mx-auto">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
             <div>
               <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#0071e3] mb-2.5">
                 <Compass className="w-3.5 h-3.5" />
-                <span>TravelApp Experience · Catálogo Oficial Receptivo</span>
+                <span>{cmsData?.marketplaceHero?.tag?.trim() || "TravelApp Experience · Catálogo Oficial Receptivo"}</span>
               </div>
               <h1 className="text-4xl sm:text-5xl font-semibold tracking-[-0.025em] text-[#1d1d1f] leading-[1.08]">
-                Marketplace de Experiencias.
+                {cmsData?.marketplaceHero?.title?.trim() || "Marketplace de Experiencias."}
               </h1>
               <p className="mt-3 text-base sm:text-lg text-[#6e6e73] max-w-2xl font-normal leading-relaxed">
-                Explorá todas nuestras excursiones verificadas con fichas técnicas completas, pick-up en tu hotel, reserva inmediata con Time-to-Pay y pago seguro con Mercado Pago.
+                {cmsData?.marketplaceHero?.subtitle?.trim() ||
+                  "Explorá todas nuestras excursiones verificadas con fichas técnicas completas, pick-up en tu hotel, reserva inmediata con Time-to-Pay y pago seguro con Mercado Pago."}
               </p>
             </div>
 
@@ -1602,7 +1646,7 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
               </span>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <a
-                  href={`https://wa.me/5493812000712?text=${encodeURIComponent(
+                  href={`https://wa.me/${officialWhatsappDigits}?text=${encodeURIComponent(
                     consultarTour?.title
                       ? `Hola Travis! Quiero consultar por la excursión: ${consultarTour.title}`
                       : "Hola Travis! Quiero hacer una consulta sobre TravelApp Experience."
@@ -1618,7 +1662,7 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868b] block">
                       WhatsApp Oficial Travis
                     </span>
-                    <span className="text-xs font-bold text-[#1d1d1f]">+54 9 381 200-0712</span>
+                    <span className="text-xs font-bold text-[#1d1d1f]">{officialWhatsappDisplay}</span>
                   </div>
                 </a>
 
@@ -1736,7 +1780,7 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
 
                 <div className="flex flex-col sm:flex-row gap-2.5">
                   <a
-                    href={`https://wa.me/5493812000712?text=${encodeURIComponent(
+                    href={`https://wa.me/${officialWhatsappDigits}?text=${encodeURIComponent(
                       `Hola Travis! Acabo de generar mi reserva ${bookingSuccess.code} para la excursión "${bookingTour.title}" (${paxCount} pasajeros).`
                     )}`}
                     target="_blank"
@@ -1998,13 +2042,14 @@ export default function ExperienceMarketplaceClient({ initialCms }: ExperienceMa
 
       {/* 8. FOOTER OFICIAL AZUL TECH (#0a2a5b) */}
       <ExperienceFooter
+        config={footerConfig}
         onOpenContacto={() => openConsultarModal()}
       />
 
       {/* 9. WIDGET FLOTANTE OMNICANAL TRAVIS */}
       <TravisOmnichannelWidget
         businessUnit="Experiences"
-        whatsappUrl={`https://wa.me/${String(cmsData.travisWhatsapp || "5493812000712").replace(/\D/g, "")}`}
+        whatsappUrl={officialWhatsapp}
       />
     </div>
   );

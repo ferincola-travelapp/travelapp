@@ -20,8 +20,10 @@ interface OtaAppSectionProps {
   showAppStore?: boolean;
   playStoreUrl?: string;
   appStoreUrl?: string;
+  badge?: string;
   titulo?: string;
   subtitulo?: string;
+  welcomeNote?: string;
   appPreviewImageUrl?: string;
 }
 
@@ -30,8 +32,10 @@ export function OtaAppSection({
   showAppStore = false,
   playStoreUrl = "",
   appStoreUrl = "",
+  badge,
   titulo,
   subtitulo,
+  welcomeNote,
   appPreviewImageUrl = "",
 }: OtaAppSectionProps) {
   const hasPlayStore = Boolean(showPlayStore && playStoreUrl && playStoreUrl.trim() !== "" && playStoreUrl !== "#");
@@ -46,7 +50,7 @@ export function OtaAppSection({
           <div className="lg:col-span-7 space-y-4 sm:space-y-6 text-center sm:text-left">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-sm bg-slate-100 border border-slate-200 text-[#0A2A5B] text-xs font-extrabold uppercase tracking-wider">
               <Smartphone className="w-4 h-4 text-[#0A2A5B]" />
-              <span>TravelApp en tu Celular</span>
+              <span>{badge || "TravelApp en tu Celular"}</span>
             </div>
 
             <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-slate-900 tracking-tight leading-tight">
@@ -155,9 +159,11 @@ export function OtaAppSection({
                 </Link>
               </div>
 
-              <p className="text-[11px] sm:text-xs text-slate-400 font-medium">
-                Registro 100% gratuito. Al crear tu cuenta recibís 500 puntos de bienvenida en Rewards.
-              </p>
+              {welcomeNote && welcomeNote.trim().length > 0 && (
+                <p className="text-[11px] sm:text-xs text-slate-400 font-medium">
+                  {welcomeNote}
+                </p>
+              )}
             </div>
           </div>
 

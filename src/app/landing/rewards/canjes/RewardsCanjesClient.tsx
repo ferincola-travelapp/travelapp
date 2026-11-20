@@ -180,8 +180,9 @@ export default function RewardsCanjesClient() {
         <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <a
-              href="/rewards"
+              href="/landing/rewards"
               className="h-9 w-9 rounded-xl bg-slate-800 hover:bg-slate-700 flex items-center justify-center border border-slate-700 transition-colors"
+              title="Volver a TravelApp Rewards"
             >
               <ArrowLeft className="h-5 w-5 text-violet-400" />
             </a>

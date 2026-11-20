@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plane,
@@ -46,10 +46,15 @@ export interface OtaSearchEngineProps {
     asistencia?: boolean;
     parques?: boolean;
   };
+  whatsappUrl?: string;
   onSearch?: (tab: OtaSearchTab, params: any) => void;
 }
 
-export function OtaSearchEngine({ enabledTabs, onSearch }: OtaSearchEngineProps) {
+export function OtaSearchEngine({
+  enabledTabs,
+  whatsappUrl = "https://wa.me/5493812000712",
+  onSearch,
+}: OtaSearchEngineProps) {
   const router = useRouter();
 
   // Configuración de pestañas activables por switch (por defecto todas true)
@@ -87,6 +92,12 @@ export function OtaSearchEngine({ enabledTabs, onSearch }: OtaSearchEngineProps)
 
   // Tab activo actual (por defecto paquetes)
   const [activeTab, setActiveTab] = useState<OtaSearchTab>(visibleTabs[0]?.id || "paquetes");
+
+  useEffect(() => {
+    if (visibleTabs.length > 0 && !visibleTabs.some((t) => t.id === activeTab)) {
+      setActiveTab(visibleTabs[0].id);
+    }
+  }, [enabledTabs, activeTab]);
 
   // Form State
   const [origin, setOrigin] = useState("Buenos Aires (BUE)");
@@ -137,7 +148,8 @@ export function OtaSearchEngine({ enabledTabs, onSearch }: OtaSearchEngineProps)
 
   const getWhatsAppQuoteUrl = () => {
     const text = `Hola TravelApp! Quiero cotizar ${activeTab.toUpperCase()}:\n• Origen/Punto: ${origin}\n• Destino: ${destination}\n• Fecha salida: ${departureDate || "A convenir"}\n• Fecha regreso: ${returnDate || "Solo ida"}\n• Pasajeros/Personas: ${passengers}\n¿Tienen tarifas vigentes y promociones?`;
-    return `https://wa.me/5493812000712?text=${encodeURIComponent(text)}`;
+    const baseDigits = whatsappUrl.replace(/\D/g, "") || "5493812000712";
+    return `https://wa.me/${baseDigits}?text=${encodeURIComponent(text)}`;
   };
 
   return (

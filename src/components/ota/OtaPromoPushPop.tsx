@@ -1,46 +1,56 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import Image from "next/image";
 import Link from "next/link";
-import { X, Sparkles, Copy, Check, ArrowRight, Tag } from "lucide-react";
+import { X, Copy, Check, ArrowRight, Tag } from "lucide-react";
 
 export interface PromoPushPopConfig {
   enabled: boolean;
   badge?: string;
   title: string;
   subtitle: string;
+  showDiscountCode?: boolean;
   discountCode?: string;
+  discountBadge?: string;
   imageUrl?: string;
   ctaText?: string;
   ctaUrl?: string;
+  delaySeconds?: number;
 }
 
 interface OtaPromoPushPopProps {
   config?: PromoPushPopConfig;
+  brandName?: string;
+  storageKey?: string;
 }
 
-export function OtaPromoPushPop({ config }: OtaPromoPushPopProps) {
+export function OtaPromoPushPop({
+  config,
+  brandName,
+  storageKey = "ta_pushpop_dismissed",
+}: OtaPromoPushPopProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!config || !config.enabled) return;
 
-    // Verificar si ya fue visto en esta sesión
-    const hasSeen = sessionStorage.getItem("ta_pushpop_dismissed");
+    const hasSeen = sessionStorage.getItem(storageKey);
     if (!hasSeen) {
-      // Pequeño delay de 1.2 segundos para una entrada suave al cargar la página
+      const delayMs =
+        typeof config.delaySeconds === "number" && config.delaySeconds >= 0
+          ? config.delaySeconds * 1000
+          : 1200;
       const timer = setTimeout(() => {
         setIsOpen(true);
-      }, 1200);
+      }, delayMs);
       return () => clearTimeout(timer);
     }
-  }, [config]);
+  }, [config, storageKey]);
 
   const handleClose = () => {
     setIsOpen(false);
-    sessionStorage.setItem("ta_pushpop_dismissed", "true");
+    sessionStorage.setItem(storageKey, "true");
   };
 
   const handleCopyCode = (code: string) => {
@@ -51,112 +61,138 @@ export function OtaPromoPushPop({ config }: OtaPromoPushPopProps) {
 
   if (!isOpen || !config || !config.enabled) return null;
 
+  const hasImage = Boolean(config.imageUrl && config.imageUrl.trim().length > 0);
+  const showCoupon =
+    config.showDiscountCode !== false &&
+    Boolean(config.discountCode && config.discountCode.trim().length > 0);
+  const isExternalCta = Boolean(config.ctaUrl && /^https?:\/\//i.test(config.ctaUrl));
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-300 font-sans">
-      <div className="relative max-w-lg w-full bg-white rounded-3xl overflow-hidden shadow-2xl border border-white/20 animate-in zoom-in-95 duration-200">
-        {/* Botón Cerrar */}
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200 font-sans"
+      onClick={handleClose}
+    >
+      <div
+        className={`relative w-full bg-white rounded-md overflow-hidden shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-200 ${
+          hasImage ? "max-w-2xl grid grid-cols-1 md:grid-cols-12" : "max-w-md"
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Línea institucional superior */}
+        <div className="absolute top-0 left-0 right-0 h-1 bg-[#0A2A5B] z-30" />
+
+        {/* Botón Cerrar minimalista */}
         <button
           type="button"
           onClick={handleClose}
-          className="absolute top-4 right-4 z-20 p-2 rounded-full bg-black/40 hover:bg-black/70 text-white backdrop-blur-xs transition-colors cursor-pointer"
-          aria-label="Cerrar ventana emergente"
+          className="absolute top-3.5 right-3.5 z-30 w-8 h-8 rounded-full bg-white/90 hover:bg-slate-100 text-slate-500 hover:text-slate-900 border border-slate-200/80 flex items-center justify-center transition-colors cursor-pointer"
+          aria-label="Cerrar aviso promocional"
         >
-          <X className="w-5 h-5" />
+          <X className="w-4 h-4" />
         </button>
 
-        {/* Imagen o Banner de la Promoción (opcional) */}
-        {config.imageUrl ? (
-          <div className="relative h-48 sm:h-56 w-full bg-slate-900">
-            <Image
+        {/* Columna Visual (Split limpio en desktop si hay imagen) */}
+        {hasImage && (
+          <div className="relative h-48 sm:h-56 md:h-auto md:col-span-5 bg-slate-100 overflow-hidden">
+            <img
               src={config.imageUrl}
-              alt={config.title}
-              fill
-              className="object-cover"
+              alt={config.title || "Promoción TravelApp"}
+              className="w-full h-full object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent" />
-            {config.badge && (
-              <div className="absolute top-4 left-4">
-                <span className="px-3 py-1 rounded-full bg-[#ff5a19] text-white text-xs font-black uppercase tracking-wider shadow-md">
-                  {config.badge}
-                </span>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="bg-gradient-to-r from-[#0a2a5b] to-blue-900 p-6 text-white text-center">
-            {config.badge && (
-              <span className="inline-block px-3 py-1 rounded-full bg-[#ff5a19] text-white text-xs font-black uppercase tracking-wider shadow-md mb-2">
-                {config.badge}
-              </span>
-            )}
-            <h2 className="text-2xl font-black text-amber-300">
-              {config.title}
-            </h2>
           </div>
         )}
 
-        {/* Contenido */}
-        <div className="p-6 sm:p-8 text-center">
-          {config.imageUrl && (
-            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 mb-2 leading-tight">
-              {config.title}
-            </h2>
-          )}
-
-          <p className="text-sm sm:text-base text-slate-600 font-medium leading-relaxed mb-6">
-            {config.subtitle}
-          </p>
-
-          {/* Código de Descuento Copiable */}
-          {config.discountCode && (
-            <div className="mb-6 p-3 bg-amber-50 rounded-2xl border border-dashed border-amber-300 flex items-center justify-between gap-3 max-w-sm mx-auto">
-              <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
-                <Tag className="w-4 h-4 text-[#ff5a19]" />
-                <span>Cupón:</span>
-                <span className="font-mono text-sm tracking-wider uppercase text-slate-950 font-black">
-                  {config.discountCode}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleCopyCode(config.discountCode!)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold text-xs transition-colors cursor-pointer"
-              >
-                {copied ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-800" />
-                    <span>¡Copiado!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>Copiar</span>
-                  </>
-                )}
-              </button>
-            </div>
-          )}
-
-          {/* Botón CTA y Cerrar */}
-          <div className="space-y-2">
-            {config.ctaUrl && config.ctaText && (
-              <Link
-                href={config.ctaUrl}
-                onClick={handleClose}
-                className="w-full py-3.5 px-6 rounded-2xl bg-[#ff5a19] hover:bg-[#e04c10] text-white font-bold text-sm shadow-lg hover:shadow-orange-500/25 transition-all flex items-center justify-center gap-2"
-              >
-                <span>{config.ctaText}</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
+        {/* Columna Editorial Minimalista */}
+        <div
+          className={`p-6 sm:p-8 flex flex-col justify-between text-left ${
+            hasImage ? "md:col-span-7" : ""
+          }`}
+        >
+          <div className="space-y-3 pr-6">
+            {(config.badge || brandName) && (
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#0A2A5B]">
+                {config.badge || brandName}
+              </p>
             )}
 
-            <button
-              type="button"
-              onClick={handleClose}
-              className="text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors py-1 cursor-pointer"
-            >
-              Cerrar y continuar navegando
-            </button>
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight leading-snug">
+              {config.title}
+            </h2>
+
+            {config.subtitle && (
+              <p className="text-xs sm:text-sm text-slate-600 font-normal leading-relaxed">
+                {config.subtitle}
+              </p>
+            )}
+          </div>
+
+          <div className="mt-6 space-y-3.5">
+            {/* Código promocional sobrio (opcional — se puede habilitar o deshabilitar desde el CMS) */}
+            {showCoupon && (
+              <div className="px-3.5 py-2.5 bg-slate-50 rounded-sm border border-dashed border-slate-300 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-slate-600 text-xs min-w-0 flex-wrap">
+                  <Tag className="w-3.5 h-3.5 text-[#0A2A5B] shrink-0" />
+                  <span className="text-[11px] uppercase tracking-wider font-semibold text-slate-500">
+                    {config.discountBadge || "Código"}
+                  </span>
+                  <span className="font-mono text-xs sm:text-sm tracking-widest uppercase text-slate-900 font-bold truncate">
+                    {config.discountCode}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleCopyCode(config.discountCode!)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-sm bg-white hover:bg-slate-100 border border-slate-200 text-[#0A2A5B] font-semibold text-[11px] transition-colors cursor-pointer shrink-0"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-3 h-3 text-emerald-600" />
+                      <span className="text-emerald-700">Copiado</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3" />
+                      <span>Copiar</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* Acciones */}
+            <div className="flex flex-col gap-2 pt-1">
+              {config.ctaUrl && config.ctaText && (
+                isExternalCta ? (
+                  <a
+                    href={config.ctaUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={handleClose}
+                    className="w-full py-2.5 px-5 rounded-sm bg-[#0A2A5B] hover:bg-[#071f45] text-white font-semibold text-xs sm:text-sm tracking-tight transition-colors flex items-center justify-center gap-2"
+                  >
+                    <span>{config.ctaText}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </a>
+                ) : (
+                  <Link
+                    href={config.ctaUrl}
+                    onClick={handleClose}
+                    className="w-full py-2.5 px-5 rounded-sm bg-[#0A2A5B] hover:bg-[#071f45] text-white font-semibold text-xs sm:text-sm tracking-tight transition-colors flex items-center justify-center gap-2"
+                  >
+                    <span>{config.ctaText}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </Link>
+                )
+              )}
+
+              <button
+                type="button"
+                onClick={handleClose}
+                className="text-[11px] font-medium text-slate-400 hover:text-slate-600 transition-colors py-1 cursor-pointer text-center"
+              >
+                {showCoupon ? "Continuar sin aplicar" : "Cerrar aviso"}
+              </button>
+            </div>
           </div>
         </div>
       </div>

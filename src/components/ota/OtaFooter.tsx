@@ -66,6 +66,10 @@ export interface FooterConfig {
   domicilio?: string;
   phone?: string;
   email?: string;
+  description?: string;
+  copyrightText?: string;
+  terminos?: string;
+  privacidad?: string;
   // Redes con switch
   showFacebook?: boolean;
   facebookUrl?: string;
@@ -99,6 +103,18 @@ export function OtaFooter({ config }: OtaFooterProps) {
   const domicilio = config?.domicilio || "San Miguel de Tucumán, Argentina";
   const phone = config?.phone || "0810-220-0018";
   const email = config?.email || "hola@travelapp.ar";
+  const description =
+    config?.description ||
+    "Plataforma integral de turismo, paquetes de operadores mayoristas y movilidad urbana de Argentina.";
+  const copyrightText =
+    config?.copyrightText ||
+    `Todos los derechos reservados por ${razonSocial} - 2026`;
+  const privacidadContent =
+    config?.privacidad?.trim() ||
+    "En TravelApp S.A.S. la confidencialidad de tus datos personales es prioridad absoluta. En estricto cumplimiento de la Ley N° 25.326 de Protección de los Datos Personales de la República Argentina, te garantizamos que la información suministrada es utilizada únicamente para la emisión de pasajes, reservas de hotel, contratación de seguros y gestión de tu cuenta TravelApp Rewards. Tus datos están resguardados en servidores seguros con cifrado de grado bancario. Podés ejercer tus derechos de acceso, rectificación y supresión en cualquier momento mediante solicitud formal a legal@travelapp.ar.";
+  const terminosContent =
+    config?.terminos?.trim() ||
+    "Los presentes Términos y Condiciones regulan la intermediación turística de viajes, vuelos, traslados y excursiones provistos por TravelApp S.A.S. Toda contratación de servicios mayoristas, aéreos o de transporte terrestre está sujeta a las condiciones generales de transporte de IATA y la legislación comercial y aeronáutica aplicable. Las tarifas publicadas están expresadas con los tributos e impuestos vigentes de acuerdo con la legislación argentina. Los puntos Rewards acumulados no tienen valor monetario transferible fuera del ecosistema.";
 
   // Redes: solo se muestran si tienen URL cargada en el CMS
   const fbUrl = config?.facebookUrl?.trim() || "";
@@ -159,7 +175,7 @@ export function OtaFooter({ config }: OtaFooterProps) {
             </Link>
 
             <p className="text-xs text-slate-400 font-medium leading-relaxed max-w-sm">
-              Plataforma integral de turismo, paquetes de operadores mayoristas y movilidad urbana de Argentina.
+              {description}
             </p>
 
             {/* Espacio para Distintivos de Confianza: solo visible si hay códigos/imágenes cargados */}
@@ -169,14 +185,36 @@ export function OtaFooter({ config }: OtaFooterProps) {
                   Certificaciones & Distintivos de Confianza
                 </span>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div className="flex flex-wrap items-center gap-2.5">
                   {trustBadges.map((badge) => {
                     const val = (badge.codeOrImageUrl || "").trim();
+                    const isHtml =
+                      val.startsWith("<") || val.includes("<a ") || val.includes("<img ") || val.includes("<script");
                     const isImage =
-                      val.startsWith("http://") ||
-                      val.startsWith("https://") ||
-                      val.startsWith("/") ||
-                      val.startsWith("data:image");
+                      !isHtml &&
+                      (val.startsWith("http://") ||
+                        val.startsWith("https://") ||
+                        val.startsWith("/") ||
+                        val.startsWith("data:image"));
+
+                    if (isHtml) {
+                      return (
+                        <div
+                          key={badge.id}
+                          title={badge.name}
+                          className="p-1.5 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center gap-2 hover:border-slate-700 transition-colors"
+                        >
+                          <div
+                            className="flex items-center justify-center max-h-12 overflow-hidden rounded bg-white p-0.5 [&_img]:max-h-10 [&_img]:w-auto [&_img]:object-contain"
+                            dangerouslySetInnerHTML={{ __html: val }}
+                          />
+                          <span className="text-[10px] font-bold text-slate-300 leading-tight pr-1">
+                            {badge.name}
+                          </span>
+                        </div>
+                      );
+                    }
+
                     return (
                       <div
                         key={badge.id}
@@ -186,7 +224,7 @@ export function OtaFooter({ config }: OtaFooterProps) {
                           <img
                             src={val}
                             alt={badge.name}
-                            className="h-7 w-auto max-w-[60px] object-contain rounded bg-white p-0.5 shrink-0"
+                            className="h-8 w-auto max-w-[70px] object-contain rounded bg-white p-0.5 shrink-0"
                           />
                         ) : (
                           <div className="w-5 h-5 rounded-md bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0">
@@ -198,7 +236,7 @@ export function OtaFooter({ config }: OtaFooterProps) {
                             {badge.name}
                           </span>
                           {!isImage && (
-                            <span className="block text-[9px] font-mono text-slate-400 truncate">
+                            <span className="block text-[9px] font-mono text-slate-400 truncate max-w-[120px]">
                               {val}
                             </span>
                           )}
@@ -310,8 +348,7 @@ export function OtaFooter({ config }: OtaFooterProps) {
                 onClick={() =>
                   setLegalModal({
                     title: "Política de Privacidad y Protección de Datos",
-                    content:
-                      "En TravelApp S.A.S. la confidencialidad de tus datos personales es prioridad absoluta. En estricto cumplimiento de la Ley N° 25.326 de Protección de los Datos Personales de la República Argentina, te garantizamos que la información suministrada es utilizada únicamente para la emisión de pasajes, reservas de hotel, contratación de seguros y gestión de tu cuenta TravelApp Rewards. Tus datos están resguardados en servidores seguros con cifrado de grado bancario. Podés ejercer tus derechos de acceso, rectificación y supresión en cualquier momento mediante solicitud formal a legal@travelapp.ar.",
+                    content: privacidadContent,
                   })
                 }
                 className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition-all text-xs font-bold text-left lg:text-right cursor-pointer"
@@ -324,8 +361,7 @@ export function OtaFooter({ config }: OtaFooterProps) {
                 onClick={() =>
                   setLegalModal({
                     title: "Términos y Condiciones Generales de Contratación",
-                    content:
-                      "Los presentes Términos y Condiciones regulan la intermediación turística de viajes, vuelos, traslados y excursiones provistos por TravelApp S.A.S. Toda contratación de servicios mayoristas, aéreos o de transporte terrestre está sujeta a las condiciones generales de transporte de IATA y la legislación comercial y aeronáutica aplicable. Las tarifas publicadas están expresadas con los tributos e impuestos vigentes de acuerdo con la legislación argentina. Los puntos Rewards acumulados no tienen valor monetario transferible fuera del ecosistema.",
+                    content: terminosContent,
                   })
                 }
                 className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition-all text-xs font-bold text-left lg:text-right cursor-pointer"
@@ -362,7 +398,7 @@ export function OtaFooter({ config }: OtaFooterProps) {
           </div>
 
           <div className="text-center md:text-right text-[11px] text-slate-500 font-bold">
-            Todos los derechos reservados por TravelApp s.a.s. - 2026
+            {copyrightText}
           </div>
         </div>
       </div>
@@ -379,7 +415,7 @@ export function OtaFooter({ config }: OtaFooterProps) {
               <X className="w-5 h-5" />
             </button>
             <h3 className="text-lg sm:text-xl font-black mb-4 text-[#FF7A00] pr-8">{legalModal.title}</h3>
-            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed pr-2">
+            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed pr-2 whitespace-pre-line">
               {legalModal.content}
             </p>
           </div>

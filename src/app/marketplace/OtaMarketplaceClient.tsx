@@ -129,6 +129,54 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
     ];
   }, [cms?.marketplaceQuickButtons]);
 
+  // Canales oficiales y Footer sincronizados desde CMS (landing_ecosistema)
+  const officialPhone = cms?.contacto?.telefono?.trim() || "0810-220-0018";
+  const officialEmail = cms?.contacto?.email?.trim() || "hola@travelapp.ar";
+  const officialWhatsappDigits =
+    (
+      cms?.contacto?.whatsapp?.trim() ||
+      cms?.redesSociales?.whatsapp?.trim() ||
+      "5493812000712"
+    ).replace(/\D/g, "") || "5493812000712";
+
+  const footerConfig = useMemo(() => {
+    const sellos = cms?.sellosLegales || {};
+    const trustBadges = [
+      { id: "arca", name: "ARCA Fiscal", codeOrImageUrl: sellos.arcaQr || "", active: Boolean(sellos.arcaQr?.trim()) },
+      { id: "bases_datos", name: "Bases de Datos (Ley 25.326)", codeOrImageUrl: sellos.baseDatosSello || "", active: Boolean(sellos.baseDatosSello?.trim()) },
+      { id: "atavyt", name: "ATAVyT", codeOrImageUrl: sellos.atavyt || "", active: Boolean(sellos.atavyt?.trim()) },
+      { id: "faevyt", name: "FAEVYT", codeOrImageUrl: sellos.faevyt || "", active: Boolean(sellos.faevyt?.trim()) },
+      { id: "iata", name: "IATA Member", codeOrImageUrl: sellos.iata || "", active: Boolean(sellos.iata?.trim()) },
+    ];
+
+    return {
+      razonSocial: cms?.legales?.razonSocial || "TravelApp S.A.S.",
+      cuit: cms?.legales?.cuit || "30-71829304-8",
+      domicilio: cms?.legales?.domicilio || "San Miguel de Tucumán, Argentina",
+      phone: officialPhone,
+      email: officialEmail,
+      description:
+        cms?.footer?.description ||
+        "Plataforma integral de turismo, paquetes de operadores mayoristas y movilidad urbana de Argentina.",
+      copyrightText:
+        cms?.footer?.copyrightText ||
+        "Todos los derechos reservados por TravelApp S.A.S. - 2026",
+      terminos: cms?.legales?.terminos || "",
+      privacidad: cms?.legales?.privacidad || "",
+      showFacebook: Boolean(cms?.redesSociales?.facebook?.trim()),
+      facebookUrl: cms?.redesSociales?.facebook?.trim() || "",
+      showInstagram: Boolean(cms?.redesSociales?.instagram?.trim()),
+      instagramUrl: cms?.redesSociales?.instagram?.trim() || "",
+      showLinkedin: Boolean(cms?.redesSociales?.linkedin?.trim()),
+      linkedinUrl: cms?.redesSociales?.linkedin?.trim() || "",
+      showYoutube: Boolean(cms?.redesSociales?.youtube?.trim()),
+      youtubeUrl: cms?.redesSociales?.youtube?.trim() || "",
+      showTiktok: Boolean(cms?.redesSociales?.tiktok?.trim()),
+      tiktokUrl: cms?.redesSociales?.tiktok?.trim() || "",
+      trustBadges,
+    };
+  }, [cms?.legales, cms?.footer, cms?.redesSociales, cms?.sellosLegales, officialPhone, officialEmail]);
+
   const availableDepartures = useMemo(() => {
     const set = new Set<string>();
     packages.forEach((p) => {
@@ -350,7 +398,7 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800">
       {/* Header Oficial OTA */}
-      <OtaHeader />
+      <OtaHeader phone={officialPhone} />
 
       {/* Hero Slider Editable desde CMS */}
       <OtaHeroSlider slides={marketplaceSlides}>
@@ -832,7 +880,7 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
 
                         {actions.includes("whatsapp") && (
                           <a
-                            href={`https://wa.me/${(pkg.whatsappNumber || "5493812000712").replace(/\D/g, "") || "5493812000712"}?text=${encodeURIComponent(
+                            href={`https://wa.me/${(pkg.whatsappNumber || officialWhatsappDigits).replace(/\D/g, "") || officialWhatsappDigits}?text=${encodeURIComponent(
                               pkg.travisPrompt ||
                                 `Hola TravelApp! Me interesa consultar por el viaje "${pkg.title}" (${pkg.id}) con destino a ${pkg.destination}. ¿Tienen disponibilidad y opciones de pago?`
                             )}`}
@@ -1067,7 +1115,7 @@ export default function OtaMarketplaceClient({ initialCms }: OtaMarketplaceClien
       )}
 
       {/* Footer Oficial */}
-      <OtaFooter />
+      <OtaFooter config={footerConfig} />
     </div>
   );
 }

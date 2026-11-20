@@ -18,28 +18,43 @@ import {
 import { doc, onSnapshot, collection, addDoc } from "firebase/firestore";
 import {
   ref as storageRef,
-  uploadBytesResumable,
+  uploadBytes,
   getDownloadURL,
 } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
 import { DEFAULT_EXPERIENCE_TIERS } from "@/lib/commissions";
 import { TravisOmnichannelWidget } from "@/components/shared/TravisOmnichannelWidget";
+import { OtaPromoPushPop } from "@/components/ota/OtaPromoPushPop";
+
+const MAX_CV_BYTES = 5 * 1024 * 1024;
+const MAX_FALLBACK_DATAURL_BYTES = 700 * 1024;
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("No se pudo leer el archivo adjunto."));
+    reader.readAsDataURL(file);
+  });
+}
 
 const RenderLegalSeal = ({ content, alt }: { content?: string; alt: string }) => {
   if (!content) return null;
-  if (content.startsWith("http") || content.startsWith("/assets")) {
+  const trimmed = content.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("http") || trimmed.startsWith("/assets") || trimmed.startsWith("data:image")) {
     return (
       <img
-        src={content}
+        src={trimmed}
         alt={alt}
-        className="h-10 w-auto opacity-80 hover:opacity-100 transition-opacity"
+        className="h-10 w-auto opacity-90 hover:opacity-100 transition-opacity object-contain"
       />
     );
   }
   return (
     <div
-      dangerouslySetInnerHTML={{ __html: content }}
-      className="opacity-80 hover:opacity-100 transition-opacity max-h-12 overflow-hidden text-[10px]"
+      dangerouslySetInnerHTML={{ __html: trimmed }}
+      className="opacity-90 hover:opacity-100 transition-opacity max-h-12 overflow-hidden text-[10px] [&_img]:max-h-10 [&_img]:w-auto"
     />
   );
 };
@@ -61,12 +76,29 @@ const DEFAULT_AFILIADOS_CMS_DATA = {
     secondaryCtaText: "Explorar Niveles",
     heroImage:
       "https://images.unsplash.com/photo-1527631746610-bca00a040d60?auto=format&fit=crop&w=1800&q=85",
+    ribbonText:
+      "Comisiones de hasta el 10% con acreditación inmediata vía Split Mercado Pago o CBU semanal.",
+    demoCode: "TUCUMAN10OFF",
+  },
+  promoPopup: {
+    enabled: false,
+    badge: "PROGRAMA PARTNERS",
+    title: "Sumate como Embajador TravelApp",
+    subtitle:
+      "Registrate sin costo y empezá a generar comisiones instantáneas recomendando experiencias en todo el país.",
+    showDiscountCode: false,
+    discountCode: "",
+    discountBadge: "",
+    ctaText: "Registrarme Gratis",
+    ctaUrl: "/afiliados/register",
+    imageUrl: "",
+    delaySeconds: 4,
   },
   stats: [
     { label: "Comisión Máxima", value: "10%", detail: "por reserva confirmada" },
     { label: "Cupones Seguidores", value: "Hasta 20% OFF", detail: "código personalizado" },
     { label: "Liquidación", value: "Instantánea", detail: "Split MP o CBU semanal" },
-    { label: "Puntos Rewards", value: "+1.000 pts", detail: "bonificación nivel VIP" },
+    { label: "Puntos Rewards", value: "Bonificación VIP", detail: "por rendimiento mensual" },
   ],
   payoutMethods: {
     title: "Liquidación transparente y automatizada.",
@@ -78,6 +110,19 @@ const DEFAULT_AFILIADOS_CMS_DATA = {
     optionCbuTitle: "Liquidación Semanal por CBU / CVU",
     optionCbuDesc:
       "Preferí la acreditación bancaria directa: el sistema consolida todas las reservas de la semana y ejecuta la transferencia automática todos los días lunes a tu CBU o alias.",
+    panel3Title: "Códigos Nominales y Enlaces QR.",
+    panel3Desc:
+      "Otorgá hasta un 20% de descuento real en excursiones y traslados. Cada uso de tu cupón se registra en vivo en tu consola de afiliado.",
+    panel3Image:
+      "https://images.unsplash.com/photo-1512428559087-560fa5ceab42?auto=format&fit=crop&w=1400&q=85",
+    panel4Title: "Creadores, Conserjerías y Hoteles.",
+    panel4Desc:
+      "Tanto si tenés una comunidad digital como si recibís turistas en recepción hotelera, recomendá circuitos habilitados con respaldo operativo 24/7.",
+    panel4Image:
+      "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1400&q=85",
+    nivelesTitle: "A mayor volumen de reservas, mayor porcentaje de comisión.",
+    nivelesSubtitle:
+      "Tu cuenta asciende de categoría automáticamente a medida que tus referidos completan sus excursiones y traslados.",
   },
   faqs: [
     {
@@ -97,6 +142,12 @@ const DEFAULT_AFILIADOS_CMS_DATA = {
       a: "Podés optar por liquidación inmediata en cada transacción mediante Split de Mercado Pago o liquidación consolidada semanal todos los lunes vía transferencia bancaria CBU/CVU.",
     },
   ],
+  contacto: {
+    telefono: "0810-220-0018",
+    email: "hola@travelapp.ar",
+    whatsapp: "5493812000712",
+    whatsappDisplay: "+54 9 381 200-0712",
+  },
   legales: {
     razonSocial: "TravelApp S.A.S.",
     cuit: "30-71829340-9",
@@ -119,23 +170,10 @@ const DEFAULT_AFILIADOS_CMS_DATA = {
     arcaQr: "",
     baseDatosSello: "",
   },
-  trabajaNosotros: {
-    titulo: "Sumate al Equipo TravelApp",
-    subtitulo:
-      "Buscamos profesionales apasionados por el turismo receptivo, la logística y la tecnología.",
-    puestos: [
-      "Conductor Socio TravelCab",
-      "Guía de Experiencias",
-      "Atención al Cliente",
-      "Desarrollo de Software",
-      "Marketing Digital",
-      "Operaciones",
-      "Ventas B2B",
-      "Otro",
-    ],
-  },
   footer: {
     brandText: "TravelApp Experience Partners",
+    description:
+      "El Ecosistema de Viajes más completo de Argentina. Turismo receptivo, movilidad segura y programa de partners.",
     copyrightText: "Copyright © 2026 TravelApp S.A.S. Todos los derechos reservados.",
   },
 };
@@ -143,6 +181,9 @@ const DEFAULT_AFILIADOS_CMS_DATA = {
 export default function AfiliadosLandingClient() {
   const [cmsData, setCmsData] = useState(DEFAULT_AFILIADOS_CMS_DATA);
   const [tiers, setTiers] = useState(DEFAULT_EXPERIENCE_TIERS);
+  const [livePositions, setLivePositions] = useState<
+    { id: string; title: string; area: string }[]
+  >([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [showTravisChannels, setShowTravisChannels] = useState(false);
@@ -154,113 +195,224 @@ export default function AfiliadosLandingClient() {
   // Escuchar matriz de niveles en tiempo real desde Firestore
   useEffect(() => {
     try {
-      const unsub = onSnapshot(doc(db, "settings", "affiliate_tiers"), (snap) => {
-        if (snap.exists() && snap.data()?.tiers) {
-          setTiers(snap.data().tiers);
+      const unsub = onSnapshot(
+        doc(db, "settings", "affiliate_tiers"),
+        (snap) => {
+          if (snap.exists() && snap.data()?.tiers) {
+            setTiers(snap.data().tiers);
+          }
+        },
+        (err) => {
+          console.warn("[Tiers listener error]:", err?.message || err);
         }
-      });
+      );
       return () => unsub();
     } catch (err) {
       console.warn("[Tiers listener error]:", err);
     }
   }, []);
 
-  // Estado Modal Trabajá con Nosotros (Carga de CV a Firebase Storage)
+  // Escuchar búsquedas laborales activas desde RRHH (/hr)
+  useEffect(() => {
+    try {
+      const unsub = onSnapshot(
+        collection(db, "job_openings"),
+        (snap) => {
+          const list = snap.docs
+            .map((d) => ({ id: d.id, ...(d.data() as any) }))
+            .filter((j) => j.active !== false && j.publishedOnWeb !== false)
+            .map((j) => ({
+              id: j.id,
+              title: j.title || "Puesto disponible",
+              area: j.area || "General",
+            }));
+          setLivePositions(list);
+        },
+        (err) => {
+          console.warn("[RRHH job_openings listener]:", err?.message || err);
+        }
+      );
+      return () => unsub();
+    } catch (err) {
+      console.warn("[RRHH listener error]:", err);
+    }
+  }, []);
+
+  // Estado Modal Trabajá con Nosotros (sincronizado con módulo RRHH /hr)
   const [showJobModal, setShowJobModal] = useState(false);
   const [cvFile, setCvFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [jobError, setJobError] = useState<string | null>(null);
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle");
   const [jobForm, setJobForm] = useState({
-    nombre: "",
-    apellido: "",
+    fullName: "",
     email: "",
-    telefono: "",
-    puesto: "",
-    mensaje: "",
+    phone: "",
+    whatsapp: "",
+    jobTitle: "",
+    motivation: "",
+    linkedinOrCvUrl: "",
   });
 
   // Escuchar cambios dinámicos del CMS en tiempo real
   useEffect(() => {
     try {
-      const unsub = onSnapshot(doc(db, "cms_blocks", "landing_afiliados"), (snap) => {
-        if (snap.exists()) {
-          const val = snap.data();
-          setCmsData({
-            ...DEFAULT_AFILIADOS_CMS_DATA,
-            ...val,
-            header: { ...DEFAULT_AFILIADOS_CMS_DATA.header, ...(val.header || {}) },
-            hero: { ...DEFAULT_AFILIADOS_CMS_DATA.hero, ...(val.hero || {}) },
-            payoutMethods: {
-              ...DEFAULT_AFILIADOS_CMS_DATA.payoutMethods,
-              ...(val.payoutMethods || {}),
-            },
-            faqs: val.faqs || DEFAULT_AFILIADOS_CMS_DATA.faqs,
-            legales: { ...DEFAULT_AFILIADOS_CMS_DATA.legales, ...(val.legales || {}) },
-            redesSociales: {
-              ...DEFAULT_AFILIADOS_CMS_DATA.redesSociales,
-              ...(val.redesSociales || {}),
-            },
-            sellosLegales: {
-              ...DEFAULT_AFILIADOS_CMS_DATA.sellosLegales,
-              ...(val.sellosLegales || {}),
-            },
-            trabajaNosotros: {
-              ...DEFAULT_AFILIADOS_CMS_DATA.trabajaNosotros,
-              ...(val.trabajaNosotros || {}),
-            },
-          });
+      const unsub = onSnapshot(
+        doc(db, "cms_blocks", "landing_afiliados"),
+        (snap) => {
+          if (snap.exists()) {
+            const val = snap.data();
+            setCmsData({
+              ...DEFAULT_AFILIADOS_CMS_DATA,
+              ...val,
+              header: { ...DEFAULT_AFILIADOS_CMS_DATA.header, ...(val.header || {}) },
+              hero: { ...DEFAULT_AFILIADOS_CMS_DATA.hero, ...(val.hero || {}) },
+              promoPopup: {
+                ...DEFAULT_AFILIADOS_CMS_DATA.promoPopup,
+                ...(val.promoPopup || {}),
+              },
+              stats:
+                Array.isArray(val.stats) && val.stats.length > 0
+                  ? val.stats
+                  : DEFAULT_AFILIADOS_CMS_DATA.stats,
+              payoutMethods: {
+                ...DEFAULT_AFILIADOS_CMS_DATA.payoutMethods,
+                ...(val.payoutMethods || {}),
+              },
+              faqs:
+                Array.isArray(val.faqs) && val.faqs.length > 0
+                  ? val.faqs
+                  : DEFAULT_AFILIADOS_CMS_DATA.faqs,
+              contacto: {
+                ...DEFAULT_AFILIADOS_CMS_DATA.contacto,
+                ...(val.contacto || {}),
+              },
+              legales: { ...DEFAULT_AFILIADOS_CMS_DATA.legales, ...(val.legales || {}) },
+              redesSociales: {
+                ...DEFAULT_AFILIADOS_CMS_DATA.redesSociales,
+                ...(val.redesSociales || {}),
+              },
+              sellosLegales: {
+                ...DEFAULT_AFILIADOS_CMS_DATA.sellosLegales,
+                ...(val.sellosLegales || {}),
+              },
+              footer: { ...DEFAULT_AFILIADOS_CMS_DATA.footer, ...(val.footer || {}) },
+            });
+          }
+        },
+        (err) => {
+          console.warn("[CMS Afiliados listener error]:", err?.message || err);
         }
-      });
+      );
       return () => unsub();
     } catch (err) {
       console.warn("[CMS Afiliados listener error]:", err);
     }
   }, []);
 
+  const demoCode = cmsData.hero?.demoCode || "TUCUMAN10OFF";
+  const phoneDisplay = cmsData.contacto?.telefono || "0810-220-0018";
+  const phoneHref = `tel:${phoneDisplay.replace(/[^0-9+]/g, "")}`;
+  const contactEmail = cmsData.contacto?.email || "hola@travelapp.ar";
+  const rawWhatsapp =
+    cmsData.contacto?.whatsapp || cmsData.redesSociales?.whatsapp || "5493812000712";
+  const whatsappDigits = rawWhatsapp.replace(/\D/g, "") || "5493812000712";
+  const whatsappBaseUrl = rawWhatsapp.startsWith("http")
+    ? rawWhatsapp
+    : `https://wa.me/${whatsappDigits}`;
+  const whatsappDisplay = cmsData.contacto?.whatsappDisplay || "+54 9 381 200-0712";
+  const messengerUrl = cmsData.redesSociales?.messenger || "https://m.me/travelapp";
+  const instagramUrl = cmsData.redesSociales?.instagram || "https://instagram.com/travelapp.ar";
+
   const handleCopyDemoCode = () => {
-    navigator.clipboard.writeText("TUCUMAN10OFF");
+    navigator.clipboard.writeText(demoCode);
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
   const handleJobSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!cvFile) return;
+    setJobError(null);
+
+    if (
+      !jobForm.fullName.trim() ||
+      !jobForm.email.trim() ||
+      !jobForm.phone.trim() ||
+      !jobForm.whatsapp.trim() ||
+      !jobForm.motivation.trim()
+    ) {
+      setJobError("Por favor completá todos los campos obligatorios.");
+      return;
+    }
+
+    if (!cvFile && !jobForm.linkedinOrCvUrl.trim()) {
+      setJobError("Adjuntá tu Currículum Vitae (PDF/DOCX) o pegá un enlace a tu CV/LinkedIn.");
+      return;
+    }
 
     setIsSubmitting(true);
     setSubmitStatus("idle");
     try {
-      const path = `cv_submissions/${Date.now()}_${cvFile.name}`;
-      const fileRef = storageRef(storage, path);
-      const task = uploadBytesResumable(fileRef, cvFile);
+      let cvUrl = "";
+      let cvFileName = "";
+      let cvMimeType = "";
 
-      task.on(
-        "state_changed",
-        (snap) => {
-          const pct = (snap.bytesTransferred / snap.totalBytes) * 100;
-          setUploadProgress(pct);
-        },
-        (err) => {
-          console.error(err);
-          setSubmitStatus("error");
-          setIsSubmitting(false);
-        },
-        async () => {
-          const url = await getDownloadURL(task.snapshot.ref);
-          await addDoc(collection(db, "job_applications"), {
-            ...jobForm,
-            cvUrl: url,
-            createdAt: new Date().toISOString(),
-            status: "pendiente",
-          });
-          setSubmitStatus("success");
-          setIsSubmitting(false);
+      if (cvFile) {
+        if (cvFile.size > MAX_CV_BYTES) {
+          throw new Error("El archivo del Currículum supera el límite máximo de 5 MB.");
         }
-      );
-    } catch (err) {
+        cvFileName = cvFile.name;
+        cvMimeType = cvFile.type || "application/pdf";
+        const safeName = cvFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        try {
+          const fileRef = storageRef(storage, `cv_submissions/${Date.now()}_${safeName}`);
+          await uploadBytes(fileRef, cvFile);
+          cvUrl = await getDownloadURL(fileRef);
+        } catch (storageErr) {
+          console.warn("Fallback CV upload:", storageErr);
+          if (cvFile.size <= MAX_FALLBACK_DATAURL_BYTES) {
+            cvUrl = await readFileAsDataUrl(cvFile);
+          } else {
+            throw new Error(
+              "No pudimos subir un archivo mayor a 700 KB en este momento. Probá con un PDF más liviano o pegá un enlace de Drive / LinkedIn."
+            );
+          }
+        }
+      }
+
+      const matchedJob = livePositions.find((p) => p.title === jobForm.jobTitle);
+      const chosenTitle = jobForm.jobTitle || "Postulación Espontánea";
+
+      await addDoc(collection(db, "job_applications"), {
+        fullName: jobForm.fullName.trim(),
+        name: jobForm.fullName.trim(),
+        email: jobForm.email.trim(),
+        phone: jobForm.phone.trim(),
+        whatsapp: jobForm.whatsapp.trim(),
+        jobId: matchedJob?.id || null,
+        jobTitle: chosenTitle,
+        positionTitle: chosenTitle,
+        jobArea: matchedJob?.area || "General",
+        motivation: jobForm.motivation.trim(),
+        message: jobForm.motivation.trim(),
+        cvUrl,
+        cvFileName,
+        cvMimeType,
+        cvLink: jobForm.linkedinOrCvUrl.trim(),
+        source: "afiliados.travelapp.ar",
+        status: "Nueva",
+        createdAt: Date.now(),
+        timestamp: Date.now(),
+      });
+
+      setSubmitStatus("success");
+    } catch (err: any) {
       console.error(err);
+      setJobError(
+        err?.message || "No se pudo enviar tu postulación. Intentá nuevamente en unos minutos."
+      );
       setSubmitStatus("error");
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -268,15 +420,16 @@ export default function AfiliadosLandingClient() {
   const resetJobModal = () => {
     setShowJobModal(false);
     setCvFile(null);
+    setJobError(null);
     setSubmitStatus("idle");
-    setUploadProgress(0);
     setJobForm({
-      nombre: "",
-      apellido: "",
+      fullName: "",
       email: "",
-      telefono: "",
-      puesto: "",
-      mensaje: "",
+      phone: "",
+      whatsapp: "",
+      jobTitle: "",
+      motivation: "",
+      linkedinOrCvUrl: "",
     });
   };
 
@@ -333,11 +486,11 @@ export default function AfiliadosLandingClient() {
           {/* Acciones Derecha */}
           <div className="hidden md:flex items-center gap-3 shrink-0">
             <a
-              href="tel:08102200018"
+              href={phoneHref}
               className="inline-flex items-center gap-1.5 text-[12px] font-medium text-white/90 hover:text-white px-2.5 py-1.5 transition-colors"
             >
               <Phone className="w-3.5 h-3.5 text-[#dc2626]" />
-              <span>0810-220-0018</span>
+              <span>{phoneDisplay}</span>
             </a>
 
             <Link
@@ -405,11 +558,11 @@ export default function AfiliadosLandingClient() {
               Travel Market
             </Link>
             <a
-              href="tel:08102200018"
+              href={phoneHref}
               className="flex items-center gap-2 py-2 text-white font-medium"
             >
               <Phone className="w-4 h-4 text-[#dc2626]" />
-              0810-220-0018
+              {phoneDisplay}
             </a>
             <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
               <Link
@@ -435,9 +588,10 @@ export default function AfiliadosLandingClient() {
       <div className="w-full bg-[#f5f5f7] border-b border-[#d2d2d7]/70 py-2.5 px-4 text-center">
         <p className="text-[12px] text-[#1d1d1f] tracking-tight">
           <span className="font-semibold text-[#0a2a5b]">
-            TravelApp Experience Partners:
+            {cmsData.footer?.brandText || "TravelApp Experience Partners"}:
           </span>{" "}
-          Comisiones de hasta el 10% con acreditación inmediata vía Split Mercado Pago o CBU semanal.{" "}
+          {cmsData.hero?.ribbonText ||
+            "Comisiones de hasta el 10% con acreditación inmediata vía Split Mercado Pago o CBU semanal."}{" "}
           <Link
             href={cmsData.header.registerUrl}
             className="text-[#c81e1e] hover:underline font-medium inline-flex items-center gap-0.5 ml-1"
@@ -514,7 +668,7 @@ export default function AfiliadosLandingClient() {
                   DEMO CÓDIGO DE EMBAJADOR
                 </p>
                 <p className="text-[16px] font-mono font-semibold text-white tracking-wider">
-                  TUCUMAN10OFF
+                  {demoCode}
                 </p>
               </div>
               <button
@@ -544,6 +698,21 @@ export default function AfiliadosLandingClient() {
           4 paneles arquitectónicos de corte recto (gap-3 p-3)
       ════════════════════════════════════════════════════════════════ */}
       <section id="cobro" className="w-full bg-white p-3">
+        {(cmsData.payoutMethods?.title || cmsData.payoutMethods?.subtitle) && (
+          <div className="max-w-[1160px] mx-auto px-3 sm:px-6 pt-12 pb-8 text-center">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#c81e1e] mb-2">
+              MODELO DE COBRO Y HERRAMIENTAS
+            </p>
+            <h2 className="text-[30px] sm:text-[40px] font-semibold tracking-[-0.025em] text-[#1d1d1f] leading-[1.08]">
+              {cmsData.payoutMethods.title}
+            </h2>
+            {cmsData.payoutMethods.subtitle && (
+              <p className="mt-2.5 text-[16px] text-[#6e6e73] max-w-2xl mx-auto">
+                {cmsData.payoutMethods.subtitle}
+              </p>
+            )}
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {/* PANEL 1 (OSCURO #000000): SPLIT MERCADO PAGO INSTANTÁNEO */}
           <div className="relative h-[540px] sm:h-[570px] bg-[#000000] text-white overflow-hidden flex flex-col justify-between p-8 sm:p-12">
@@ -658,10 +827,11 @@ export default function AfiliadosLandingClient() {
                 HERRAMIENTAS DE CONVERSIÓN
               </p>
               <h2 className="text-[30px] sm:text-[36px] font-semibold tracking-[-0.025em] leading-[1.08]">
-                Códigos Nominales y Enlaces QR.
+                {cmsData.payoutMethods.panel3Title || "Códigos Nominales y Enlaces QR."}
               </h2>
               <p className="text-[15px] text-[#515154] font-normal leading-[1.4]">
-                Otorgá hasta un 20% de descuento real en excursiones y traslados. Cada uso de tu cupón se registra en vivo en tu consola de afiliado.
+                {cmsData.payoutMethods.panel3Desc ||
+                  "Otorgá hasta un 20% de descuento real en excursiones y traslados. Cada uso de tu cupón se registra en vivo en tu consola de afiliado."}
               </p>
               <div className="pt-3 flex items-center justify-center gap-3">
                 <Link
@@ -681,7 +851,10 @@ export default function AfiliadosLandingClient() {
 
             <div className="relative w-full h-[270px] mt-auto overflow-hidden">
               <img
-                src="https://images.unsplash.com/photo-1512428559087-560fa5ceab42?auto=format&fit=crop&w=1400&q=85"
+                src={
+                  cmsData.payoutMethods.panel3Image ||
+                  "https://images.unsplash.com/photo-1512428559087-560fa5ceab42?auto=format&fit=crop&w=1400&q=85"
+                }
                 alt="Atribución Digital"
                 className="w-full h-full object-cover object-center"
               />
@@ -695,10 +868,11 @@ export default function AfiliadosLandingClient() {
                 PERFILES HABILITADOS
               </p>
               <h2 className="text-[30px] sm:text-[36px] font-semibold tracking-[-0.025em] leading-[1.08]">
-                Creadores, Conserjerías y Hoteles.
+                {cmsData.payoutMethods.panel4Title || "Creadores, Conserjerías y Hoteles."}
               </h2>
               <p className="text-[15px] text-[#515154] font-normal leading-[1.4]">
-                Tanto si tenés una comunidad digital como si recibís turistas en recepción hotelera, recomendá circuitos habilitados con respaldo operativo 24/7.
+                {cmsData.payoutMethods.panel4Desc ||
+                  "Tanto si tenés una comunidad digital como si recibís turistas en recepción hotelera, recomendá circuitos habilitados con respaldo operativo 24/7."}
               </p>
               <div className="pt-3 flex items-center justify-center gap-3">
                 <Link
@@ -718,7 +892,10 @@ export default function AfiliadosLandingClient() {
 
             <div className="relative w-full h-[270px] mt-auto overflow-hidden">
               <img
-                src="https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1400&q=85"
+                src={
+                  cmsData.payoutMethods.panel4Image ||
+                  "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1400&q=85"
+                }
                 alt="Hotelería y Turismo Receptivo"
                 className="w-full h-full object-cover object-center"
               />
@@ -741,10 +918,12 @@ export default function AfiliadosLandingClient() {
               ESCALA DE RENDIMIENTO
             </p>
             <h2 className="text-[34px] sm:text-[44px] font-semibold tracking-[-0.025em] text-[#1d1d1f] leading-[1.08]">
-              A mayor volumen de reservas, mayor porcentaje de comisión.
+              {cmsData.payoutMethods.nivelesTitle ||
+                "A mayor volumen de reservas, mayor porcentaje de comisión."}
             </h2>
             <p className="mt-3 text-[17px] text-[#6e6e73] font-normal leading-[1.45]">
-              Tu cuenta asciende de categoría automáticamente a medida que tus referidos completan sus excursiones y traslados.
+              {cmsData.payoutMethods.nivelesSubtitle ||
+                "Tu cuenta asciende de categoría automáticamente a medida que tus referidos completan sus excursiones y traslados."}
             </p>
           </div>
 
@@ -887,19 +1066,19 @@ export default function AfiliadosLandingClient() {
                     : "Desplegar canales de Travis"}
                 </button>
                 <a
-                  href="https://wa.me/5493812000712?text=Hola%20Travis,%20quiero%20sumarme%20al%20Programa%20de%20Afiliados%20de%20TravelApp%20Experience"
+                  href={`https://wa.me/${whatsappDigits}?text=Hola%20Travis,%20quiero%20sumarme%20al%20Programa%20de%20Afiliados%20de%20TravelApp%20Experience`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-6 py-2.5 rounded-full border border-white/50 hover:bg-white hover:text-[#0a2a5b] text-white text-[13px] font-normal transition-colors"
                 >
-                  WhatsApp Oficial (+54 9 381 200-0712)
+                  WhatsApp Oficial ({whatsappDisplay})
                 </a>
               </div>
 
               {showTravisChannels && (
                 <div className="pt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 border-t border-white/15">
                   <a
-                    href="https://wa.me/5493812000712?text=Hola%20Travis,%20consulta%20Programa%20de%20Afiliados"
+                    href={`https://wa.me/${whatsappDigits}?text=Hola%20Travis,%20consulta%20Programa%20de%20Afiliados`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="bg-white/10 hover:bg-white/20 border border-white/15 p-3.5 flex items-center gap-3 transition-colors"
@@ -909,42 +1088,46 @@ export default function AfiliadosLandingClient() {
                     </div>
                     <div>
                       <p className="text-[12px] font-semibold text-white">WhatsApp</p>
-                      <p className="text-[11px] text-white/70">+54 9 381 200-0712</p>
+                      <p className="text-[11px] text-white/70">{whatsappDisplay}</p>
                     </div>
                   </a>
 
-                  <a
-                    href="https://m.me/travelapp"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="bg-white/10 hover:bg-white/20 border border-white/15 p-3.5 flex items-center gap-3 transition-colors"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-[#0084FF] text-white flex items-center justify-center shrink-0 text-xs font-bold">
-                      FB
-                    </div>
-                    <div>
-                      <p className="text-[12px] font-semibold text-white">Messenger</p>
-                      <p className="text-[11px] text-white/70">@travelapp</p>
-                    </div>
-                  </a>
+                  {messengerUrl && (
+                    <a
+                      href={messengerUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-white/10 hover:bg-white/20 border border-white/15 p-3.5 flex items-center gap-3 transition-colors"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-[#0084FF] text-white flex items-center justify-center shrink-0 text-xs font-bold">
+                        FB
+                      </div>
+                      <div>
+                        <p className="text-[12px] font-semibold text-white">Messenger</p>
+                        <p className="text-[11px] text-white/70">Chat directo</p>
+                      </div>
+                    </a>
+                  )}
+
+                  {instagramUrl && (
+                    <a
+                      href={instagramUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-white/10 hover:bg-white/20 border border-white/15 p-3.5 flex items-center gap-3 transition-colors"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-[#E1306C] text-white flex items-center justify-center shrink-0 text-xs font-bold">
+                        IG
+                      </div>
+                      <div>
+                        <p className="text-[12px] font-semibold text-white">Instagram</p>
+                        <p className="text-[11px] text-white/70">Mensaje Directo</p>
+                      </div>
+                    </a>
+                  )}
 
                   <a
-                    href="https://ig.me/m/travelapp.ar"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="bg-white/10 hover:bg-white/20 border border-white/15 p-3.5 flex items-center gap-3 transition-colors"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-[#E1306C] text-white flex items-center justify-center shrink-0 text-xs font-bold">
-                      IG
-                    </div>
-                    <div>
-                      <p className="text-[12px] font-semibold text-white">Instagram DM</p>
-                      <p className="text-[11px] text-white/70">@travelapp.ar</p>
-                    </div>
-                  </a>
-
-                  <a
-                    href="tel:08102200018"
+                    href={phoneHref}
                     className="bg-white/10 hover:bg-white/20 border border-white/15 p-3.5 flex items-center gap-3 transition-colors"
                   >
                     <div className="w-8 h-8 rounded-full bg-white text-[#0a2a5b] flex items-center justify-center shrink-0">
@@ -952,7 +1135,7 @@ export default function AfiliadosLandingClient() {
                     </div>
                     <div>
                       <p className="text-[12px] font-semibold text-white">Teléfono</p>
-                      <p className="text-[11px] text-white/70">0810-220-0018</p>
+                      <p className="text-[11px] text-white/70">{phoneDisplay}</p>
                     </div>
                   </a>
                 </div>
@@ -972,69 +1155,80 @@ export default function AfiliadosLandingClient() {
             <div className="md:col-span-4 space-y-5">
               <img
                 src="/assets/travelapp_blanco.svg"
-                alt="TravelApp Ecosistema"
+                alt={cmsData.footer?.brandText || "TravelApp Ecosistema"}
                 className="h-9 w-auto object-contain"
               />
               <p className="text-[12px] text-white/65 leading-relaxed max-w-xs">
-                El Ecosistema de Viajes más completo de Argentina. Turismo receptivo, movilidad segura y programa de partners.
+                {cmsData.footer?.description ||
+                  "El Ecosistema de Viajes más completo de Argentina. Turismo receptivo, movilidad segura y programa de partners."}
               </p>
 
               <div className="flex items-center gap-2.5 pt-1">
-                <a
-                  href={cmsData.redesSociales?.facebook || "https://facebook.com/travelapp.ar"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Facebook"
-                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-[#1877F2] transition-colors flex items-center justify-center"
-                >
-                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
-                    <path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z" />
-                  </svg>
-                </a>
-                <a
-                  href={cmsData.redesSociales?.instagram || "https://instagram.com/travelapp.ar"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Instagram"
-                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-[#E1306C] transition-colors flex items-center justify-center"
-                >
-                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
-                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
-                  </svg>
-                </a>
-                <a
-                  href={cmsData.redesSociales?.tiktok || "https://tiktok.com/@travelapp.ar"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="TikTok"
-                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-black transition-colors flex items-center justify-center"
-                >
-                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
-                    <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z" />
-                  </svg>
-                </a>
-                <a
-                  href={cmsData.redesSociales?.youtube || "https://youtube.com/@travelapp_ar"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="YouTube"
-                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-[#FF0000] transition-colors flex items-center justify-center"
-                >
-                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
-                    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
-                  </svg>
-                </a>
-                <a
-                  href="https://linkedin.com/company/travelapp-sas"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="LinkedIn"
-                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-[#0A66C2] transition-colors flex items-center justify-center"
-                >
-                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
-                    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
-                  </svg>
-                </a>
+                {cmsData.redesSociales?.facebook && (
+                  <a
+                    href={cmsData.redesSociales.facebook}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Facebook"
+                    className="w-8 h-8 rounded-full bg-white/10 hover:bg-[#1877F2] transition-colors flex items-center justify-center"
+                  >
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
+                      <path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z" />
+                    </svg>
+                  </a>
+                )}
+                {cmsData.redesSociales?.instagram && (
+                  <a
+                    href={cmsData.redesSociales.instagram}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Instagram"
+                    className="w-8 h-8 rounded-full bg-white/10 hover:bg-[#E1306C] transition-colors flex items-center justify-center"
+                  >
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
+                      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
+                    </svg>
+                  </a>
+                )}
+                {cmsData.redesSociales?.tiktok && (
+                  <a
+                    href={cmsData.redesSociales.tiktok}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="TikTok"
+                    className="w-8 h-8 rounded-full bg-white/10 hover:bg-black transition-colors flex items-center justify-center"
+                  >
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
+                      <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z" />
+                    </svg>
+                  </a>
+                )}
+                {cmsData.redesSociales?.youtube && (
+                  <a
+                    href={cmsData.redesSociales.youtube}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="YouTube"
+                    className="w-8 h-8 rounded-full bg-white/10 hover:bg-[#FF0000] transition-colors flex items-center justify-center"
+                  >
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
+                      <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
+                    </svg>
+                  </a>
+                )}
+                {cmsData.redesSociales?.linkedin && (
+                  <a
+                    href={cmsData.redesSociales.linkedin}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="LinkedIn"
+                    className="w-8 h-8 rounded-full bg-white/10 hover:bg-[#0A66C2] transition-colors flex items-center justify-center"
+                  >
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
+                      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+                    </svg>
+                  </a>
+                )}
               </div>
             </div>
 
@@ -1123,24 +1317,24 @@ export default function AfiliadosLandingClient() {
               </h4>
               <ul className="space-y-2 text-white/70">
                 <li>
-                  <a href="mailto:hola@travelapp.ar" className="hover:text-white transition-colors">
-                    Contacto: <span className="text-white">hola@travelapp.ar</span>
+                  <a href={`mailto:${contactEmail}`} className="hover:text-white transition-colors">
+                    Contacto: <span className="text-white">{contactEmail}</span>
                   </a>
                 </li>
                 <li>
-                  <a href="tel:08102200018" className="hover:text-white transition-colors">
-                    Teléfono: <span className="text-white">0810-220-0018</span>
+                  <a href={phoneHref} className="hover:text-white transition-colors">
+                    Teléfono: <span className="text-white">{phoneDisplay}</span>
                   </a>
                 </li>
                 <li>
                   <a
-                    href="https://wa.me/5493812000712"
+                    href={whatsappBaseUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="hover:text-white transition-colors"
                   >
                     WhatsApp (Travis):{" "}
-                    <span className="text-white">+54 9 381 200-0712</span>
+                    <span className="text-white">{whatsappDisplay}</span>
                   </a>
                 </li>
                 <li className="pt-1">
@@ -1149,6 +1343,7 @@ export default function AfiliadosLandingClient() {
                     onClick={() => {
                       setShowJobModal(true);
                       setSubmitStatus("idle");
+                      setJobError(null);
                     }}
                     className="inline-flex items-center gap-1.5 text-white hover:underline underline-offset-4 cursor-pointer"
                   >
@@ -1163,15 +1358,25 @@ export default function AfiliadosLandingClient() {
           {/* Barra Institucional QR ARCA + ATAVyT + RNBD */}
           <div className="py-6 border-b border-white/10 flex flex-wrap items-center justify-between gap-6">
             <div className="flex flex-wrap items-center gap-6">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 bg-white p-1 flex items-center justify-center shrink-0">
-                  <QrCode className="w-8 h-8 text-[#0a2a5b]" />
+              {cmsData.sellosLegales?.arcaQr ? (
+                <div className="flex items-center gap-2.5">
+                  <RenderLegalSeal content={cmsData.sellosLegales.arcaQr} alt="ARCA Data Fiscal" />
+                  <div className="text-[11px] leading-tight">
+                    <div className="font-semibold text-white">Inscripción ARCA</div>
+                    <div className="text-white/60">Data Fiscal Oficial</div>
+                  </div>
                 </div>
-                <div className="text-[11px] leading-tight">
-                  <div className="font-semibold text-white">Inscripción ARCA</div>
-                  <div className="text-white/60">Data Fiscal Oficial</div>
+              ) : (
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 bg-white p-1 flex items-center justify-center shrink-0">
+                    <QrCode className="w-8 h-8 text-[#0a2a5b]" />
+                  </div>
+                  <div className="text-[11px] leading-tight">
+                    <div className="font-semibold text-white">Inscripción ARCA</div>
+                    <div className="text-white/60">Data Fiscal Oficial</div>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="flex items-center gap-2.5 pl-6 border-l border-white/15">
                 <div className="px-2.5 py-1.5 bg-white/10 border border-white/20 text-[11px] font-semibold text-white tracking-tight">
@@ -1183,21 +1388,28 @@ export default function AfiliadosLandingClient() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2.5 pl-6 border-l border-white/15">
-                <div className="px-2.5 py-1.5 bg-white/10 border border-white/20 text-[11px] font-semibold text-white tracking-tight">
-                  RNBD
+              {cmsData.sellosLegales?.baseDatosSello ? (
+                <div className="flex items-center gap-2.5 pl-6 border-l border-white/15">
+                  <RenderLegalSeal
+                    content={cmsData.sellosLegales.baseDatosSello}
+                    alt="Base de Datos"
+                  />
+                  <div className="text-[11px] leading-tight">
+                    <div className="font-semibold text-white">Base de Datos</div>
+                    <div className="text-white/60">Ley N° 25.326 PDP</div>
+                  </div>
                 </div>
-                <div className="text-[11px] leading-tight">
-                  <div className="font-semibold text-white">Base de Datos</div>
-                  <div className="text-white/60">Ley N° 25.326 PDP</div>
+              ) : (
+                <div className="flex items-center gap-2.5 pl-6 border-l border-white/15">
+                  <div className="px-2.5 py-1.5 bg-white/10 border border-white/20 text-[11px] font-semibold text-white tracking-tight">
+                    RNBD
+                  </div>
+                  <div className="text-[11px] leading-tight">
+                    <div className="font-semibold text-white">Base de Datos</div>
+                    <div className="text-white/60">Ley N° 25.326 PDP</div>
+                  </div>
                 </div>
-              </div>
-
-              <RenderLegalSeal content={cmsData.sellosLegales?.arcaQr} alt="ARCA" />
-              <RenderLegalSeal
-                content={cmsData.sellosLegales?.baseDatosSello}
-                alt="Base de Datos"
-              />
+              )}
             </div>
 
             <div className="text-[11px] text-white/50">
@@ -1206,7 +1418,10 @@ export default function AfiliadosLandingClient() {
           </div>
 
           <div className="pt-5 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-white/55">
-            <p>© 2026 {cmsData.legales?.razonSocial} — Todos los derechos reservados.</p>
+            <p>
+              {cmsData.footer?.copyrightText ||
+                `© 2026 ${cmsData.legales?.razonSocial || "TravelApp S.A.S."} — Todos los derechos reservados.`}
+            </p>
             <p>{cmsData.legales?.domicilio}</p>
           </div>
         </div>
@@ -1236,7 +1451,7 @@ export default function AfiliadosLandingClient() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <p className="text-[13px] text-[#515154] leading-relaxed max-h-60 overflow-y-auto">
+            <p className="text-[13px] text-[#515154] leading-relaxed max-h-60 overflow-y-auto whitespace-pre-line">
               {legalModal.content}
             </p>
             <button
@@ -1251,7 +1466,7 @@ export default function AfiliadosLandingClient() {
       )}
 
       {/* ════════════════════════════════════════════════════════════════
-          MODAL DE POSTULACIÓN LABORAL (TRABAJÁ CON NOSOTROS)
+          MODAL DE POSTULACIÓN LABORAL (TRABAJÁ CON NOSOTROS · SYNC RRHH)
       ════════════════════════════════════════════════════════════════ */}
       {showJobModal && (
         <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-10 bg-black/65 backdrop-blur-sm overflow-y-auto font-sans">
@@ -1260,18 +1475,18 @@ export default function AfiliadosLandingClient() {
               <button
                 type="button"
                 onClick={resetJobModal}
-                className="absolute top-5 right-5 h-9 w-9 bg-white/10 hover:bg-white/20 flex items-center justify-center"
+                className="absolute top-5 right-5 h-9 w-9 bg-white/10 hover:bg-white/20 flex items-center justify-center cursor-pointer"
               >
                 <X className="h-5 w-5 text-white" />
               </button>
               <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#ef4444]">
-                POSTULACIONES ABIERTAS
+                RECURSOS HUMANOS · POSTULACIONES ABIERTAS
               </span>
               <h3 className="text-[26px] font-semibold mt-1 leading-snug">
-                {cmsData.trabajaNosotros?.titulo}
+                Sumate al Equipo TravelApp
               </h3>
               <p className="text-[13px] text-white/75 mt-1">
-                {cmsData.trabajaNosotros?.subtitulo}
+                Postulate a nuestras búsquedas activas o enviá tu postulación espontánea directa a RRHH.
               </p>
             </div>
 
@@ -1284,54 +1499,49 @@ export default function AfiliadosLandingClient() {
                   Postulación recibida correctamente
                 </h4>
                 <p className="text-[#515154] text-[13px]">
-                  Tu Curriculum Vitae fue registrado en el módulo de Recursos Humanos de Concorde 360.
+                  Tu perfil y Currículum Vitae fueron registrados en el módulo de Recursos Humanos de Concorde 360.
                 </p>
                 <button
                   type="button"
                   onClick={resetJobModal}
-                  className="bg-[#0a2a5b] text-white px-8 py-2.5 text-[13px] font-medium"
+                  className="bg-[#0a2a5b] text-white px-8 py-2.5 text-[13px] font-medium cursor-pointer"
                 >
                   Cerrar
                 </button>
               </div>
             ) : (
               <form onSubmit={handleJobSubmit} className="p-8 space-y-4 text-[13px]">
+                {jobError && (
+                  <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-medium">
+                    {jobError}
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
+                  <div className="sm:col-span-2">
                     <label className="block font-medium text-[#1d1d1f] mb-1">
-                      Nombre *
+                      Nombre Completo *
                     </label>
                     <input
                       required
                       type="text"
-                      value={jobForm.nombre}
+                      placeholder="Ej: María Sofía González"
+                      value={jobForm.fullName}
                       onChange={(e) =>
-                        setJobForm((p) => ({ ...p, nombre: e.target.value }))
+                        setJobForm((p) => ({ ...p, fullName: e.target.value }))
                       }
                       className="w-full border border-[#d2d2d7] px-3.5 py-2.5 bg-[#f5f5f7] focus:bg-white focus:border-[#0a2a5b] focus:outline-none"
                     />
                   </div>
+
                   <div>
                     <label className="block font-medium text-[#1d1d1f] mb-1">
-                      Apellido *
-                    </label>
-                    <input
-                      required
-                      type="text"
-                      value={jobForm.apellido}
-                      onChange={(e) =>
-                        setJobForm((p) => ({ ...p, apellido: e.target.value }))
-                      }
-                      className="w-full border border-[#d2d2d7] px-3.5 py-2.5 bg-[#f5f5f7] focus:bg-white focus:border-[#0a2a5b] focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-medium text-[#1d1d1f] mb-1">
-                      Email *
+                      Correo Electrónico *
                     </label>
                     <input
                       required
                       type="email"
+                      placeholder="nombre@correo.com"
                       value={jobForm.email}
                       onChange={(e) =>
                         setJobForm((p) => ({ ...p, email: e.target.value }))
@@ -1339,83 +1549,115 @@ export default function AfiliadosLandingClient() {
                       className="w-full border border-[#d2d2d7] px-3.5 py-2.5 bg-[#f5f5f7] focus:bg-white focus:border-[#0a2a5b] focus:outline-none"
                     />
                   </div>
+
                   <div>
                     <label className="block font-medium text-[#1d1d1f] mb-1">
-                      Teléfono / WhatsApp
+                      Teléfono *
                     </label>
                     <input
+                      required
                       type="tel"
-                      value={jobForm.telefono}
+                      placeholder="+54 9 381 ..."
+                      value={jobForm.phone}
                       onChange={(e) =>
-                        setJobForm((p) => ({ ...p, telefono: e.target.value }))
+                        setJobForm((p) => ({ ...p, phone: e.target.value }))
                       }
                       className="w-full border border-[#d2d2d7] px-3.5 py-2.5 bg-[#f5f5f7] focus:bg-white focus:border-[#0a2a5b] focus:outline-none"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-[#1d1d1f] mb-1">
+                      WhatsApp *
+                    </label>
+                    <input
+                      required
+                      type="tel"
+                      placeholder="+54 9 381 ..."
+                      value={jobForm.whatsapp}
+                      onChange={(e) =>
+                        setJobForm((p) => ({ ...p, whatsapp: e.target.value }))
+                      }
+                      className="w-full border border-[#d2d2d7] px-3.5 py-2.5 bg-[#f5f5f7] focus:bg-white focus:border-[#0a2a5b] focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-[#1d1d1f] mb-1">
+                      Puesto al que te postulás *
+                    </label>
+                    <select
+                      required
+                      value={jobForm.jobTitle}
+                      onChange={(e) =>
+                        setJobForm((p) => ({ ...p, jobTitle: e.target.value }))
+                      }
+                      className="w-full border border-[#d2d2d7] px-3.5 py-2.5 bg-[#f5f5f7] focus:bg-white focus:border-[#0a2a5b] focus:outline-none"
+                    >
+                      <option value="">Seleccioná un puesto...</option>
+                      {livePositions.map((pos) => (
+                        <option key={pos.id} value={pos.title}>
+                          {pos.title} ({pos.area})
+                        </option>
+                      ))}
+                      <option value="Postulación Espontánea">Postulación Espontánea</option>
+                    </select>
                   </div>
                 </div>
 
                 <div>
                   <label className="block font-medium text-[#1d1d1f] mb-1">
-                    Área de Interés *
-                  </label>
-                  <select
-                    required
-                    value={jobForm.puesto}
-                    onChange={(e) =>
-                      setJobForm((p) => ({ ...p, puesto: e.target.value }))
-                    }
-                    className="w-full border border-[#d2d2d7] px-3.5 py-2.5 bg-[#f5f5f7] focus:bg-white focus:border-[#0a2a5b] focus:outline-none"
-                  >
-                    <option value="">Seleccioná el área...</option>
-                    {(cmsData.trabajaNosotros?.puestos || []).map((p: string) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-medium text-[#1d1d1f] mb-1">
-                    Presentación breve *
+                    ¿Por qué querés formar parte de TravelApp y qué valor aportarías al equipo? *
                   </label>
                   <textarea
                     required
-                    rows={3}
-                    value={jobForm.mensaje}
+                    rows={4}
+                    placeholder="Contanos brevemente tu motivación, experiencia relevante y qué aporte te gustaría sumar a nuestra operación..."
+                    value={jobForm.motivation}
                     onChange={(e) =>
-                      setJobForm((p) => ({ ...p, mensaje: e.target.value }))
+                      setJobForm((p) => ({ ...p, motivation: e.target.value }))
                     }
                     className="w-full border border-[#d2d2d7] px-3.5 py-2.5 bg-[#f5f5f7] focus:bg-white focus:border-[#0a2a5b] focus:outline-none"
                   />
                 </div>
 
-                <div>
-                  <label className="block font-medium text-[#1d1d1f] mb-1">
-                    Curriculum Vitae (PDF o DOCX · máx. 5MB) *
-                  </label>
-                  <input
-                    type="file"
-                    accept=".pdf,.doc,.docx"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) setCvFile(f);
-                    }}
-                    className="w-full text-[12px] text-[#515154]"
-                  />
-                  {isSubmitting && uploadProgress > 0 && (
-                    <p className="text-[11px] text-[#0a2a5b] mt-1">
-                      Subiendo archivo: {Math.round(uploadProgress)}%
-                    </p>
-                  )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-medium text-[#1d1d1f] mb-1">
+                      Adjuntar Currículum Vitae (PDF/DOCX · máx. 5 MB)
+                    </label>
+                    <input
+                      type="file"
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) setCvFile(f);
+                      }}
+                      className="w-full text-[12px] text-[#515154]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium text-[#1d1d1f] mb-1">
+                      O enlace a LinkedIn / CV online (Opcional)
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="https://linkedin.com/in/..."
+                      value={jobForm.linkedinOrCvUrl}
+                      onChange={(e) =>
+                        setJobForm((p) => ({ ...p, linkedinOrCvUrl: e.target.value }))
+                      }
+                      className="w-full border border-[#d2d2d7] px-3.5 py-2 bg-[#f5f5f7] focus:bg-white focus:border-[#0a2a5b] focus:outline-none text-xs"
+                    />
+                  </div>
                 </div>
 
                 <button
                   type="submit"
-                  disabled={isSubmitting || !cvFile}
+                  disabled={isSubmitting}
                   className="w-full py-3 bg-[#0a2a5b] hover:bg-[#071d40] text-white font-medium text-[13px] transition-colors disabled:opacity-50 cursor-pointer"
                 >
-                  {isSubmitting ? "Enviando postulación..." : "Enviar Postulación"}
+                  {isSubmitting ? "Enviando postulación..." : "Enviar Postulación a RRHH"}
                 </button>
               </form>
             )}
@@ -1423,12 +1665,19 @@ export default function AfiliadosLandingClient() {
         </div>
       )}
 
+      {/* Push Pop Promocional / Aviso Minimalista */}
+      <OtaPromoPushPop
+        config={cmsData.promoPopup}
+        brandName={cmsData.footer?.brandText || "TravelApp Partners"}
+        storageKey="afiliados_promo_dismissed_v1"
+      />
+
       {/* Widget Flotante Omnicanal Travis */}
       <TravisOmnichannelWidget
         businessUnit="Experiences"
-        whatsappUrl={cmsData.redesSociales?.whatsapp || "https://wa.me/5493812000712"}
-        messengerUrl={cmsData.redesSociales?.messenger || "https://m.me/travelapp"}
-        instagramUrl={cmsData.redesSociales?.instagram || "https://instagram.com/travelapp.ar"}
+        whatsappUrl={whatsappBaseUrl}
+        messengerUrl={messengerUrl}
+        instagramUrl={instagramUrl}
         primaryColor="#0a2a5b"
         brandName="Experience Partners"
       />

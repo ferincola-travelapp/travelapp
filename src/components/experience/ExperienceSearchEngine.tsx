@@ -16,10 +16,21 @@ export interface ExcursionSearchFilters {
   fecha: string;
 }
 
+export interface ExperienceSearchConfig {
+  showExcursiones?: boolean;
+  showTraslados?: boolean;
+  showBuses?: boolean;
+  excursionesTitle?: string;
+  trasladosTitle?: string;
+  origenes?: string[];
+}
+
 interface ExperienceSearchEngineProps {
   activeMode?: "excursiones" | "traslados";
   onModeChange?: (mode: "excursiones" | "traslados") => void;
   onFilterExcursions?: (filters: ExcursionSearchFilters) => void;
+  config?: ExperienceSearchConfig;
+  whatsappDigits?: string;
 }
 
 interface TransferTariff {
@@ -91,12 +102,31 @@ export function ExperienceSearchEngine({
   activeMode = "excursiones",
   onModeChange,
   onFilterExcursions,
+  config,
+  whatsappDigits = "5493812000712",
 }: ExperienceSearchEngineProps) {
-  const [mode, setMode] = useState<"excursiones" | "traslados">(activeMode);
+  const showExcursiones = config?.showExcursiones !== false;
+  const showTraslados = config?.showTraslados !== false;
+  const showBuses = config?.showBuses !== false;
+  const origenesList =
+    Array.isArray(config?.origenes) && config.origenes.length > 0
+      ? ["Todos los orígenes", ...config.origenes.filter((o) => o && o !== "Todos los orígenes")]
+      : ORIGENES_EXCURSIONES;
+  const cleanWa = (whatsappDigits || "5493812000712").replace(/\D/g, "") || "5493812000712";
+
+  const [mode, setMode] = useState<"excursiones" | "traslados">(
+    !showExcursiones && showTraslados ? "traslados" : activeMode
+  );
 
   useEffect(() => {
-    setMode(activeMode);
-  }, [activeMode]);
+    if (activeMode === "excursiones" && !showExcursiones && showTraslados) {
+      setMode("traslados");
+    } else if (activeMode === "traslados" && !showTraslados && showExcursiones) {
+      setMode("excursiones");
+    } else {
+      setMode(activeMode);
+    }
+  }, [activeMode, showExcursiones, showTraslados]);
 
   const handleTabSwitch = (newMode: "excursiones" | "traslados") => {
     setMode(newMode);
@@ -218,13 +248,15 @@ export function ExperienceSearchEngine({
 • *Fecha:* ${transferDate || "A coordinar"}
 • *Tarifa Fija:* $${(selectedTariff?.price || 25000).toLocaleString("es-AR")}`;
       window.open(
-        `https://wa.me/5493812000712?text=${encodeURIComponent(text)}`,
+        `https://wa.me/${cleanWa}?text=${encodeURIComponent(text)}`,
         "_blank"
       );
     } finally {
       setSubmittingTransfer(false);
     }
   };
+
+  if (!showExcursiones && !showTraslados && !showBuses) return null;
 
   return (
     <div
@@ -238,46 +270,52 @@ export function ExperienceSearchEngine({
           <div>
             <h2 className="text-[21px] sm:text-[24px] font-semibold text-[#1d1d1f] tracking-[-0.015em]">
               {mode === "excursiones"
-                ? "Encontrá tu próxima experiencia."
-                : "Solicitá tu traslado punto a punto."}
+                ? config?.excursionesTitle || "Encontrá tu próxima experiencia."
+                : config?.trasladosTitle || "Solicitá tu traslado punto a punto."}
             </h2>
           </div>
 
           {/* Segmented Control Estilo Apple iOS / macOS */}
           <div className="inline-flex p-1 rounded-full bg-[#f5f5f7] border border-[#e5e5ea]">
-            <button
-              type="button"
-              onClick={() => handleTabSwitch("excursiones")}
-              className={`px-5 py-1.5 rounded-full text-[13px] font-medium tracking-[-0.01em] transition-all cursor-pointer ${
-                mode === "excursiones"
-                  ? "bg-white text-[#1d1d1f] shadow-sm"
-                  : "text-[#86868b] hover:text-[#1d1d1f]"
-              }`}
-            >
-              Excursiones
-            </button>
-            <button
-              type="button"
-              onClick={() => handleTabSwitch("traslados")}
-              className={`px-5 py-1.5 rounded-full text-[13px] font-medium tracking-[-0.01em] transition-all cursor-pointer ${
-                mode === "traslados"
-                  ? "bg-white text-[#1d1d1f] shadow-sm"
-                  : "text-[#86868b] hover:text-[#1d1d1f]"
-              }`}
-            >
-              Traslados
-            </button>
-            <a
-              href="/buses?brand=experience"
-              className="px-5 py-1.5 rounded-full text-[13px] font-medium tracking-[-0.01em] text-[#86868b] hover:text-[#1d1d1f] transition-all cursor-pointer flex items-center gap-1.5"
-            >
-              <span>Pasajes en Bus</span>
-            </a>
+            {showExcursiones && (
+              <button
+                type="button"
+                onClick={() => handleTabSwitch("excursiones")}
+                className={`px-5 py-1.5 rounded-full text-[13px] font-medium tracking-[-0.01em] transition-all cursor-pointer ${
+                  mode === "excursiones"
+                    ? "bg-white text-[#1d1d1f] shadow-sm"
+                    : "text-[#86868b] hover:text-[#1d1d1f]"
+                }`}
+              >
+                Excursiones
+              </button>
+            )}
+            {showTraslados && (
+              <button
+                type="button"
+                onClick={() => handleTabSwitch("traslados")}
+                className={`px-5 py-1.5 rounded-full text-[13px] font-medium tracking-[-0.01em] transition-all cursor-pointer ${
+                  mode === "traslados"
+                    ? "bg-white text-[#1d1d1f] shadow-sm"
+                    : "text-[#86868b] hover:text-[#1d1d1f]"
+                }`}
+              >
+                Traslados
+              </button>
+            )}
+            {showBuses && (
+              <a
+                href="/buses?brand=experience"
+                className="px-5 py-1.5 rounded-full text-[13px] font-medium tracking-[-0.01em] text-[#86868b] hover:text-[#1d1d1f] transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <span>Pasajes en Bus</span>
+              </a>
+            )}
           </div>
         </div>
 
         {/* MODO 1: BUSCADOR DE EXCURSIONES (Origen - Tiempo de excursión - Fecha) */}
-        {mode === "excursiones" ? (
+        {mode === "excursiones" && showExcursiones ? (
           <form
             onSubmit={handleExcursionSearch}
             className="grid grid-cols-1 md:grid-cols-12 rounded-2xl border border-[#d2d2d7] bg-[#fbfbfd] overflow-hidden divide-y md:divide-y-0 md:divide-x divide-[#d2d2d7]"
@@ -292,7 +330,7 @@ export function ExperienceSearchEngine({
                 onChange={(e) => setOrigenExcursion(e.target.value)}
                 className="mt-0.5 w-full bg-transparent text-[15px] font-medium text-[#1d1d1f] focus:outline-none cursor-pointer"
               >
-                {ORIGENES_EXCURSIONES.map((orig) => (
+                {origenesList.map((orig) => (
                   <option key={orig} value={orig}>
                     {orig}
                   </option>

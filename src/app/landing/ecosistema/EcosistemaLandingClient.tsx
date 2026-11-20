@@ -28,7 +28,9 @@ import {
   HeartHandshake,
   Star,
   Clock,
-  Shield
+  Shield,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 
 import { OtaHeader } from "@/components/ota/OtaHeader";
@@ -92,11 +94,12 @@ const DEFAULT_ECOSISTEMA_CMS = {
   hero: {
     mediaType: "image",
     mediaUrl: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=2560&q=95",
-    overlayOpacity: 72,
+    overlayOpacity: 25,
     badge: "✦ EL ECOSISTEMA DE VIAJES MÁS COMPLETO DE ARGENTINA",
     title: "Un Ecosistema Diseñado\npara el Viajero Moderno",
     subtitle: "Experiencias auténticas, paquetes emisivos a todo el mundo, movilidad urbana segura y recompensas que crecen con cada aventura. Todo en un solo lugar.",
     ctaText: "Descubrí el Ecosistema",
+    ctaUrl: "/marketplace",
     whatsappUrl: "https://wa.me/5493812000712",
     whatsappText: "Hablá con Nosotros",
   },
@@ -158,10 +161,11 @@ const DEFAULT_ECOSISTEMA_CMS = {
   showStats: false,
   promoPushPop: {
     enabled: true,
-    badge: "🔥 TRAVEL SALE 2026",
-    title: "¡Hasta 40% OFF en Paquetes y Puntos Dobles!",
+    badge: "TRAVEL SALE 2026",
+    title: "Hasta 40% OFF en Paquetes y Puntos Dobles",
     subtitle: "Aprovechá las mejores salidas de turismo emisivo y sumá doble puntaje TravelApp Rewards en todas tus reservas.",
-    discountCode: "TRAVELSALE",
+    showDiscountCode: false,
+    discountCode: "",
     imageUrl: "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=85",
     ctaText: "Ver Ofertas Especiales",
     ctaUrl: "/marketplace"
@@ -169,7 +173,13 @@ const DEFAULT_ECOSISTEMA_CMS = {
   contacto: {
     telefono: "0810-220-0018",
     whatsapp: "https://wa.me/5493812000712",
-    email: "hola@travelapp.ar"
+    whatsappDisplay: "+54 9 381 200-0712",
+    email: "hola@travelapp.ar",
+    horarios: "Atención Lunes a Sábado de 09:00 a 20:00 hs"
+  },
+  footer: {
+    description: "Plataforma integral de turismo, paquetes de operadores mayoristas y movilidad urbana de Argentina.",
+    copyrightText: "Todos los derechos reservados por TravelApp S.A.S. - 2026"
   },
   redesSociales: {
     facebook: "",
@@ -229,7 +239,8 @@ export default function EcosistemaLandingClient({
           promoPushPop: loaded.promoPushPop || loaded.pushPopPromo || DEFAULT_ECOSISTEMA_CMS.promoPushPop,
           redesSociales: { ...DEFAULT_ECOSISTEMA_CMS.redesSociales, ...(loaded.redesSociales || {}) },
           legales: { ...DEFAULT_ECOSISTEMA_CMS.legales, ...(loaded.legales || {}) },
-          contacto: { ...DEFAULT_ECOSISTEMA_CMS.contacto, ...(loaded.contacto || {}) }
+          contacto: { ...DEFAULT_ECOSISTEMA_CMS.contacto, ...(loaded.contacto || {}) },
+          footer: { ...DEFAULT_ECOSISTEMA_CMS.footer, ...(loaded.footer || {}) }
         }));
       }
     }, (err) => {
@@ -238,10 +249,22 @@ export default function EcosistemaLandingClient({
     return () => unsub();
   }, []);
 
-  // Construcción reactiva de los Slides del Hero basada en los datos del CMS
-  const heroSlides: HeroSlide[] = React.useMemo(() => {
+  // Construcción reactiva de los Slides del Hero (hasta 10 diapositivas desde el CMS)
+  const heroSlides: (HeroSlide & { whatsappUrl?: string; whatsappText?: string; overlayOpacity?: number })[] = React.useMemo(() => {
     if (Array.isArray(cms.heroSlider) && cms.heroSlider.length > 0) {
-      return cms.heroSlider;
+      return cms.heroSlider.slice(0, 10).map((s: any, idx: number) => ({
+        id: s.id || `eco-slide-${idx}`,
+        mediaType: s.mediaType === "video" || /\.(mp4|webm|mov)(\?.*)?$/i.test(s.mediaUrl || "") ? "video" : "image",
+        mediaUrl: s.mediaUrl || DEFAULT_SLIDES[idx % DEFAULT_SLIDES.length].mediaUrl,
+        badge: s.badge ?? "",
+        title: s.title || "Un Ecosistema Diseñado para el Viajero Moderno",
+        subtitle: s.subtitle || "",
+        ctaText: s.ctaText || "Explorar Paquetes",
+        ctaUrl: s.ctaUrl || "/marketplace",
+        whatsappUrl: s.whatsappUrl || cms.contacto?.whatsapp || cms.redesSociales?.whatsapp || "https://wa.me/5493812000712",
+        whatsappText: s.whatsappText || cms.hero?.whatsappText || "Hablá con Nosotros",
+        overlayOpacity: typeof s.overlayOpacity === "number" ? s.overlayOpacity : 0,
+      }));
     }
     if (cms.hero?.mediaUrl) {
       return [
@@ -253,19 +276,33 @@ export default function EcosistemaLandingClient({
           title: cms.hero.title || "Un Ecosistema Diseñado para el Viajero Moderno",
           subtitle: cms.hero.subtitle || "Experiencias auténticas, movilidad segura y recompensas que crecen con cada aventura.",
           ctaText: cms.hero.ctaText || "Descubrí el Ecosistema",
-          ctaUrl: cms.hero.whatsappUrl || "/marketplace",
+          ctaUrl: cms.hero.ctaUrl || "/marketplace",
+          whatsappUrl: cms.hero.whatsappUrl || cms.contacto?.whatsapp || cms.redesSociales?.whatsapp || "https://wa.me/5493812000712",
+          whatsappText: cms.hero.whatsappText || "Hablá con Nosotros",
+          overlayOpacity: typeof cms.hero.overlayOpacity === "number" ? cms.hero.overlayOpacity : 0,
         },
         ...DEFAULT_SLIDES.slice(1)
       ];
     }
     return DEFAULT_SLIDES;
-  }, [cms.hero, cms.heroSlider]);
+  }, [cms.hero, cms.heroSlider, cms.contacto, cms.redesSociales]);
 
   // Configuración de la promo flotante PushPop
   const promoConfig: PromoPushPopConfig = cms.promoPushPop || cms.pushPopPromo || DEFAULT_ECOSISTEMA_CMS.promoPushPop;
 
-  // Teléfono oficial para Header y Footer
-  const officialPhone = cms.contacto?.telefono || cms.redesSociales?.whatsapp || "0810-220-0018";
+  // Canales oficiales sincronizados desde CMS (WhatsApp real por defecto: 5493812000712)
+  const officialPhone = cms.contacto?.telefono?.trim() || "0810-220-0018";
+  const officialWhatsapp =
+    cms.contacto?.whatsapp?.trim() ||
+    cms.redesSociales?.whatsapp?.trim() ||
+    "https://wa.me/5493812000712";
+  const officialWhatsappDigits = officialWhatsapp.replace(/\D/g, "") || "5493812000712";
+  const officialWhatsappDisplay =
+    cms.contacto?.whatsappDisplay?.trim() ||
+    (officialWhatsappDigits === "5493812000712"
+      ? "+54 9 381 200-0712"
+      : `+${officialWhatsappDigits}`);
+  const officialEmail = cms.contacto?.email?.trim() || "hola@travelapp.ar";
 
   // Configuración del Footer conectado al CMS (oculta redes y sellos sin datos cargados)
   const footerConfig = React.useMemo(() => {
@@ -283,7 +320,11 @@ export default function EcosistemaLandingClient({
       cuit: cms.legales?.cuit || "30-71829304-8",
       domicilio: cms.legales?.domicilio || "San Miguel de Tucumán, Argentina",
       phone: officialPhone,
-      email: cms.contacto?.email || "hola@travelapp.ar",
+      email: officialEmail,
+      description: cms.footer?.description || DEFAULT_ECOSISTEMA_CMS.footer.description,
+      copyrightText: cms.footer?.copyrightText || DEFAULT_ECOSISTEMA_CMS.footer.copyrightText,
+      terminos: cms.legales?.terminos || "",
+      privacidad: cms.legales?.privacidad || "",
       showFacebook: Boolean(cms.redesSociales?.facebook?.trim()),
       facebookUrl: cms.redesSociales?.facebook?.trim() || "",
       showInstagram: Boolean(cms.redesSociales?.instagram?.trim()),
@@ -296,7 +337,7 @@ export default function EcosistemaLandingClient({
       tiktokUrl: cms.redesSociales?.tiktok?.trim() || "",
       trustBadges,
     };
-  }, [cms.legales, cms.contacto, cms.redesSociales, cms.sellosLegales, officialPhone]);
+  }, [cms.legales, cms.footer, cms.redesSociales, cms.sellosLegales, officialPhone, officialEmail]);
 
   // Unidades dinámicas del ecosistema
   const ecosystemUnits = Array.isArray(cms.unidades) && cms.unidades.length > 0
@@ -467,12 +508,22 @@ export default function EcosistemaLandingClient({
             />
           )}
 
+          {/* Capa opcional de opacidad si está configurada en el slide */}
+          {typeof (currentHero as any)?.overlayOpacity === "number" && (currentHero as any).overlayOpacity > 0 && (
+            <div
+              className="absolute inset-0 z-[5] bg-slate-950 pointer-events-none"
+              style={{ opacity: Math.min(0.8, Math.max(0, (currentHero as any).overlayOpacity / 100)) }}
+            />
+          )}
+
           {/* Texto flotante directo sobre la imagen limpia y llamados a la acción centrados */}
           <div className="absolute inset-0 z-10 flex items-center justify-center px-4 sm:px-8">
             <div className="max-w-3xl text-center">
-              <span className="inline-block text-[11px] sm:text-xs font-extrabold uppercase tracking-[0.2em] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.65)] mb-3">
-                {currentHero?.badge || "TRAVELAPP ECOSYSTEM"}
-              </span>
+              {currentHero?.badge && (
+                <span className="inline-block text-[11px] sm:text-xs font-extrabold uppercase tracking-[0.2em] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.65)] mb-3">
+                  {currentHero.badge}
+                </span>
+              )}
               <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-tight text-white whitespace-pre-line mb-3 drop-shadow-[0_3px_14px_rgba(0,0,0,0.6)]">
                 {currentHero?.title}
               </h1>
@@ -480,40 +531,70 @@ export default function EcosistemaLandingClient({
                 {currentHero?.subtitle}
               </p>
               <div className="flex flex-wrap items-center justify-center gap-3">
-                <Link
-                  href={currentHero?.ctaUrl || "/marketplace"}
-                  className="inline-flex items-center gap-2 px-6 py-3 rounded-sm bg-[#0A2A5B] text-white text-xs sm:text-sm font-bold hover:bg-slate-900 transition-colors shadow-lg"
-                >
-                  <span>{currentHero?.ctaText || "Explorar Paquetes"}</span>
-                  <ArrowRight className="w-4 h-4" />
-                </Link>
+                {/^https?:\/\//i.test(currentHero?.ctaUrl || "") ? (
+                  <a
+                    href={currentHero?.ctaUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-6 py-3 rounded-sm bg-[#0A2A5B] text-white text-xs sm:text-sm font-bold hover:bg-slate-900 transition-colors shadow-lg"
+                  >
+                    <span>{currentHero?.ctaText || "Explorar Paquetes"}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </a>
+                ) : (
+                  <Link
+                    href={currentHero?.ctaUrl || "/marketplace"}
+                    className="inline-flex items-center gap-2 px-6 py-3 rounded-sm bg-[#0A2A5B] text-white text-xs sm:text-sm font-bold hover:bg-slate-900 transition-colors shadow-lg"
+                  >
+                    <span>{currentHero?.ctaText || "Explorar Paquetes"}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </Link>
+                )}
                 <a
-                  href={cms.hero?.whatsappUrl || "https://wa.me/5493812000712"}
+                  href={(currentHero as any)?.whatsappUrl || officialWhatsapp}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-6 py-3 rounded-sm border border-white bg-white/95 text-[#0A2A5B] text-xs sm:text-sm font-bold hover:bg-white transition-colors shadow-lg"
                 >
-                  <span>{cms.hero?.whatsappText || "Hablá con Nosotros"}</span>
+                  <span>{(currentHero as any)?.whatsappText || cms.hero?.whatsappText || "Hablá con Nosotros"}</span>
                 </a>
               </div>
             </div>
           </div>
 
-          {/* Indicadores rectos de slides */}
+          {/* Flechas laterales e indicadores rectos para hasta 10 slides */}
           {heroSlides.length > 1 && (
-            <div className="absolute bottom-4 right-6 z-20 flex items-center gap-2">
-              {heroSlides.map((s, idx) => (
-                <button
-                  key={s.id || idx}
-                  type="button"
-                  onClick={() => setActiveSlide(idx)}
-                  aria-label={`Slide ${idx + 1}`}
-                  className={`h-1.5 transition-all cursor-pointer ${
-                    idx === activeSlide ? "w-8 bg-[#0A2A5B]" : "w-3 bg-white/80 hover:bg-white"
-                  }`}
-                />
-              ))}
-            </div>
+            <>
+              <button
+                type="button"
+                onClick={() => setActiveSlide((prev) => (prev === 0 ? heroSlides.length - 1 : prev - 1))}
+                aria-label="Slide anterior"
+                className="hidden sm:flex absolute left-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-black/25 hover:bg-black/50 text-white backdrop-blur-xs border border-white/25 items-center justify-center transition-colors cursor-pointer"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveSlide((prev) => (prev + 1) % heroSlides.length)}
+                aria-label="Slide siguiente"
+                className="hidden sm:flex absolute right-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-black/25 hover:bg-black/50 text-white backdrop-blur-xs border border-white/25 items-center justify-center transition-colors cursor-pointer"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+              <div className="absolute bottom-4 right-6 z-20 flex items-center gap-2">
+                {heroSlides.map((s, idx) => (
+                  <button
+                    key={s.id || idx}
+                    type="button"
+                    onClick={() => setActiveSlide(idx)}
+                    aria-label={`Slide ${idx + 1}`}
+                    className={`h-1.5 transition-all cursor-pointer ${
+                      idx === activeSlide ? "w-8 bg-[#0A2A5B]" : "w-3 bg-white/80 hover:bg-white"
+                    }`}
+                  />
+                ))}
+              </div>
+            </>
           )}
         </div>
       </section>
@@ -521,12 +602,21 @@ export default function EcosistemaLandingClient({
       {/* 3. Buscador Multimodal Profesional (entre el Slider y la barra de promociones) */}
       <section className="relative z-20 bg-slate-50 border-y border-slate-200 py-6 sm:py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <OtaSearchEngine enabledTabs={cms.enabledSearchTabs} />
+          <OtaSearchEngine
+            enabledTabs={cms.enabledSearchTabs}
+            whatsappUrl={officialWhatsapp}
+          />
         </div>
       </section>
 
-      {/* 4. Barra de Promociones Bancarias y Financiación (libre escritura desde el CMS) */}
-      <OtaFloatingPromos />
+      {/* 4. Barra de Promociones Bancarias y Financiación (editable desde el CMS) */}
+      {cms.showFloatingPromos !== false && (
+        <OtaFloatingPromos
+          promos={cms.floatingPromos}
+          sectionTitle={cms.floatingPromosTitle || "Beneficios & Financiación"}
+          whatsappUrl={officialWhatsapp}
+        />
+      )}
 
       {/* 5. Filtros Rápidos Editables desde el CMS + Carrusel de Tarjetas Cuadradas enlazado al Marketplace real */}
       <section className="bg-white pt-10 sm:pt-14 pb-4 border-t border-slate-100">
@@ -658,8 +748,10 @@ export default function EcosistemaLandingClient({
       {/* 6. Sección 2: TravelApp App Móvil (Opcional desde CMS) */}
       {cms.apps?.enabled !== false && (
         <OtaAppSection
+          badge={cms.apps?.badge}
           titulo={cms.apps?.titulo}
           subtitulo={cms.apps?.subtitulo}
+          welcomeNote={cms.apps?.welcomeNote}
           appPreviewImageUrl={cms.apps?.appPreviewImageUrl || ""}
           showPlayStore={Boolean(cms.apps?.showPlayStore !== false && cms.apps?.playStoreUrl?.trim())}
           showAppStore={Boolean(cms.apps?.showAppStore !== false && cms.apps?.appStoreUrl?.trim())}
@@ -669,18 +761,22 @@ export default function EcosistemaLandingClient({
       )}
 
       {/* 7. Sección 3: TravelApp Rewards (Resumen del Programa y CTA Registro) */}
-      <OtaRewardsSection />
+      <OtaRewardsSection config={cms.rewardsSection} />
 
       {/* 8. Sección 4: Travis Asistente Virtual Inteligente 24/7 con IA */}
-      <OtaTravisSection whatsappUrl={cms.redesSociales?.whatsapp || cms.contacto?.whatsapp} />
+      <OtaTravisSection
+        whatsappUrl={officialWhatsapp}
+        config={cms.travisSection}
+        onOpenContacto={() => setContactoModal(true)}
+      />
 
-      {/* 9. Sección 5: Sumate al Equipo (Oportunidades Laborales y Carga de CV) */}
-      <OtaCareersSection positions={cms.trabajaNosotros?.puestos || cms.jobPositions} />
+      {/* 9. Sección 5: Sumate al Equipo (Sincronizada en vivo desde Módulo RRHH /hr) */}
+      <OtaCareersSection />
 
       {/* 10. Footer Oficial: Sincronizado en vivo con datos legales y redes del CMS */}
       <OtaFooter config={footerConfig} />
 
-      {/* 11. Push Pop Promocional Emergente (TravelSale, Puntos Dobles, etc.) */}
+      {/* 11. Push Pop Promocional Emergente (Minimalista) */}
       <OtaPromoPushPop config={promoConfig} />
 
       {/* 12. Banner y Modal de Aceptación de Cookies (Ley 25.326) */}
@@ -691,11 +787,8 @@ export default function EcosistemaLandingClient({
         businessUnit="OTA"
         primaryColor="#0A2A5B"
         brandName="Travis IA"
-        whatsappUrl={
-          cms.contacto?.whatsapp ||
-          cms.redesSociales?.whatsapp ||
-          "https://wa.me/5493812000712?text=Hola%20Travis!%20Quiero%20consultar%20por%20un%20viaje"
-        }
+        whatsappUrl={officialWhatsapp}
+        instagramUrl={cms.redesSociales?.instagram?.trim() || "https://instagram.com/travelapp.ar"}
       />
 
       {/* MODAL INSTITUCIONAL: VISIÓN, MISIÓN Y VALORES (Conectado al CMS) */}
@@ -816,7 +909,7 @@ export default function EcosistemaLandingClient({
 
             <div className="space-y-3">
               <a
-                href="tel:08102200018"
+                href={`tel:${officialPhone.replace(/[^0-9+]/g, "")}`}
                 className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-tech-blue transition-colors group"
               >
                 <div className="flex items-center gap-3">
@@ -825,14 +918,14 @@ export default function EcosistemaLandingClient({
                   </div>
                   <div>
                     <span className="block text-xs font-black text-slate-800">Línea Telefónica Nacional</span>
-                    <span className="text-[11px] text-slate-500 font-bold">0810-220-0018</span>
+                    <span className="text-[11px] text-slate-500 font-bold">{officialPhone}</span>
                   </div>
                 </div>
                 <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-tech-blue transition-colors" />
               </a>
 
               <a
-                href={cms.contacto?.whatsapp || "https://wa.me/5493812000712"}
+                href={officialWhatsapp}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center justify-between p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 hover:border-emerald-500 transition-colors group"
@@ -843,15 +936,35 @@ export default function EcosistemaLandingClient({
                   </div>
                   <div>
                     <span className="block text-xs font-black text-emerald-900">WhatsApp Comercial & Travis IA</span>
-                    <span className="text-[11px] text-emerald-600 font-bold">+54 9 381 200-0712</span>
+                    <span className="text-[11px] text-emerald-600 font-bold">{officialWhatsappDisplay}</span>
                   </div>
                 </div>
                 <ArrowRight className="w-4 h-4 text-emerald-500 group-hover:translate-x-1 transition-transform" />
               </a>
 
+              <a
+                href={`mailto:${officialEmail}`}
+                className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-tech-blue transition-colors group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-slate-200/70 text-[#0A2A5B] flex items-center justify-center">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="block text-xs font-black text-slate-800">Correo Electrónico</span>
+                    <span className="text-[11px] text-slate-500 font-bold">{officialEmail}</span>
+                  </div>
+                </div>
+                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-tech-blue transition-colors" />
+              </a>
+
               <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-1">
                 <span className="font-black text-slate-800 block">Oficina Central:</span>
-                <span className="text-slate-500">San Miguel de Tucumán, Argentina · Atención Lunes a Sábado de 09:00 a 20:00 hs</span>
+                <span className="text-slate-500">
+                  {cms.legales?.domicilio || "San Miguel de Tucumán, Argentina"}
+                  {" · "}
+                  {cms.contacto?.horarios || "Atención Lunes a Sábado de 09:00 a 20:00 hs"}
+                </span>
               </div>
             </div>
           </div>

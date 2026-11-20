@@ -80,10 +80,9 @@ const SUGGESTED_DESTINATIONS = [
 
 export function OtaHeroSlider({ slides, children }: OtaHeroSliderProps) {
   const router = useRouter();
-  // Filtramos cualquier slide que sea foto de edificio/oficina o base64 viejo del CMS
   const cleanSlides =
-    slides && slides.length > 0 && !slides[0].mediaUrl.startsWith("data:image")
-      ? slides
+    Array.isArray(slides) && slides.length > 0 && slides.some((s) => s && s.mediaUrl?.trim())
+      ? slides.filter((s) => s && s.mediaUrl?.trim())
       : EMIRATES_HD_SLIDES;
 
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -134,6 +133,12 @@ export function OtaHeroSlider({ slides, children }: OtaHeroSliderProps) {
                   muted
                   playsInline
                   className="w-full h-full object-cover"
+                />
+              ) : slide.mediaUrl.startsWith("data:image") ? (
+                <img
+                  src={slide.mediaUrl}
+                  alt={slide.title}
+                  className="w-full h-full object-cover object-center transform scale-105 transition-transform duration-10000 ease-out"
                 />
               ) : (
                 <div className="relative w-full h-full">
